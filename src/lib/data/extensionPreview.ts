@@ -6,7 +6,7 @@ export const receiverPackPreview = {
   author: "Republic Observatory contributors",
   version: "1.0.0",
   hostApi: "1",
-  validation: "Schema and semantic proof valid",
+  defaultLocale: "en-AU",
   inputs: [...RECEIVER_CORE_METRICS],
   derivedMetrics: [
     "classified_population",
@@ -16,11 +16,4 @@ export const receiverPackPreview = {
     "computer_share",
   ],
   chart: "Receiver class shares · 100% stacked area",
-  deniedCapabilities: [
-    "Executable code",
-    "Network access",
-    "Raw-save access",
-    "Custom interface code",
-    "ECharts configuration",
-  ],
 } as const;

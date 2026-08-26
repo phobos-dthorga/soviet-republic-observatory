@@ -1,4 +1,5 @@
 import type { EChartsCoreOption } from "echarts/core";
+import { formatNumber } from "../i18n/format";
 import type {
   ChartPoint,
   ChartSeries,
@@ -16,10 +17,13 @@ export const observatoryChartTheme: ChartTheme = {
   tooltipBorder: "rgba(139, 159, 171, 0.32)",
 };
 
-export function expandedCategories(points: ChartPoint[]): string[] {
+export function expandedCategories(
+  points: ChartPoint[],
+  noObservationLabel = "no observation",
+): string[] {
   return points.flatMap((point) =>
     point.gap_before
-      ? [`${point.category} · no observation`, point.category]
+      ? [`${point.category} · ${noObservationLabel}`, point.category]
       : [point.category],
   );
 }
@@ -41,8 +45,14 @@ export function optionForChart(
   spec: ChartSpec,
   theme: ChartTheme = observatoryChartTheme,
   reducedMotion = false,
+  locale = "en-AU",
+  unavailableLabel = "Unavailable",
+  noObservationLabel = "no observation",
 ): EChartsCoreOption {
-  const categories = expandedCategories(spec.series[0]?.points ?? []);
+  const categories = expandedCategories(
+    spec.series[0]?.points ?? [],
+    noObservationLabel,
+  );
   const horizontal = spec.kind === "bar" && spec.orientation === "horizontal";
   const categoryAxis = {
     type: "category",
@@ -99,8 +109,8 @@ export function optionForChart(
       textStyle: { color: theme.text },
       valueFormatter: (value: unknown) =>
         typeof value === "number"
-          ? `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)}${spec.unit ? ` ${spec.unit}` : ""}`
-          : String(value ?? "Unavailable"),
+          ? `${formatNumber(value, locale, { maximumFractionDigits: 2 })}${spec.unit ? ` ${spec.unit}` : ""}`
+          : String(value ?? unavailableLabel),
     },
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? categoryAxis : valueAxis,
@@ -125,11 +135,17 @@ export function optionForChart(
           ? {
               silent: true,
               symbol: ["none", "none"],
-              label: { color: theme.muted, formatter: "{b}" },
+              label: {
+                color: theme.muted,
+                formatter: "{b}",
+                position: "insideStartTop",
+                rotate: 0,
+              },
               lineStyle: { color: theme.muted, type: "dashed", width: 1 },
               data: spec.reference_lines.map((line) => ({
                 id: line.id,
                 name: line.label,
+                label: { position: "insideStartTop", rotate: 0 },
                 ...(line.axis === "category"
                   ? horizontal
                     ? { yAxis: line.value }

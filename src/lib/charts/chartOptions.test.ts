@@ -40,6 +40,9 @@ describe("chart options", () => {
       "1979 Q2",
     ]);
     expect(expandedValues(baseSpec.series[0].points)).toEqual([80, null, 84]);
+    expect(
+      expandedCategories(baseSpec.series[0].points, "aucune observation")[1],
+    ).toBe("1979 Q2 · aucune observation");
   });
 
   it("uses horizontal value and category axes for a horizontal bar", () => {
@@ -59,6 +62,13 @@ describe("chart options", () => {
     };
 
     expect(option.animationDuration).toBe(0);
+  });
+
+  it("formats tooltip values with the active locale", () => {
+    const option = optionForChart(baseSpec, undefined, false, "de-DE") as {
+      tooltip: { valueFormatter: (value: unknown) => string };
+    };
+    expect(option.tooltip.valueFormatter(1234.5)).toBe("1.234,5 %");
   });
 
   it("applies a fixed value domain and stack identifiers", () => {

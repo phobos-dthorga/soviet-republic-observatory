@@ -28,6 +28,9 @@ an engineering requirement.
   future Model Plugin boundary
 - [Analysis Pack authoring](extensions/analysis-pack-authoring.md)
 - [Extension threat model](extensions/threat-model.md)
+- [Localisation and language-pack authoring](localization/README.md) — canonical
+  catalogue, Fluent patterns, validation, fallback, UI/game vocabulary split,
+  and extension-text ownership
 
 ## Architecture
 
@@ -37,6 +40,7 @@ an engineering requirement.
 - [ADR-0003: declarative ECharts boundary](architecture/decisions/0003-declarative-echarts-boundary.md)
 - [ADR-0004: branch-aware observation timeline](architecture/decisions/0004-branch-aware-observation-timeline.md)
 - [ADR-0005: declarative Analysis Packs before executable Model Plugins](architecture/decisions/0005-declarative-analysis-packs-and-model-plugins.md)
+- [ADR-0006: versioned community localisation before save parsing](architecture/decisions/0006-versioned-community-localisation.md)
 
 ## Evidence status vocabulary
 

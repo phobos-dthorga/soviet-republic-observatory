@@ -3,6 +3,12 @@ import type {
   EvidenceCoverage,
   EvidenceKind,
 } from "../charts/types";
+import {
+  formatNumber,
+  formatPercent,
+  formatSignedNumber,
+} from "../i18n/format";
+import type { Translator } from "../i18n/runtime";
 
 export type KpiPreview = {
   label: string;
@@ -13,137 +19,11 @@ export type KpiPreview = {
   coverage: EvidenceCoverage;
 };
 
-export const kpiPreview: KpiPreview[] = [
-  {
-    label: "Plan attainment",
-    value: "92%",
-    change: "−3.1 pts to schedule",
-    context: "Industrial plan · Year 4 of 5",
-    kind: "calculation",
-    coverage: "complete",
-  },
-  {
-    label: "External dependency",
-    value: "31%",
-    change: "−4.7 pts over 180 days",
-    context: "Critical-resource basket",
-    kind: "estimate",
-    coverage: "experimental",
-  },
-  {
-    label: "Demographic resilience",
-    value: "+4.8‰",
-    change: "+1.2 per 1,000",
-    context: "Births + immigration − losses",
-    kind: "calculation",
-    coverage: "partial",
-  },
-];
-
-export const planProgressSpec: ChartSpec = {
-  schema_version: 1,
-  id: "plan-progress-preview",
-  title: "Industrial plan progress",
-  description:
-    "Cumulative, target-normalised progress. The preview shows how actual observations remain separate from the scheduled path.",
-  kind: "line",
-  category_axis_label: "Plan quarter",
-  value_axis_label: "Attainment",
-  unit: "%",
-  reference_lines: [
-    { id: "current", label: "Latest save", axis: "category", value: "Y4 Q2" },
-  ],
-  series: [
-    {
-      id: "actual",
-      label: "Observed",
-      points: [
-        { category: "Y1 Q1", value: 7 },
-        { category: "Y1 Q2", value: 13 },
-        { category: "Y1 Q3", value: 20 },
-        { category: "Y1 Q4", value: 27 },
-        { category: "Y2 Q1", value: 33 },
-        { category: "Y2 Q2", value: 39 },
-        { category: "Y2 Q3", value: 46 },
-        { category: "Y2 Q4", value: 52 },
-        { category: "Y3 Q1", value: 59 },
-        { category: "Y3 Q2", value: 64 },
-        { category: "Y3 Q3", value: 70 },
-        { category: "Y3 Q4", value: 76 },
-        { category: "Y4 Q1", value: 81 },
-        { category: "Y4 Q2", value: 85 },
-      ],
-    },
-    {
-      id: "scheduled",
-      label: "Scheduled",
-      style: "dashed",
-      points: [
-        { category: "Y1 Q1", value: 6 },
-        { category: "Y1 Q2", value: 12 },
-        { category: "Y1 Q3", value: 18 },
-        { category: "Y1 Q4", value: 24 },
-        { category: "Y2 Q1", value: 30 },
-        { category: "Y2 Q2", value: 36 },
-        { category: "Y2 Q3", value: 42 },
-        { category: "Y2 Q4", value: 48 },
-        { category: "Y3 Q1", value: 55 },
-        { category: "Y3 Q2", value: 62 },
-        { category: "Y3 Q3", value: 69 },
-        { category: "Y3 Q4", value: 76 },
-        { category: "Y4 Q1", value: 84 },
-        { category: "Y4 Q2", value: 92 },
-      ],
-    },
-  ],
-  provenance: {
-    kind: "calculation",
-    source: "Synthetic plan preview · no save connected",
-    observed_at: "2004 · day 230",
-    coverage: "complete",
-  },
-};
-
-export const importDependencySpec: ChartSpec = {
-  schema_version: 1,
-  id: "import-dependency-preview",
-  title: "Critical import exposure",
-  description:
-    "Resource-level recorded reliance, kept separate by material rather than hidden inside one composite score.",
-  kind: "bar",
-  orientation: "horizontal",
-  value_axis_label: "Recorded import share",
-  unit: "%",
-  reference_lines: [
-    { id: "review", label: "Review threshold", axis: "value", value: 50 },
-  ],
-  series: [
-    {
-      id: "reliance",
-      label: "Import share",
-      points: [
-        { category: "Electronic components", value: 78 },
-        { category: "Chemicals", value: 61 },
-        { category: "Steel", value: 44 },
-        { category: "Fabric", value: 33 },
-        { category: "Fuel", value: 17 },
-        { category: "Crops", value: 8 },
-      ],
-    },
-  ],
-  provenance: {
-    kind: "estimate",
-    source: "Synthetic material basket · production coverage illustrative",
-    observed_at: "2004 · day 230",
-    coverage: "experimental",
-  },
-};
-
 export type MaterialCell = {
   code: string;
   name: string;
   family:
-    "Raw" | "Industrial" | "Construction" | "Consumer" | "Energy" | "Waste";
+    "raw" | "industrial" | "construction" | "consumer" | "energy" | "waste";
   value: string;
   delta: string;
   reliance: number;
@@ -151,184 +31,364 @@ export type MaterialCell = {
   note: string;
 };
 
-export const materialCells: MaterialCell[] = [
-  {
-    code: "Crp",
-    name: "Crops",
-    family: "Raw",
-    value: "8%",
-    delta: "−2.1",
-    reliance: 8,
-    status: "stable",
-    note: "Domestic supply covers most recorded demand.",
-  },
-  {
-    code: "Wd",
-    name: "Wood",
-    family: "Raw",
-    value: "0%",
-    delta: "0.0",
-    reliance: 0,
-    status: "stable",
-    note: "No recorded imports in the selected window.",
-  },
-  {
-    code: "Ol",
-    name: "Oil",
-    family: "Raw",
-    value: "3%",
-    delta: "−0.7",
-    reliance: 3,
-    status: "stable",
-    note: "Low external exposure in the preview basket.",
-  },
-  {
-    code: "Ch",
-    name: "Chemicals",
-    family: "Industrial",
-    value: "61%",
-    delta: "+8.4",
-    reliance: 61,
-    status: "exposed",
-    note: "Largest worsening critical-material exposure.",
-  },
-  {
-    code: "Mec",
-    name: "Mechanical parts",
-    family: "Industrial",
-    value: "29%",
-    delta: "−3.2",
-    reliance: 29,
-    status: "watch",
-    note: "Improving, but still material to vehicle production.",
-  },
-  {
-    code: "Ecp",
-    name: "Electronic parts",
-    family: "Industrial",
-    value: "78%",
-    delta: "+2.6",
-    reliance: 78,
-    status: "exposed",
-    note: "Highest recorded external dependency.",
-  },
-  {
-    code: "St",
-    name: "Steel",
-    family: "Construction",
-    value: "44%",
-    delta: "−5.3",
-    reliance: 44,
-    status: "watch",
-    note: "Construction demand remains the main recorded use.",
-  },
-  {
-    code: "Br",
-    name: "Bricks",
-    family: "Construction",
-    value: "11%",
-    delta: "−1.8",
-    reliance: 11,
-    status: "stable",
-    note: "A low but non-zero import bridge remains.",
-  },
-  {
-    code: "Pf",
-    name: "Prefab panels",
-    family: "Construction",
-    value: "23%",
-    delta: "+1.2",
-    reliance: 23,
-    status: "watch",
-    note: "Exposure rose during the current building pulse.",
-  },
-  {
-    code: "Fd",
-    name: "Food",
-    family: "Consumer",
-    value: "6%",
-    delta: "−0.9",
-    reliance: 6,
-    status: "stable",
-    note: "Small imports provide a consumer reserve.",
-  },
-  {
-    code: "Cl",
-    name: "Clothes",
-    family: "Consumer",
-    value: "14%",
-    delta: "+0.4",
-    reliance: 14,
-    status: "stable",
-    note: "Stable recorded reliance.",
-  },
-  {
-    code: "El",
-    name: "Electronics",
-    family: "Consumer",
-    value: "39%",
-    delta: "+4.1",
-    reliance: 39,
-    status: "watch",
-    note: "Consumer supply inherits upstream component risk.",
-  },
-  {
-    code: "Fl",
-    name: "Fuel",
-    family: "Energy",
-    value: "17%",
-    delta: "−6.0",
-    reliance: 17,
-    status: "stable",
-    note: "Exposure fell across the recent observation window.",
-  },
-  {
-    code: "Pw",
-    name: "Power",
-    family: "Energy",
-    value: "4%",
-    delta: "0.0",
-    reliance: 4,
-    status: "stable",
-    note: "External supply is a small recorded share.",
-  },
-  {
-    code: "Mw",
-    name: "Mixed waste",
-    family: "Waste",
-    value: "1.9 kt",
-    delta: "+5.7",
-    reliance: 0,
-    status: "watch",
-    note: "Factory generation is the leading source in the preview.",
-  },
-  {
-    code: "Hw",
-    name: "Hazardous waste",
-    family: "Waste",
-    value: "84 t",
-    delta: "+12.0",
-    reliance: 0,
-    status: "exposed",
-    note: "Growth exceeds the illustrative baseline range.",
-  },
-];
+export function createBriefingPreview(t: Translator, locale: string) {
+  const percent = (value: number) => formatPercent(value, locale);
+  const signed = (value: number) =>
+    formatSignedNumber(value, locale, { maximumFractionDigits: 1 });
+  const planCategories = Array.from({ length: 14 }, (_, index) =>
+    t("chart-category-plan-quarter", {
+      year: Math.floor(index / 4) + 1,
+      quarter: (index % 4) + 1,
+    }),
+  );
+  const planPoints = (values: number[]) =>
+    values.map((value, index) => ({ category: planCategories[index], value }));
 
-export const attentionPreview = [
-  {
-    level: "Signal",
-    title: "Chemical exposure moved outside baseline",
-    detail: "+8.4 points across the latest 180-day comparison.",
-  },
-  {
-    level: "Plan",
-    title: "Industrial plan is 3.1 points behind schedule",
-    detail: "The shortfall widened in the last two plan quarters.",
-  },
-  {
-    level: "Coverage",
-    title: "Production evidence remains partial",
-    detail:
-      "Dependency values are experimental until resource coverage is validated.",
-  },
-];
+  const kpis: KpiPreview[] = [
+    {
+      label: t("briefing-kpi-plan-attainment"),
+      value: percent(92),
+      change: t("briefing-kpi-behind-schedule", {
+        value: formatNumber(3.1, locale, { maximumFractionDigits: 1 }),
+      }),
+      context: t("briefing-kpi-industrial-context"),
+      kind: "calculation",
+      coverage: "complete",
+    },
+    {
+      label: t("briefing-kpi-external-dependency"),
+      value: percent(31),
+      change: t("briefing-kpi-change-window", {
+        value: signed(-4.7),
+        days: 180,
+      }),
+      context: t("briefing-kpi-critical-basket"),
+      kind: "estimate",
+      coverage: "experimental",
+    },
+    {
+      label: t("briefing-kpi-demographic-resilience"),
+      value: `${signed(4.8)}‰`,
+      change: t("briefing-kpi-per-thousand", { value: signed(1.2) }),
+      context: t("briefing-kpi-demographic-context"),
+      kind: "calculation",
+      coverage: "partial",
+    },
+  ];
+
+  const planProgress: ChartSpec = {
+    schema_version: 1,
+    id: "plan-progress-preview",
+    title: t("chart-plan-title"),
+    description: t("chart-plan-description"),
+    kind: "line",
+    category_axis_label: t("chart-axis-plan-quarter"),
+    value_axis_label: t("chart-axis-attainment"),
+    unit: "%",
+    reference_lines: [
+      {
+        id: "current",
+        label: t("chart-reference-latest-save"),
+        axis: "category",
+        value: planCategories[13],
+      },
+    ],
+    series: [
+      {
+        id: "actual",
+        label: t("chart-series-observed"),
+        points: planPoints([
+          7, 13, 20, 27, 33, 39, 46, 52, 59, 64, 70, 76, 81, 85,
+        ]),
+      },
+      {
+        id: "scheduled",
+        label: t("chart-series-scheduled"),
+        style: "dashed",
+        points: planPoints([
+          6, 12, 18, 24, 30, 36, 42, 48, 55, 62, 69, 76, 84, 92,
+        ]),
+      },
+    ],
+    provenance: {
+      kind: "calculation",
+      source: t("synthetic-source-plan-preview"),
+      observed_at: t("synthetic-observed-day-230"),
+      coverage: "complete",
+    },
+  };
+
+  const importDependency: ChartSpec = {
+    schema_version: 1,
+    id: "import-dependency-preview",
+    title: t("chart-import-title"),
+    description: t("chart-import-description"),
+    kind: "bar",
+    orientation: "horizontal",
+    value_axis_label: t("chart-axis-import-share"),
+    unit: "%",
+    reference_lines: [
+      {
+        id: "review",
+        label: t("chart-reference-review-threshold"),
+        axis: "value",
+        value: 50,
+      },
+    ],
+    series: [
+      {
+        id: "reliance",
+        label: t("chart-series-import-share"),
+        points: [
+          { category: t("material-electronic-components"), value: 78 },
+          { category: t("material-chemicals"), value: 61 },
+          { category: t("material-steel"), value: 44 },
+          { category: t("material-fabric"), value: 33 },
+          { category: t("material-fuel"), value: 17 },
+          { category: t("material-crops"), value: 8 },
+        ],
+      },
+    ],
+    provenance: {
+      kind: "estimate",
+      source: t("synthetic-source-material-basket"),
+      observed_at: t("synthetic-observed-day-230"),
+      coverage: "experimental",
+    },
+  };
+
+  const materialCells: MaterialCell[] = [
+    material(
+      t,
+      percent,
+      signed,
+      "Crp",
+      "material-crops",
+      "raw",
+      8,
+      -2.1,
+      "stable",
+      "material-note-crops",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Wd",
+      "material-wood",
+      "raw",
+      0,
+      0,
+      "stable",
+      "material-note-wood",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Ol",
+      "material-oil",
+      "raw",
+      3,
+      -0.7,
+      "stable",
+      "material-note-oil",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Ch",
+      "material-chemicals",
+      "industrial",
+      61,
+      8.4,
+      "exposed",
+      "material-note-chemicals",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Mec",
+      "material-mechanical-parts",
+      "industrial",
+      29,
+      -3.2,
+      "watch",
+      "material-note-mechanical",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Ecp",
+      "material-electronic-components",
+      "industrial",
+      78,
+      2.6,
+      "exposed",
+      "material-note-electronic",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "St",
+      "material-steel",
+      "construction",
+      44,
+      -5.3,
+      "watch",
+      "material-note-steel",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Br",
+      "material-bricks",
+      "construction",
+      11,
+      -1.8,
+      "stable",
+      "material-note-bricks",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Pf",
+      "material-prefab-panels",
+      "construction",
+      23,
+      1.2,
+      "watch",
+      "material-note-prefab",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Fd",
+      "material-food",
+      "consumer",
+      6,
+      -0.9,
+      "stable",
+      "material-note-food",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Cl",
+      "material-clothes",
+      "consumer",
+      14,
+      0.4,
+      "stable",
+      "material-note-clothes",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "El",
+      "material-electronics",
+      "consumer",
+      39,
+      4.1,
+      "watch",
+      "material-note-electronics",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Fl",
+      "material-fuel",
+      "energy",
+      17,
+      -6,
+      "stable",
+      "material-note-fuel",
+    ),
+    material(
+      t,
+      percent,
+      signed,
+      "Pw",
+      "material-power",
+      "energy",
+      4,
+      0,
+      "stable",
+      "material-note-power",
+    ),
+    {
+      code: "Mw",
+      name: t("material-mixed-waste"),
+      family: "waste",
+      value: t("briefing-mass-kilotonne", { value: "1.9" }),
+      delta: signed(5.7),
+      reliance: 0,
+      status: "watch",
+      note: t("material-note-mixed-waste"),
+    },
+    {
+      code: "Hw",
+      name: t("material-hazardous-waste"),
+      family: "waste",
+      value: t("briefing-mass-tonne", { value: 84 }),
+      delta: signed(12),
+      reliance: 0,
+      status: "exposed",
+      note: t("material-note-hazardous-waste"),
+    },
+  ];
+
+  const attention = [
+    {
+      level: t("attention-level-signal"),
+      title: t("attention-chemical-title"),
+      detail: t("attention-chemical-detail"),
+    },
+    {
+      level: t("attention-level-plan"),
+      title: t("attention-plan-title"),
+      detail: t("attention-plan-detail"),
+    },
+    {
+      level: t("attention-level-coverage"),
+      title: t("attention-coverage-title"),
+      detail: t("coverage-dependency-experimental"),
+    },
+  ];
+
+  return { kpis, planProgress, importDependency, materialCells, attention };
+}
+
+function material(
+  t: Translator,
+  percent: (value: number) => string,
+  signed: (value: number) => string,
+  code: string,
+  nameKey: Parameters<Translator>[0],
+  family: MaterialCell["family"],
+  reliance: number,
+  delta: number,
+  status: MaterialCell["status"],
+  noteKey: Parameters<Translator>[0],
+): MaterialCell {
+  return {
+    code,
+    name: t(nameKey),
+    family,
+    value: percent(reliance),
+    delta: signed(delta),
+    reliance,
+    status,
+    note: t(noteKey),
+  };
+}

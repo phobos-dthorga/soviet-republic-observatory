@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "id": "community-fr-example",
+  "locale": "fr",
+  "name": "Français communautaire (exemple)",
+  "author": "Republic Observatory fixture",
+  "source_locale": "en-AU",
+  "source_catalog_version": 1,
+  "source_catalog_revision": 1,
+  "direction": "left_to_right",
+  "messages": {
+    "nav-primary": "Espaces de travail principaux",
+    "nav-briefing": "Rapport",
+    "nav-broadcast": "Diffusion",
+    "nav-extensions": "Extensions",
+    "language-title": "Langues de l’Observatoire",
+    "language-select": "Utiliser cette langue",
+    "chart-accessible-label": "{ $title }. { $description }",
+    "action-close": "Fermer"
+  }
+}

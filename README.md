@@ -54,6 +54,8 @@ The interface follows the methodology established by
 - explicit live/historical and source states;
 - provenance attached to every chart;
 - Apache ECharts behind one declarative application-owned adapter;
+- canonical `en-AU`, Fluent formatting, and strict inert community language
+  packs with complete current-interface coverage;
 - strict, non-executable Analysis Pack and chart-schema proofs; and
 - a local-first, summary-to-diagnosis information hierarchy.
 
@@ -104,6 +106,7 @@ first real save-observation vertical slice, rather than as empty scaffolding.
 - [Material Periodic Table and Industrial Laboratory](docs/material-periodic-table.md)
 - [Broadcast Desk](docs/broadcast-desk.md)
 - [Community Extensions](docs/extensions/overview.md)
+- [Localisation and language-pack authoring](docs/localization/README.md)
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)

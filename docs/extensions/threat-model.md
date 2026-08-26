@@ -37,6 +37,7 @@ extensions use the same contract.
 | Cross-branch evidence splicing             | Host-controlled alignment within branch, date, and scope           |
 | Forged trust or provenance                 | Host assigns provenance from content and source observations       |
 | Identity squatting or payload replacement  | Future content identity binds exact ID and version                 |
+| Host-language pack rewrites pack claims    | Pack prose stays author-owned and has a declared/defaulted locale  |
 
 Ajv is a development conformance check. The future Rust host must validate the
 same structural and semantic rules before installation or evaluation.

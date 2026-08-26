@@ -63,6 +63,30 @@
   for every chart.
 - Empty, loading, unavailable, partial, and error states are distinct.
 
+## Localisation
+
+- All user-facing host text, chart prose, textual chart summaries, and
+  locale-sensitive values use the canonical localisation runtime and central
+  formatting helpers. Do not add a parallel string or formatting path.
+- Use literal translation keys or an explicit typed mapping. Constructed keys
+  and sentence keys are prohibited.
+- Keep raw save fields, source spellings, branch IDs, metric IDs, extension IDs,
+  file names, and diagnostics unchanged; accompany them with translated context
+  when useful.
+- Keep Observatory UI language separate from installed-game vocabulary and
+  extension-authored prose. Never use translated display text as stored
+  identity or a calculation key.
+- Language packs are inert data. They cannot provide markup, callbacks, code,
+  renderer options, URLs, paths, capabilities, trust, evidence classification,
+  or safety policy.
+- Installation and selection are separate. A failed language pack falls back
+  per message to canonical `en-AU` and cannot block the application.
+- Additive catalogue messages advance the source revision. Removed, renamed, or
+  incompatibly changed messages advance the compatibility version.
+- New or changed language contracts require schema, semantic, variable-parity,
+  fallback, pseudo-language, RTL, keyboard, and narrow-layout checks in
+  proportion to the change.
+
 ## Quality gates
 
 - Run formatting, Svelte type checking, unit tests, and the production build.
@@ -73,3 +97,5 @@
   at desktop and narrow widths.
 - Analysis Pack changes require strict schema tests, semantic reference tests,
   limit and injection fixtures, and compatibility notes.
+- `npm run check` includes the localisation audit and must remain a required
+  gate.

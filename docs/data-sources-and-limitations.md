@@ -83,6 +83,14 @@ specific building operated at that theoretical rate.
 Definitions should be imported into versioned application-owned models. No game
 assets are copied or redistributed.
 
+Installed-game translation files are a potential local display-vocabulary
+source, not parser truth and not Observatory UI translations. The application
+will retain exact source identifiers, resolve labels through a versioned
+`GameVocabularyCatalogue`, and fall back to reviewed Observatory labels when a
+local term is missing or unsafe. No game translation catalogue is committed or
+redistributed by this repository. Changing display language cannot change
+observation identity, metric references, joins, or calculations.
+
 For version 1.1.1.9, reviewed station definitions provide nominal radio capacity
 of 100 workers and 50 professors, and television capacity of 120 workers and 70
 professors. These are game-definition facts, not evidence of staffing in a
@@ -132,6 +140,12 @@ Future executable Model Plugins receive only bounded normalised observations
 and versioned game-definition models. Raw archives, binary payloads, SQLite,
 parser maps, and paths remain host-private even when a player grants future
 extension capabilities.
+
+Analysis Pack prose is also a separate evidence surface. New pack v1 files
+declare `default_locale`; older v1 files default to `en-AU`. The host tags
+author-owned names, descriptions, metric labels, and chart prose with that
+locale. Observatory language packs cannot rewrite an extension author's
+analytical claim or make it appear reviewed by the host.
 
 ## Data-quality presentation
 

@@ -1,185 +1,184 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import {
-    audienceReachSpec,
-    broadcastNotebookPreview,
-    influenceAssaySpec,
-    outcomeLaboratorySpec,
-    programmeMixPreview,
-    receiverLadderSpec,
-    stationPreview,
-  } from "../data/broadcastPreview";
+  import { createBroadcastPreview } from "../data/broadcastPreview";
+  import type { TranslationKey } from "../i18n/catalog";
+  import { activeLocale, translation } from "../i18n/runtime";
 
-  const sections = [
-    { label: "Receiver ladder", href: "#receivers", marker: "01" },
-    { label: "Audience desk", href: "#audience", marker: "02" },
-    { label: "Programme assay", href: "#programme", marker: "03" },
-    { label: "Outcome laboratory", href: "#outcomes", marker: "04" },
-    { label: "Evening bulletin", href: "#bulletin", marker: "05" },
+  const sections: Array<{
+    label: TranslationKey;
+    href: string;
+    marker: string;
+  }> = [
+    { label: "broadcast-section-receivers", href: "#receivers", marker: "01" },
+    { label: "broadcast-section-audience", href: "#audience", marker: "02" },
+    { label: "broadcast-section-programme", href: "#programme", marker: "03" },
+    { label: "broadcast-section-outcomes", href: "#outcomes", marker: "04" },
+    { label: "broadcast-section-bulletin", href: "#bulletin", marker: "05" },
   ];
-
-  let selectedStation = $state<keyof typeof stationPreview>("Radio");
-  const station = $derived(stationPreview[selectedStation]);
+  const stationIds = ["radio", "television"] as const;
+  let selectedStation = $state<(typeof stationIds)[number]>("radio");
+  const preview = $derived(createBroadcastPreview($translation, $activeLocale));
+  const station = $derived(preview.station[selectedStation]);
 </script>
 
 <section class="workspace broadcast-workspace">
-  <aside class="navigator" aria-label="Broadcast workspace navigation">
+  <aside
+    class="navigator"
+    aria-label={$translation("broadcast-navigation-label")}
+  >
     <div class="aside-heading">
       <div>
-        <span class="eyebrow">Editorial desk</span>
-        <h2>Broadcast</h2>
+        <span class="eyebrow">{$translation("broadcast-editorial-desk")}</span>
+        <h2>{$translation("nav-broadcast")}</h2>
       </div>
-      <span class="edition">Concept</span>
+      <span class="edition">{$translation("broadcast-concept")}</span>
     </div>
-
     <div class="lens-card">
       <div class="lens-row">
-        <span>Branch</span><strong>planning-preview</strong>
+        <span>{$translation("filter-branch")}</span><strong
+          >planning-preview</strong
+        >
       </div>
       <div class="lens-row">
-        <span>Window</span><strong>Rolling 360 days</strong>
+        <span>{$translation("filter-window")}</span><strong
+          >{$translation("filter-rolling-days", { days: 360 })}</strong
+        >
       </div>
       <div class="lens-row">
-        <span>Scope</span><strong>Whole republic</strong>
+        <span>{$translation("filter-scope")}</span><strong
+          >{$translation("filter-whole-republic")}</strong
+        >
       </div>
     </div>
-
     <div class="section-list">
-      {#each sections as section}
-        <a href={section.href}><span>{section.marker}</span>{section.label}</a>
-      {/each}
+      {#each sections as section}<a href={section.href}
+          ><span>{section.marker}</span>{$translation(section.label)}</a
+        >{/each}
     </div>
-
     <div class="sidebar-note">
       <span aria-hidden="true">◇</span>
-      <p>
-        Receiver classes are available as plain-text save facts. Station reach,
-        ratings, staffing, and outcomes shown here are synthetic research
-        concepts.
-      </p>
+      <p>{$translation("evidence-broadcast-sidebar-note")}</p>
     </div>
   </aside>
 
   <section class="canvas">
     <div class="preview-banner" role="status">
-      <strong>Synthetic Broadcast Desk</strong>
-      <span>No station telemetry has been decoded or loaded.</span>
+      <strong>{$translation("synthetic-broadcast-desk")}</strong>
+      <span>{$translation("synthetic-no-station-telemetry")}</span>
     </div>
-
     <header class="page-heading">
       <div>
-        <span class="eyebrow">Signals, schedules, and citizen outcomes</span>
-        <h2>Broadcast Desk</h2>
-        <p>
-          Treat radio and television as measurable public institutions—without
-          mistaking a handsome correlation for a confession.
-        </p>
+        <span class="eyebrow">{$translation("broadcast-heading-eyebrow")}</span>
+        <h2>{$translation("broadcast-heading-title")}</h2>
+        <p>{$translation("broadcast-heading-description")}</p>
       </div>
       <div class="date-stamp">
-        <span>Bulletin</span><strong>20:00</strong><small>Draft ready</small>
+        <span>{$translation("broadcast-bulletin")}</span><strong>20:00</strong
+        ><small>{$translation("broadcast-draft-ready")}</small>
       </div>
     </header>
 
     <section id="receivers" class="broadcast-chart-wide">
       <ObservatoryChart
-        spec={receiverLadderSpec}
+        spec={preview.receiverLadder}
         height="285px"
-        eyebrow="Receiver ladder"
+        eyebrow={$translation("broadcast-section-receivers")}
       />
     </section>
 
     <section id="audience" class="broadcast-chart-wide">
       <div class="research-flag">
-        <strong>Binary-research candidate</strong>
-        <span
-          >Potential and current listeners/viewers remain unavailable from
-          supported saves.</span
-        >
+        <strong>{$translation("evidence-binary-research-candidate")}</strong>
+        <span>{$translation("evidence-audience-unavailable")}</span>
       </div>
       <ObservatoryChart
-        spec={audienceReachSpec}
+        spec={preview.audienceReach}
         height="280px"
-        eyebrow="Audience desk"
+        eyebrow={$translation("broadcast-section-audience")}
       />
     </section>
 
     <section
       id="programme"
       class="broadcast-grid"
-      aria-label="Programming analysis"
+      aria-label={$translation("broadcast-programming-analysis")}
     >
       <article class="laboratory-card programme-card">
         <header>
           <div>
-            <span class="eyebrow">Programme formulation</span>
-            <h3>Illustrative intended influence</h3>
+            <span class="eyebrow"
+              >{$translation("broadcast-programme-formulation")}</span
+            >
+            <h3>{$translation("broadcast-intended-influence")}</h3>
           </div>
-          <span class="coverage">100% allocated</span>
+          <span class="coverage"
+            >{$translation("broadcast-allocated", { percent: 100 })}</span
+          >
         </header>
-        <p>
-          Six game-facing preferences shown as a formulation, not a
-          prescription. Values are synthetic and do not claim the game applies a
-          linear mixture.
-        </p>
+        <p>{$translation("synthetic-programme-formulation-note")}</p>
         <div class="programme-list">
-          {#each programmeMixPreview as programme}
+          {#each preview.programmeMix as programme}
             <div>
-              <span>{programme.label}</span><strong>{programme.value}%</strong>
-              <i aria-hidden="true"
+              <span>{programme.label}</span><strong>{programme.value}%</strong
+              ><i aria-hidden="true"
                 ><b style={`width: ${programme.value}%`}></b></i
               >
             </div>
           {/each}
         </div>
       </article>
-      <ObservatoryChart spec={influenceAssaySpec} eyebrow="Influence assay" />
+      <ObservatoryChart
+        spec={preview.influenceAssay}
+        eyebrow={$translation("broadcast-influence-assay")}
+      />
     </section>
 
     <section id="outcomes" class="outcome-block">
       <div class="causation-warning" role="note">
-        <strong>Association is not causation.</strong>
-        <span>
-          Compare aligned pre/post windows, contemporaneous changes, coverage,
-          and plausible lags before attributing any citizen outcome to
-          broadcasting.
-        </span>
+        <strong>{$translation("causality-association-not-causation")}</strong>
+        <span>{$translation("causality-comparison-warning")}</span>
       </div>
       <ObservatoryChart
-        spec={outcomeLaboratorySpec}
+        spec={preview.outcomeLaboratory}
         height="285px"
-        eyebrow="Outcome laboratory"
+        eyebrow={$translation("broadcast-section-outcomes")}
       />
     </section>
 
     <section class="notebook-panel" aria-labelledby="notebook-title">
       <header class="panel-heading">
         <div>
-          <span class="eyebrow">Broadcast Notebook</span>
-          <h2 id="notebook-title">Intervention ledger</h2>
-          <p>
-            Hypotheses and player changes remain annotations, not manufactured
-            evidence.
-          </p>
+          <span class="eyebrow">{$translation("broadcast-notebook")}</span>
+          <h2 id="notebook-title">
+            {$translation("broadcast-intervention-ledger")}
+          </h2>
+          <p>{$translation("evidence-annotations-not-evidence")}</p>
         </div>
-        <span class="coverage">2 open notes</span>
+        <span class="coverage"
+          >{$translation("broadcast-open-notes", { count: 2 })}</span
+        >
       </header>
       <div
         class="notebook-table"
         role="table"
-        aria-label="Synthetic broadcast experiments"
+        aria-label={$translation("synthetic-broadcast-experiments")}
       >
         <div class="notebook-row notebook-head" role="row">
-          <span role="columnheader">Hypothesis</span>
-          <span role="columnheader">Intervention</span>
-          <span role="columnheader">Window</span>
-          <span role="columnheader">Status</span>
+          <span role="columnheader">{$translation("notebook-hypothesis")}</span
+          ><span role="columnheader"
+            >{$translation("notebook-intervention")}</span
+          ><span role="columnheader">{$translation("filter-window")}</span><span
+            role="columnheader">{$translation("notebook-status")}</span
+          >
         </div>
-        {#each broadcastNotebookPreview as note}
+        {#each preview.notebook as note}
           <div class="notebook-row" role="row">
-            <span role="cell">{note.hypothesis}</span>
-            <span role="cell">{note.intervention}</span>
-            <span role="cell">{note.window}</span>
-            <span class="notebook-status" role="cell">{note.status}</span>
+            <span role="cell">{note.hypothesis}</span><span role="cell"
+              >{note.intervention}</span
+            ><span role="cell">{note.window}</span><span
+              class="notebook-status"
+              role="cell">{note.status}</span
+            >
           </div>
         {/each}
       </div>
@@ -187,93 +186,105 @@
 
     <section class="bulletin-panel" id="bulletin">
       <div class="bulletin-masthead">
-        <span>РО · Evening service</span><strong>Republic signal</strong><time
-          >Y4 · D050</time
-        >
+        <span>{$translation("broadcast-evening-service")}</span><strong
+          >{$translation("broadcast-republic-signal")}</strong
+        ><time>Y4 · D050</time>
       </div>
       <div class="bulletin-body">
         <div class="dispatch-seal" aria-hidden="true">20</div>
         <div>
-          <span class="eyebrow">Evening Bulletin · deterministic preview</span>
-          <h2>Television advances; the wireless remains indispensable</h2>
-          <p>
-            Television is the largest receiver class in this synthetic
-            observation, while radio still accounts for one quarter of
-            classified citizens. The illustrated education and propaganda
-            schedule coincides with a gradual loyalty rise, but the Ministry
-            declines to award the transmitter a medal until decoded audience
-            evidence and a longer comparison window arrive.
-          </p>
+          <span class="eyebrow"
+            >{$translation("synthetic-evening-bulletin-eyebrow")}</span
+          >
+          <h2>{$translation("broadcast-bulletin-title")}</h2>
+          <p>{$translation("causality-bulletin-body")}</p>
           <div class="dispatch-links">
-            <a href="#receivers">Receiver evidence</a>
-            <a href="#outcomes">Outcome caveats</a>
+            <a href="#receivers"
+              >{$translation("broadcast-receiver-evidence")}</a
+            ><a href="#outcomes">{$translation("broadcast-outcome-caveats")}</a>
           </div>
         </div>
       </div>
     </section>
   </section>
 
-  <aside class="inspector" aria-label="Broadcast station inspector">
+  <aside
+    class="inspector"
+    aria-label={$translation("broadcast-station-inspector-label")}
+  >
     <div class="aside-heading">
       <div>
-        <span class="eyebrow">Station inspector</span>
-        <h2>{selectedStation}</h2>
+        <span class="eyebrow"
+          >{$translation("broadcast-station-inspector")}</span
+        >
+        <h2>{station.name}</h2>
       </div>
-      <span class="status-chip" data-status="watch">Research</span>
+      <span class="status-chip" data-status="watch"
+        >{$translation("evidence-research")}</span
+      >
     </div>
-
-    <div class="station-switch" aria-label="Select station">
-      {#each Object.keys(stationPreview) as stationName}
+    <div
+      class="station-switch"
+      aria-label={$translation("broadcast-select-station")}
+    >
+      {#each stationIds as stationId}
         <button
           type="button"
-          aria-pressed={selectedStation === stationName}
-          class:active={selectedStation === stationName}
-          onclick={() =>
-            (selectedStation = stationName as keyof typeof stationPreview)}
-          >{stationName}</button
+          aria-pressed={selectedStation === stationId}
+          class:active={selectedStation === stationId}
+          onclick={() => (selectedStation = stationId)}
+          >{preview.station[stationId].name}</button
         >
       {/each}
     </div>
-
     <div class="selected-reading">
-      <span>Synthetic rating</span>
-      <strong>{station.rating}</strong>
-      <small>{station.availability}</small>
-      <p>
-        Displayed station values demonstrate the intended inspector only. They
-        are not save facts and are not estimates safe for administration.
-      </p>
+      <span>{$translation("synthetic-rating")}</span><strong
+        >{station.rating}</strong
+      ><small>{station.availability}</small>
+      <p>{$translation("synthetic-station-values-warning")}</p>
     </div>
-
     <div class="fact-grid">
-      <article><span>Workers</span><strong>{station.workers}</strong></article>
       <article>
-        <span>Professors</span><strong>{station.professors}</strong>
+        <span>{$translation("station-workers")}</span><strong
+          >{station.workers}</strong
+        >
       </article>
       <article>
-        <span>Potential reach</span><strong>{station.potential}</strong>
+        <span>{$translation("station-professors")}</span><strong
+          >{station.professors}</strong
+        >
       </article>
       <article>
-        <span>Current audience</span><strong>{station.current}</strong>
+        <span>{$translation("station-potential-reach")}</span><strong
+          >{station.potential}</strong
+        >
+      </article>
+      <article>
+        <span>{$translation("station-current-audience")}</span><strong
+          >{station.current}</strong
+        >
       </article>
     </div>
-
     <section class="evidence-ledger">
-      <span class="eyebrow">Evidence ledger</span>
+      <span class="eyebrow">{$translation("evidence-ledger")}</span>
       <div>
-        <strong>Receiver class</strong><span
-          >Plain-text save fact available</span
+        <strong>{$translation("receiver-class")}</strong><span
+          >{$translation("evidence-plain-text-save-fact")}</span
         >
       </div>
       <div>
-        <strong>Staffing capacity</strong><span>Game-definition fact</span>
+        <strong>{$translation("station-staffing-capacity")}</strong><span
+          >{$translation("evidence-game-definition")}</span
+        >
       </div>
       <div>
-        <strong>Station state</strong><span>Binary research candidate</span>
+        <strong>{$translation("station-state")}</strong><span
+          >{$translation("evidence-binary-research-candidate")}</span
+        >
       </div>
       <div>
-        <strong>Outcome attribution</strong><span
-          >Experimental; causal claim prohibited</span
+        <strong>{$translation("station-outcome-attribution")}</strong><span
+          >{$translation("causality-experimental-prohibited")}</span
         >
       </div>
     </section>

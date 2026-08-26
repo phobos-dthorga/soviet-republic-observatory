@@ -215,3 +215,23 @@ claim feature parity.
   narrow stacked widths.
 - Synthetic preview data is permanently labelled so it cannot be mistaken for
   a connected save.
+
+## Localisation boundary
+
+The synthetic foundation is fully catalogue-backed rather than partially
+migrated: shell controls, all three enabled workspaces, chart titles and series,
+provenance, textual summaries, dialogs, and number formatting react to the
+selected locale. Document direction uses the manifest's explicit LTR/RTL value,
+and layout uses logical edges where direction affects meaning.
+
+Community `.rolanguage.json` files are inspected and installed without becoming
+active. Selection is a separate keyboard-accessible operation. Missing messages
+fall back to canonical `en-AU`; malformed packs never leave the interface in a
+half-translated state. Expanded and RTL pseudo catalogues exercise overflow,
+variable preservation, and directional assumptions.
+
+Raw observation IDs and source fields are not interface prose. Installed-game
+resource/building labels will use a separate versioned vocabulary resolver.
+Analysis Pack names and analytical claims remain author-owned content tagged
+with the pack's `default_locale`, or `en-AU` for an older v1 file that predates
+the compatible field.

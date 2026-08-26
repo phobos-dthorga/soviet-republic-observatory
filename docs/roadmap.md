@@ -13,6 +13,10 @@ numbers are assigned only when implementation begins.
 - Draft 2020-12 Analysis Pack, chart-template, and concrete-chart schemas
 - Receiver Adoption Laboratory example plus structural, semantic, limit, and
   injection tests
+- Complete current-interface localisation through canonical `en-AU`, Fluent
+  formatting, strict inert community language packs, per-message fallback,
+  explicit install/select/remove lifecycle, and locale-aware chart summaries
+- Localisation audit, expanded pseudo-language tests, and RTL contract tests
 - Initial calculation utilities and unit tests
 - Data limitations, metric contract, architecture decisions, and contributor
   safeguards
@@ -27,6 +31,10 @@ numbers are assigned only when implementation begins.
 - SQLite observation, source, parser version, and coverage record
 - One real chart and exact evidence table
 - Sanitised fixtures for valid, partial, duplicate, and corrupt cases
+- Authoritative Rust validation and persistence for the existing language-pack
+  contract
+- A versioned installed-game vocabulary resolver kept separate from parser IDs
+  and the Observatory UI catalogue
 
 ## Slice 2 — branch-aware archive
 

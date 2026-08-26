@@ -3,6 +3,7 @@
   "id": "org.republic-observatory.examples.receiver-adoption-laboratory",
   "version": "1.0.0",
   "host_api_version": 1,
+  "default_locale": "en-AU",
   "name": "Receiver Adoption Laboratory",
   "author": "Republic Observatory contributors",
   "description": "Classifies citizens by recorded electronic receiver and presents their shares as one complete composition. This file is an inert schema example and is not loaded by the preview.",

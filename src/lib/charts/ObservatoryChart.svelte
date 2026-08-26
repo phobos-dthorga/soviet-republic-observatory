@@ -10,8 +10,11 @@
   import type { ECharts } from "echarts/core";
   import { CanvasRenderer } from "echarts/renderers";
   import { onMount } from "svelte";
+  import type { TranslationKey } from "../i18n/catalog";
+  import { formatNumber } from "../i18n/format";
+  import { activeLocale, translation } from "../i18n/runtime";
   import { optionForChart, provenanceForSeries } from "./chartOptions";
-  import type { ChartSpec } from "./types";
+  import type { ChartSpec, EvidenceCoverage, EvidenceKind } from "./types";
 
   echarts.use([
     BarChart,
@@ -26,13 +29,8 @@
   let {
     spec,
     height = "250px",
-    eyebrow = "Planning instrument",
-  }: {
-    spec: ChartSpec;
-    height?: string;
-    eyebrow?: string;
-  } = $props();
-
+    eyebrow,
+  }: { spec: ChartSpec; height?: string; eyebrow: string } = $props();
   let container = $state<HTMLDivElement>();
   let chart = $state.raw<ECharts>();
   const resolvedHeight = $derived(
@@ -40,37 +38,55 @@
       ? `${Math.max(220, spec.series[0]?.points.length * 29 + 82)}px`
       : height,
   );
-
-  const numberFormatter = new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 2,
-  });
+  const evidenceKeys: Record<EvidenceKind, TranslationKey> = {
+    save_fact: "evidence-save-fact",
+    game_definition: "evidence-game-definition",
+    calculation: "evidence-calculation",
+    extension_calculation: "evidence-extension-calculation",
+    estimate: "evidence-estimate",
+    recommendation: "evidence-recommendation",
+  };
+  const coverageKeys: Record<EvidenceCoverage, TranslationKey> = {
+    complete: "coverage-complete",
+    partial: "coverage-partial",
+    experimental: "coverage-experimental",
+  };
 
   function formatValue(value: number): string {
-    return `${numberFormatter.format(value)}${spec.unit ? ` ${spec.unit}` : ""}`;
+    return `${formatNumber(value, $activeLocale, { maximumFractionDigits: 2 })}${spec.unit ? ` ${spec.unit}` : ""}`;
   }
 
-  $effect(() => {
+  function refreshChart(): void {
     if (!chart) return;
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    chart.setOption(optionForChart(spec, undefined, reducedMotion), {
-      notMerge: true,
-    });
+    chart.setOption(
+      optionForChart(
+        spec,
+        undefined,
+        reducedMotion,
+        $activeLocale,
+        $translation("chart-unavailable"),
+        $translation("chart-no-observation"),
+      ),
+      { notMerge: true },
+    );
+  }
+
+  $effect(() => {
+    spec;
+    $activeLocale;
+    $translation;
+    refreshChart();
   });
 
   onMount(() => {
     if (!container) return;
-
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
     chart = echarts.init(container, undefined, { renderer: "canvas" });
-    chart.setOption(optionForChart(spec, undefined, reducedMotion));
-
+    refreshChart();
     const resizeObserver = new ResizeObserver(() => chart?.resize());
     resizeObserver.observe(container);
-
     return () => {
       resizeObserver.disconnect();
       chart?.dispose();
@@ -85,19 +101,20 @@
       <span class="eyebrow">{eyebrow}</span>
       <h3>{spec.title}</h3>
     </div>
-    <div class="badges" aria-label="Chart evidence">
-      <span class="badge" data-kind={spec.provenance.kind}>
-        {spec.provenance.kind.replaceAll("_", " ")}
-      </span>
-      <span class="coverage">{spec.provenance.coverage}</span>
+    <div class="badges" aria-label={$translation("chart-evidence-label")}>
+      <span class="badge" data-kind={spec.provenance.kind}
+        >{$translation(evidenceKeys[spec.provenance.kind])}</span
+      >
+      <span class="coverage"
+        >{$translation(coverageKeys[spec.provenance.coverage])}</span
+      >
     </div>
   </header>
-
   <p>{spec.description}</p>
 
   {#if spec.series.length === 0}
     <div class="chart-state" style:height={resolvedHeight}>
-      No data available
+      {$translation("chart-no-data")}
     </div>
   {:else}
     <div
@@ -105,32 +122,50 @@
       class="chart"
       style:height={resolvedHeight}
       role="img"
-      aria-label={`${spec.title}. ${spec.description}`}
+      aria-label={$translation("chart-accessible-label", {
+        title: spec.title,
+        description: spec.description,
+      })}
     ></div>
     <div class="screen-reader-summary">
       {#each spec.series as series}
-        {series.label}: {series.points
-          .map(
-            (point) =>
-              `${point.gap_before ? "gap before, " : ""}${point.category}, ${formatValue(point.value)}`,
-          )
-          .join("; ")}. Evidence: {provenanceForSeries(
-          spec,
-          series,
-        ).kind.replaceAll("_", " ")}, {provenanceForSeries(spec, series)
-          .coverage} coverage.
+        <span>
+          {$translation("chart-summary-series", {
+            label: series.label,
+            points: series.points
+              .map((point) =>
+                $translation(
+                  point.gap_before
+                    ? "chart-summary-gap-point"
+                    : "chart-summary-point",
+                  { category: point.category, value: formatValue(point.value) },
+                ),
+              )
+              .join("; "),
+            evidence: $translation(
+              evidenceKeys[provenanceForSeries(spec, series).kind],
+            ),
+            coverage: $translation(
+              coverageKeys[provenanceForSeries(spec, series).coverage],
+            ),
+          })}
+        </span>
       {/each}
       {#each spec.reference_lines ?? [] as line}
-        {line.label}: {typeof line.value === "number"
-          ? formatValue(line.value)
-          : line.value}.
+        <span>
+          {$translation("chart-summary-reference", {
+            label: line.label,
+            value:
+              typeof line.value === "number"
+                ? formatValue(line.value)
+                : line.value,
+          })}
+        </span>
       {/each}
     </div>
   {/if}
-
   <footer>
-    <span>{spec.provenance.source}</span>
-    <time datetime={spec.provenance.observed_at}
+    <span>{spec.provenance.source}</span><time
       >{spec.provenance.observed_at}</time
     >
   </footer>

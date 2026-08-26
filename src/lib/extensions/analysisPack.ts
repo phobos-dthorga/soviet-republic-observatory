@@ -59,6 +59,7 @@ export type AnalysisPack = {
   id: string;
   version: string;
   host_api_version: 1;
+  default_locale?: string;
   name: string;
   author: string;
   description: string;

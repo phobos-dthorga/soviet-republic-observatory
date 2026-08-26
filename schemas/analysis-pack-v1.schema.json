@@ -25,6 +25,12 @@
     },
     "version": { "$ref": "#/$defs/semanticVersion" },
     "host_api_version": { "const": 1 },
+    "default_locale": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 64,
+      "pattern": "^(?:[A-Za-z]{2,3}|[A-Za-z]{5,8})(?:-[A-Za-z0-9]{1,8})*$"
+    },
     "name": {
       "$ref": "#/$defs/safeText",
       "type": "string",

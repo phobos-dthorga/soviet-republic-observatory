@@ -134,6 +134,8 @@ bad news, invent a causal story, or turn opaque scores into authority.
 8. Useful in-game graphs may be reproduced when they strengthen the complete
    decision workflow.
 9. First-party and community extensions use the same bounded public contracts.
+10. The interface can be translated without changing save identity, metric
+    meaning, evidence classification, or extension authorship.
 
 ## Non-goals for the first releases
 

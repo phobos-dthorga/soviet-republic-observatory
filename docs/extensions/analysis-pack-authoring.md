@@ -19,11 +19,22 @@ Every pack declares:
 - a lower-case reverse-domain `id`;
 - a semantic `version`;
 - `host_api_version: 1`;
+- a `default_locale` identifying the language of author-owned prose for every
+  newly authored pack;
 - bounded `name`, `author`, and `description`; and
 - arrays of derived metrics and chart templates.
 
 Identity is security-sensitive. A future permission grant will bind ID,
 version, content hash, and requested scope, not just the display name.
+
+The host localises controls surrounding the pack but does not translate or
+silently rewrite the pack's name, description, metric labels, or chart prose.
+Those strings are displayed as author-owned content tagged with
+`default_locale`. The field was added compatibly after schema v1 was published:
+an older v1 file without it remains valid and is treated as `en-AU`. A future
+multilingual package requires an explicit versioned resource contract; do not
+encode translations into IDs or publish several conflicting files under the
+same ID and version.
 
 ## Published core metrics
 

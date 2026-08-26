@@ -49,6 +49,13 @@ describe("Analysis Pack v1", () => {
     ).toEqual([]);
   });
 
+  it("keeps pre-localisation v1 packs compatible with an en-AU default", () => {
+    const legacy = cloneExample();
+    delete legacy.default_locale;
+    expect(validatePackSchema(legacy)).toBe(true);
+    expect(legacy.default_locale ?? "en-AU").toBe("en-AU");
+  });
+
   it.each([
     [
       "unknown fields",
@@ -59,6 +66,10 @@ describe("Analysis Pack v1", () => {
       (pack: Record<string, unknown>) => (pack.id = "Unsafe/Pack"),
     ],
     ["bad versions", (pack: Record<string, unknown>) => (pack.version = "one")],
+    [
+      "bad default locales",
+      (pack: Record<string, unknown>) => (pack.default_locale = "x"),
+    ],
     [
       "unsupported operations",
       (pack: AnalysisPack) =>

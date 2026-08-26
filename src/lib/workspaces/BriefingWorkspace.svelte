@@ -1,104 +1,132 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import {
-    attentionPreview,
-    importDependencySpec,
-    kpiPreview,
-    materialCells,
-    planProgressSpec,
-  } from "../data/sample";
+  import type { EvidenceCoverage, EvidenceKind } from "../charts/types";
+  import { createBriefingPreview, type MaterialCell } from "../data/sample";
+  import type { TranslationKey } from "../i18n/catalog";
+  import { activeLocale, translation } from "../i18n/runtime";
 
-  const sections = [
-    { label: "State of the republic", href: "#briefing", marker: "01" },
-    { label: "Five-Year Plan", href: "#plan", marker: "02" },
-    { label: "Material table", href: "#materials", marker: "03" },
-    { label: "Ministry dispatch", href: "#dispatch", marker: "04" },
+  const sections: Array<{
+    label: TranslationKey;
+    href: string;
+    marker: string;
+  }> = [
+    { label: "briefing-section-state", href: "#briefing", marker: "01" },
+    { label: "briefing-section-plan", href: "#plan", marker: "02" },
+    { label: "briefing-section-materials", href: "#materials", marker: "03" },
+    { label: "briefing-section-dispatch", href: "#dispatch", marker: "04" },
   ];
+  const familyKeys: Record<MaterialCell["family"], TranslationKey> = {
+    raw: "material-family-raw",
+    industrial: "material-family-industrial",
+    construction: "material-family-construction",
+    consumer: "material-family-consumer",
+    energy: "material-family-energy",
+    waste: "material-family-waste",
+  };
+  const statusKeys: Record<MaterialCell["status"], TranslationKey> = {
+    stable: "status-stable",
+    watch: "status-watch",
+    exposed: "status-exposed",
+  };
+  const evidenceKeys: Record<EvidenceKind, TranslationKey> = {
+    save_fact: "evidence-save-fact",
+    game_definition: "evidence-game-definition",
+    calculation: "evidence-calculation",
+    extension_calculation: "evidence-extension-calculation",
+    estimate: "evidence-estimate",
+    recommendation: "evidence-recommendation",
+  };
+  const coverageKeys: Record<EvidenceCoverage, TranslationKey> = {
+    complete: "coverage-complete",
+    partial: "coverage-partial",
+    experimental: "coverage-experimental",
+  };
 
   let selectedMaterialCode = $state("Ch");
+  const preview = $derived(createBriefingPreview($translation, $activeLocale));
   const selectedMaterial = $derived(
-    materialCells.find((material) => material.code === selectedMaterialCode) ??
-      materialCells[0],
+    preview.materialCells.find((item) => item.code === selectedMaterialCode) ??
+      preview.materialCells[0],
   );
 </script>
 
 <section class="workspace">
-  <aside class="navigator" aria-label="Briefing navigation">
+  <aside
+    class="navigator"
+    aria-label={$translation("briefing-navigation-label")}
+  >
     <div class="aside-heading">
       <div>
-        <span class="eyebrow">Directorate</span>
-        <h2>Republic brief</h2>
+        <span class="eyebrow">{$translation("briefing-directorate")}</span>
+        <h2>{$translation("briefing-republic-brief")}</h2>
       </div>
       <span class="edition">v0.1</span>
     </div>
 
     <div class="lens-card">
       <label>
-        Plan
-        <select aria-label="Selected plan" disabled>
-          <option>Industrial independence · 2001–2005</option>
+        {$translation("briefing-plan-label")}
+        <select aria-label={$translation("briefing-selected-plan")} disabled>
+          <option>{$translation("briefing-plan-name")}</option>
         </select>
       </label>
       <div class="lens-row">
-        <span>Window</span><strong>All observations</strong>
+        <span>{$translation("filter-window")}</span><strong
+          >{$translation("filter-all-observations")}</strong
+        >
       </div>
       <div class="lens-row">
-        <span>Currency</span><strong>Separate RUB / USD</strong>
+        <span>{$translation("filter-currency")}</span><strong
+          >{$translation("filter-separate-currencies")}</strong
+        >
       </div>
     </div>
 
     <div class="section-list">
       {#each sections as section}
-        <a href={section.href}>
-          <span>{section.marker}</span>
-          {section.label}
-        </a>
+        <a href={section.href}
+          ><span>{section.marker}</span>{$translation(section.label)}</a
+        >
       {/each}
     </div>
 
     <div class="sidebar-note">
       <span aria-hidden="true">◇</span>
-      <p>
-        This interface uses synthetic values. Connected observations will retain
-        source, coverage, parser version, and actual game date.
-      </p>
+      <p>{$translation("synthetic-briefing-sidebar-note")}</p>
     </div>
   </aside>
 
   <section class="canvas" id="briefing">
     <div class="preview-banner" role="status">
-      <strong>Synthetic interface foundation</strong>
-      <span>No displayed number was read from a real save.</span>
+      <strong>{$translation("synthetic-interface-foundation")}</strong>
+      <span>{$translation("synthetic-no-real-save-values")}</span>
     </div>
 
     <header class="page-heading">
       <div>
-        <span class="eyebrow"
-          >Central planning brief · latest distinct state</span
-        >
-        <h2>State of the republic</h2>
-        <p>
-          Outcomes first, followed by the movement and evidence that explain
-          them.
-        </p>
+        <span class="eyebrow">{$translation("briefing-heading-eyebrow")}</span>
+        <h2>{$translation("briefing-heading-title")}</h2>
+        <p>{$translation("briefing-heading-description")}</p>
       </div>
       <div class="date-stamp">
-        <span>Plan year</span><strong>04 / 05</strong><small>74% elapsed</small>
+        <span>{$translation("briefing-plan-year")}</span><strong>04 / 05</strong
+        ><small>{$translation("briefing-plan-elapsed", { percent: 74 })}</small>
       </div>
     </header>
 
-    <section class="kpi-grid" aria-label="Primary republic outcomes">
-      {#each kpiPreview as kpi}
+    <section class="kpi-grid" aria-label={$translation("briefing-kpis-label")}>
+      {#each preview.kpis as kpi}
         <article class="kpi-card">
           <header>
-            <span>{kpi.label}</span><span class="coverage">{kpi.coverage}</span>
+            <span>{kpi.label}</span><span class="coverage"
+              >{$translation(coverageKeys[kpi.coverage])}</span
+            >
           </header>
           <strong>{kpi.value}</strong>
           <p>{kpi.change}</p>
           <footer>
-            <span>{kpi.context}</span>
-            <span class="badge" data-kind={kpi.kind}
-              >{kpi.kind.replaceAll("_", " ")}</span
+            <span>{kpi.context}</span><span class="badge" data-kind={kpi.kind}
+              >{$translation(evidenceKeys[kpi.kind])}</span
             >
           </footer>
         </article>
@@ -108,12 +136,15 @@
     <section
       class="chart-grid"
       id="plan"
-      aria-label="Plan and dependency charts"
+      aria-label={$translation("briefing-charts-label")}
     >
-      <ObservatoryChart spec={planProgressSpec} eyebrow="Five-Year Plan" />
       <ObservatoryChart
-        spec={importDependencySpec}
-        eyebrow="External dependency"
+        spec={preview.planProgress}
+        eyebrow={$translation("briefing-section-plan")}
+      />
+      <ObservatoryChart
+        spec={preview.importDependency}
+        eyebrow={$translation("briefing-chart-external-dependency")}
       />
     </section>
 
@@ -121,40 +152,47 @@
       <header class="panel-heading">
         <div>
           <span class="eyebrow"
-            >Material Periodic Table · import-reliance lens</span
+            >{$translation("briefing-material-eyebrow")}</span
           >
-          <h2>Strategic material field</h2>
-          <p>
-            Each cell is a resource index and a route into its complete evidence
-            dossier.
-          </p>
+          <h2>{$translation("briefing-material-title")}</h2>
+          <p>{$translation("briefing-material-description")}</p>
         </div>
-        <div class="table-legend" aria-label="Material status legend">
-          <span><i class="stable"></i> Stable</span>
-          <span><i class="watch"></i> Watch</span>
-          <span><i class="exposed"></i> Exposed</span>
+        <div
+          class="table-legend"
+          aria-label={$translation("briefing-material-legend")}
+        >
+          <span><i class="stable"></i>{$translation("status-stable")}</span>
+          <span><i class="watch"></i>{$translation("status-watch")}</span>
+          <span><i class="exposed"></i>{$translation("status-exposed")}</span>
         </div>
       </header>
 
       <div class="material-table">
-        {#each materialCells as material}
+        {#each preview.materialCells as material}
           <button
             type="button"
             class="material-cell"
             class:selected={selectedMaterial.code === material.code}
             data-status={material.status}
             aria-pressed={selectedMaterial.code === material.code}
-            aria-label={`${material.name}, ${material.value} recorded import reliance`}
+            aria-label={$translation("briefing-material-cell-label", {
+              name: material.name,
+              value: material.value,
+            })}
             onclick={() => (selectedMaterialCode = material.code)}
           >
             <span class="material-code">{material.code}</span>
             <span class="material-value">{material.value}</span>
             <strong>{material.name}</strong>
-            <small>{material.family}</small>
-            <span class="material-meter" aria-hidden="true">
-              <i style={`width: ${material.reliance}%`}></i>
-            </span>
-            <span class="material-delta">{material.delta} pts</span>
+            <small>{$translation(familyKeys[material.family])}</small>
+            <span class="material-meter" aria-hidden="true"
+              ><i style={`width: ${material.reliance}%`}></i></span
+            >
+            <span class="material-delta"
+              >{$translation("briefing-points-value", {
+                value: material.delta,
+              })}</span
+            >
           </button>
         {/each}
       </div>
@@ -163,74 +201,109 @@
     <section class="dispatch-panel" id="dispatch">
       <div class="dispatch-seal" aria-hidden="true">04</div>
       <div>
-        <span class="eyebrow">Ministry Dispatch · deterministic preview</span>
-        <h2>Industrial independence is improving unevenly</h2>
-        <p>
-          Fuel and steel exposure fell across the comparison window, while
-          chemicals and electronic components remain the two largest
-          constraints. The industrial plan is behind its scheduled path for a
-          second consecutive quarter. Demographic balance remains positive,
-          although city coverage is not represented in this preview.
-        </p>
+        <span class="eyebrow"
+          >{$translation("synthetic-ministry-dispatch-eyebrow")}</span
+        >
+        <h2>{$translation("briefing-dispatch-title")}</h2>
+        <p>{$translation("briefing-dispatch-body")}</p>
         <div class="dispatch-links">
-          <a href="#plan">Inspect plan variance</a>
-          <a href="#materials">Open material evidence</a>
+          <a href="#plan">{$translation("briefing-inspect-variance")}</a>
+          <a href="#materials"
+            >{$translation("briefing-open-material-evidence")}</a
+          >
         </div>
       </div>
     </section>
   </section>
 
-  <aside class="inspector" aria-label="Evidence inspector">
+  <aside
+    class="inspector"
+    aria-label={$translation("briefing-inspector-label")}
+  >
     <div class="aside-heading">
       <div>
-        <span class="eyebrow">Evidence inspector</span>
+        <span class="eyebrow"
+          >{$translation("briefing-evidence-inspector")}</span
+        >
         <h2>{selectedMaterial.name}</h2>
       </div>
       <span class="status-chip" data-status={selectedMaterial.status}
-        >{selectedMaterial.status}</span
+        >{$translation(statusKeys[selectedMaterial.status])}</span
       >
     </div>
 
     <div class="selected-reading">
-      <span>Recorded import reliance</span>
+      <span>{$translation("briefing-recorded-import-reliance")}</span>
       <strong>{selectedMaterial.value}</strong>
-      <small>{selectedMaterial.delta} points against comparison window</small>
+      <small
+        >{$translation("briefing-comparison-points", {
+          value: selectedMaterial.delta,
+        })}</small
+      >
       <p>{selectedMaterial.note}</p>
     </div>
 
     <div class="fact-grid">
       <article>
-        <span>Family</span><strong>{selectedMaterial.family}</strong>
+        <span>{$translation("briefing-family")}</span><strong
+          >{$translation(familyKeys[selectedMaterial.family])}</strong
+        >
       </article>
-      <article><span>Evidence</span><strong>Estimate</strong></article>
-      <article><span>Coverage</span><strong>Experimental</strong></article>
-      <article><span>Observed</span><strong>2004 · day 230</strong></article>
+      <article>
+        <span>{$translation("briefing-evidence")}</span><strong
+          >{$translation("evidence-estimate")}</strong
+        >
+      </article>
+      <article>
+        <span>{$translation("briefing-coverage")}</span><strong
+          >{$translation("coverage-experimental")}</strong
+        >
+      </article>
+      <article>
+        <span>{$translation("briefing-observed")}</span><strong
+          >{$translation("synthetic-observed-day-230")}</strong
+        >
+      </article>
     </div>
 
     <section class="attention-queue">
       <header>
-        <span class="eyebrow">Attention queue</span><strong>3 findings</strong>
+        <span class="eyebrow">{$translation("briefing-attention-queue")}</span
+        ><strong
+          >{$translation("briefing-findings-count", {
+            count: preview.attention.length,
+          })}</strong
+        >
       </header>
-      {#each attentionPreview as item}
+      {#each preview.attention as item}
         <article>
-          <span>{item.level}</span>
-          <strong>{item.title}</strong>
+          <span>{item.level}</span><strong>{item.title}</strong>
           <p>{item.detail}</p>
         </article>
       {/each}
     </section>
 
     <section class="provenance-key">
-      <span class="eyebrow">Evidence key</span>
-      <div><i data-kind="save_fact"></i><span>Parsed save fact</span></div>
+      <span class="eyebrow">{$translation("briefing-evidence-key")}</span>
       <div>
-        <i data-kind="calculation"></i><span>Deterministic calculation</span>
+        <i data-kind="save_fact"></i><span
+          >{$translation("evidence-save-fact")}</span
+        >
       </div>
       <div>
-        <i data-kind="estimate"></i><span>Estimate with assumptions</span>
+        <i data-kind="calculation"></i><span
+          >{$translation("evidence-calculation")}</span
+        >
       </div>
       <div>
-        <i data-kind="recommendation"></i><span>Player recommendation</span>
+        <i data-kind="estimate"></i><span
+          >{$translation("evidence-estimate")}</span
+        >
+      </div>
+      <div>
+        <i data-kind="recommendation"></i><span
+          >{$translation("evidence-recommendation")}</span
+        >
       </div>
     </section>
   </aside>

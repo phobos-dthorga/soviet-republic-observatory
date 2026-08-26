@@ -27,6 +27,8 @@ Configured save directory
           │
           ▼
   thin Tauri commands ─► Svelte presentation ─► ObservatoryChart ─► ECharts
+                                ▲
+             UI catalogue + game-vocabulary resolver
 ```
 
 ## Layer responsibilities
@@ -72,6 +74,12 @@ Svelte owns layout, formatting, interaction state, accessibility, and calls into
 application services. It does not parse files, calculate business metrics, or
 decide recommendations.
 
+All host-owned prose and locale-sensitive formatting pass through the versioned
+localisation service. Community language packs are validated inert catalogues,
+layered over canonical `en-AU`. Installed-game display vocabulary is a separate
+future resolver over stable source IDs; neither translated UI nor game labels
+become database keys. Analysis Pack prose carries its own declared locale.
+
 ## Technology direction
 
 - **Rust** for bounded archive access, parsing, timeline logic, SQLite, and
@@ -105,6 +113,8 @@ replacement boundary.
 - `ChartSpec`
 - `AnalysisPackDeclaration`
 - `ExtensionContentIdentity`
+- `LanguagePackManifest` and `LanguageSelection`
+- `GameVocabularyCatalogue`
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned

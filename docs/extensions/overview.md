@@ -26,6 +26,13 @@ database or save paths, ECharts options, trust assertions, or executable
 expressions. Unknown fields fail schema validation. Plain strings are displayed
 as text, never interpreted as markup.
 
+New pack v1 files declare `default_locale` for their author-owned prose; earlier
+v1 files without it remain compatible and default to `en-AU`. The host
+translates its own controls but does not let an Observatory language pack
+rewrite a pack's analytical claims. Multilingual extension content waits for an
+explicit public package contract rather than borrowing host translation
+namespaces.
+
 The current repository contains schemas, semantic validation proofs, tests, and
 one example. It does **not** load, install, enable, or execute a user file.
 
