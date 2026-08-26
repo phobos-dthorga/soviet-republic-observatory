@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "id": "org.republic-observatory.examples.receiver-adoption-laboratory",
+  "version": "1.0.0",
+  "host_api_version": 1,
+  "name": "Receiver Adoption Laboratory",
+  "author": "Republic Observatory contributors",
+  "description": "Classifies citizens by recorded electronic receiver and presents their shares as one complete composition. This file is an inert schema example and is not loaded by the preview.",
+  "derived_metrics": [
+    {
+      "id": "classified_population",
+      "label": "Electronics-classified population",
+      "unit": "citizens",
+      "description": "Citizens represented by one of the four published receiver classifications.",
+      "operation": {
+        "kind": "sum",
+        "operands": [
+          { "core_metric": "core.citizens.electronics.none" },
+          { "core_metric": "core.citizens.electronics.radio" },
+          { "core_metric": "core.citizens.electronics.television" },
+          { "core_metric": "core.citizens.electronics.computer" }
+        ]
+      }
+    },
+    {
+      "id": "none_share",
+      "label": "No receiver share",
+      "unit": "%",
+      "operation": {
+        "kind": "safe_ratio",
+        "numerator": { "core_metric": "core.citizens.electronics.none" },
+        "denominator": { "derived_metric": "classified_population" },
+        "scale": 100
+      }
+    },
+    {
+      "id": "radio_share",
+      "label": "Radio share",
+      "unit": "%",
+      "operation": {
+        "kind": "safe_ratio",
+        "numerator": { "core_metric": "core.citizens.electronics.radio" },
+        "denominator": { "derived_metric": "classified_population" },
+        "scale": 100
+      }
+    },
+    {
+      "id": "television_share",
+      "label": "Television share",
+      "unit": "%",
+      "operation": {
+        "kind": "safe_ratio",
+        "numerator": { "core_metric": "core.citizens.electronics.television" },
+        "denominator": { "derived_metric": "classified_population" },
+        "scale": 100
+      }
+    },
+    {
+      "id": "computer_share",
+      "label": "Computer share",
+      "unit": "%",
+      "operation": {
+        "kind": "safe_ratio",
+        "numerator": { "core_metric": "core.citizens.electronics.computer" },
+        "denominator": { "derived_metric": "classified_population" },
+        "scale": 100
+      }
+    }
+  ],
+  "charts": [
+    {
+      "schema_version": 1,
+      "id": "receiver-class-shares",
+      "title": "Receiver class shares",
+      "description": "Share of the electronics-classified population in each recorded receiver class, aligned within one branch, game date, and geographic scope.",
+      "kind": "area",
+      "category_axis_label": "Observation date",
+      "value_axis_label": "Classified population share",
+      "unit": "%",
+      "value_domain": { "min": 0, "max": 100 },
+      "series": [
+        {
+          "id": "none",
+          "label": "No receiver",
+          "metric": { "derived_metric": "none_share" },
+          "stack_id": "receiver_classes"
+        },
+        {
+          "id": "radio",
+          "label": "Radio",
+          "metric": { "derived_metric": "radio_share" },
+          "stack_id": "receiver_classes"
+        },
+        {
+          "id": "television",
+          "label": "Television",
+          "metric": { "derived_metric": "television_share" },
+          "stack_id": "receiver_classes"
+        },
+        {
+          "id": "computer",
+          "label": "Computer",
+          "metric": { "derived_metric": "computer_share" },
+          "stack_id": "receiver_classes"
+        }
+      ]
+    }
+  ]
+}

@@ -69,6 +69,20 @@ propagated upstream to show theoretical requirements, limiting inputs, worker
 and energy constraints, price sensitivity, and eventually optimisation. Actual
 yield is offered only when the save evidence covers both input and output.
 
+The chemistry language is intentional play: pseudo-elements, reaction routes,
+limiting inputs, yield, titration-style sensitivity, and shock response make
+administration memorable. The Observatory clearly distinguishes those
+metaphors from actual chemical and thermodynamic laws.
+
+### Broadcast Desk
+
+Radio and television become a first-class administrative workspace. Receiver
+adoption supplies the supported starting point; station audience, programme
+mix, influence profiles, staffing, cost, and lagged citizen outcomes expand as
+evidence becomes available. A Broadcast Notebook records interventions, while
+an earnest-with-a-wink Evening Bulletin narrates only deterministic,
+evidence-linked findings.
+
 ### Population, Welfare, and Cities
 
 The familiar in-game population trends are retained as a reference layer, then
@@ -83,11 +97,21 @@ volatility. It supports price baskets, terms of trade, break-even calculations,
 tourism yield, and debt-service stress without presenting unlike currencies or
 physical units as naturally additive.
 
+### Community Extensions
+
+Players can eventually add locally obtained Analysis Packs that declare
+bounded calculations and chart templates over normalised metrics. The host
+retains calculation, evidence, accessibility, and rendering authority. Advanced
+executable Model Plugins remain out of process and unavailable until a real
+model and security review justify a public protocol.
+
 ## Fun as a design requirement
 
 Administrative depth and delight are compatible. The product should include:
 
 - Ministry Dispatches that narrate only statistically supported changes;
+- Evening Bulletins that balance sincere administration with a restrained
+  newsroom wink;
 - plan medals and player-defined milestones;
 - import-free and stability streaks;
 - republic records and then-versus-now congress reports;
@@ -109,6 +133,7 @@ bad news, invent a causal story, or turn opaque scores into authority.
 7. Advanced statistics provide uncertainty and assumptions, not false precision.
 8. Useful in-game graphs may be reproduced when they strengthen the complete
    decision workflow.
+9. First-party and community extensions use the same bounded public contracts.
 
 ## Non-goals for the first releases
 
@@ -117,5 +142,8 @@ bad news, invent a causal story, or turn opaque scores into authority.
 - Claiming complete factory, route, worker, or inventory telemetry before the
   relevant binary payloads are documented
 - Hosted accounts, social comparison, or global leaderboards
-- A plugin platform before the scanner and analytical contracts are stable
+- Loading or enabling user Analysis Packs before branch-aware normalised
+  storage exists
+- An executable Model Plugin runtime before a demonstrated model and security
+  review justify its contracts
 - Automated play or prescriptive “optimal republic” judgement

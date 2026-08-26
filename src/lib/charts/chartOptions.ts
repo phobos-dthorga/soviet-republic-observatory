@@ -1,5 +1,11 @@
 import type { EChartsCoreOption } from "echarts/core";
-import type { ChartPoint, ChartSpec, ChartTheme } from "./types";
+import type {
+  ChartPoint,
+  ChartSeries,
+  ChartSpec,
+  ChartTheme,
+  Provenance,
+} from "./types";
 
 export const observatoryChartTheme: ChartTheme = {
   palette: ["#80c6d8", "#d8b86a", "#d88474", "#8da6c9", "#b6a8ce"],
@@ -22,6 +28,13 @@ export function expandedValues(points: ChartPoint[]): Array<number | null> {
   return points.flatMap((point) =>
     point.gap_before ? [null, point.value] : [point.value],
   );
+}
+
+export function provenanceForSeries(
+  spec: ChartSpec,
+  series: ChartSeries,
+): Provenance {
+  return series.provenance ?? spec.provenance;
 }
 
 export function optionForChart(
@@ -50,6 +63,8 @@ export function optionForChart(
   };
   const valueAxis = {
     type: "value",
+    min: spec.value_domain?.min,
+    max: spec.value_domain?.max,
     name: spec.value_axis_label,
     nameLocation: horizontal ? "middle" : "end",
     nameGap: horizontal ? 38 : 12,
@@ -93,6 +108,7 @@ export function optionForChart(
       id: series.id,
       name: series.label,
       type: spec.kind === "bar" ? "bar" : "line",
+      stack: series.stack_id,
       data: expandedValues(series.points),
       connectNulls: false,
       smooth: false,
@@ -115,8 +131,12 @@ export function optionForChart(
                 id: line.id,
                 name: line.label,
                 ...(line.axis === "category"
-                  ? { xAxis: line.value }
-                  : { yAxis: line.value }),
+                  ? horizontal
+                    ? { yAxis: line.value }
+                    : { xAxis: line.value }
+                  : horizontal
+                    ? { xAxis: line.value }
+                    : { yAxis: line.value }),
               })),
             }
           : undefined,

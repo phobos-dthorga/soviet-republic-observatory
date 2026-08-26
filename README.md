@@ -29,6 +29,12 @@ questions:
   trade, price, use, risk, and provenance context.
 - **Industrial Laboratory** — production-chain diagrams, limiting-reagent
   analysis, theoretical yield, sensitivity, and optimisation.
+- **Broadcast Desk** — receiver adoption, audience research, programme
+  formulation, influence assays, intervention notes, and a deterministic
+  Evening Bulletin.
+- **Community Extensions** — inert Analysis Packs over normalised metrics first,
+  with isolated executable models deferred until a demonstrated need and
+  security review.
 - **Population and Welfare** — demographic decomposition, statistically useful
   control charts, and city comparison without hiding behind national averages.
 - **Trade and Markets** — price indices, concentration, currency exposure,
@@ -47,7 +53,8 @@ The interface follows the methodology established by
 - semantic theme tokens and a dense operational workspace;
 - explicit live/historical and source states;
 - provenance attached to every chart;
-- Apache ECharts behind one declarative application-owned adapter; and
+- Apache ECharts behind one declarative application-owned adapter;
+- strict, non-executable Analysis Pack and chart-schema proofs; and
 - a local-first, summary-to-diagnosis information hierarchy.
 
 It is deliberately not a WyrmGrid reskin. The Observatory has its own visual
@@ -94,6 +101,9 @@ first real save-observation vertical slice, rather than as empty scaffolding.
 - [Data sources and limitations](docs/data-sources-and-limitations.md)
 - [Dependency decisions](docs/dependencies.md)
 - [Metric definitions](docs/metric-definitions.md)
+- [Material Periodic Table and Industrial Laboratory](docs/material-periodic-table.md)
+- [Broadcast Desk](docs/broadcast-desk.md)
+- [Community Extensions](docs/extensions/overview.md)
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)

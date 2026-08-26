@@ -46,6 +46,21 @@ the earlier record prefix and added new records. Two distinct save archives also
 contained byte-identical `stats.ini` payloads, establishing the need for
 content-based deduplication.
 
+### Broadcast receiver fields
+
+The reviewed game version 1.1.1.9 exposes four plain-text citizen receiver
+fields. Their source spellings are retained exactly at the parser boundary:
+
+- `$Citizens_EletronicNone`
+- `$Citizens_EletrinicRadio`
+- `$Citizens_EletronicTV`
+- `$Citizens_EletronicComputer`
+
+The inconsistent source spelling is compatibility evidence, not a public API.
+It maps to the stable `core.citizens.electronics.*` identifiers documented in
+the metric contract. A receiver share requires all inputs to have the same
+branch, observation date, and geographic scope.
+
 ## Current and city snapshots
 
 `$STAT_CURRENT` and `$STAT_CITY` blocks describe the latest state rather than a
@@ -67,6 +82,11 @@ specific building operated at that theoretical rate.
 
 Definitions should be imported into versioned application-owned models. No game
 assets are copied or redistributed.
+
+For version 1.1.1.9, reviewed station definitions provide nominal radio capacity
+of 100 workers and 50 professors, and television capacity of 120 workers and 70
+professors. These are game-definition facts, not evidence of staffing in a
+particular republic.
 
 ## Known limitations
 
@@ -99,6 +119,19 @@ current and city snapshots, branch detection, and before/after comparisons.
 Individual factories, routes, vehicles, worker histories, inventories, network
 topology, and geographic mapping are later research areas. The presence of a
 binary file does not establish a stable or licensed public format.
+
+Broadcast station identity, intended influence, potential reach, current
+listeners or viewers, rating, recording budget, and actual staffing remain
+binary-research candidates. Synthetic interface values must never be presented
+as decoded telemetry.
+
+### Extension data boundary
+
+Analysis Packs reference published normalised metrics and never read saves.
+Future executable Model Plugins receive only bounded normalised observations
+and versioned game-definition models. Raw archives, binary payloads, SQLite,
+parser maps, and paths remain host-private even when a player grants future
+extension capabilities.
 
 ## Data-quality presentation
 

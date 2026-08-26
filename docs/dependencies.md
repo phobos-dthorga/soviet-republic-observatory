@@ -10,6 +10,7 @@ keeping the Observatory independent and small.
 | Vite           | MIT        | Local development and production webview build        | Build-time only                                      |
 | TypeScript     | Apache-2.0 | Interface and contract type checking                  | Build-time only                                      |
 | Vitest         | MIT        | Calculation and chart-contract tests                  | Development only                                     |
+| Ajv            | MIT        | Draft 2020-12 schema-conformance proofs               | Development only; Rust host remains authoritative    |
 | Prettier       | MIT        | Deterministic source formatting                       | Development only                                     |
 
 [OnAir WyrmGrid](https://github.com/phobos-dthorga/onair-wyrmgrid) is a design
@@ -18,9 +19,11 @@ MIT-licensed, but shared packages are intentionally deferred until two current
 consumers demonstrate genuinely identical semantics.
 
 Tauri, Rust crates, and SQLite are introduced with the first real save-observer
-vertical slice. MapLibre, Three.js, hosted services, plugin runtimes, and data
-science environments remain outside the dependency set until a concrete player
-question requires them.
+vertical slice. Ajv prevents the checked-in Analysis Pack examples and invalid
+fixtures from drifting away from Draft 2020-12 during development; it is not a
+desktop trust boundary. MapLibre, Three.js, hosted services, executable plugin
+runtimes, and data science environments remain outside the dependency set until
+a concrete player question requires them.
 
 Before adding a dependency, document:
 

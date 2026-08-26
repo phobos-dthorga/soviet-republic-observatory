@@ -4,10 +4,18 @@ export type EvidenceKind =
   | "save_fact"
   | "game_definition"
   | "calculation"
+  | "extension_calculation"
   | "estimate"
   | "recommendation";
 
 export type EvidenceCoverage = "complete" | "partial" | "experimental";
+
+export type Provenance = {
+  kind: EvidenceKind;
+  source: string;
+  observed_at: string;
+  coverage: EvidenceCoverage;
+};
 
 export type ChartPoint = {
   category: string;
@@ -19,6 +27,8 @@ export type ChartSeries = {
   id: string;
   label: string;
   style?: "solid" | "dashed";
+  stack_id?: string;
+  provenance?: Provenance;
   points: ChartPoint[];
 };
 
@@ -39,14 +49,13 @@ export type ChartSpec = {
   category_axis_label?: string;
   value_axis_label?: string;
   unit?: string;
+  value_domain?: {
+    min: number;
+    max: number;
+  };
   reference_lines?: ChartReferenceLine[];
   series: ChartSeries[];
-  provenance: {
-    kind: EvidenceKind;
-    source: string;
-    observed_at: string;
-    coverage: EvidenceCoverage;
-  };
+  provenance: Provenance;
 };
 
 export type ChartTheme = {

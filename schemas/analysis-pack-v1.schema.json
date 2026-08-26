@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.dev/schemas/analysis-pack-v1.schema.json",
+  "title": "Republic Observatory Analysis Pack v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "host_api_version",
+    "name",
+    "author",
+    "description",
+    "derived_metrics",
+    "charts"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)+$"
+    },
+    "version": { "$ref": "#/$defs/semanticVersion" },
+    "host_api_version": { "const": 1 },
+    "name": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "author": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "description": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "derived_metrics": {
+      "type": "array",
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/derivedMetric" }
+    },
+    "charts": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "$ref": "https://republic-observatory.dev/schemas/chart-template-v1.schema.json"
+      }
+    }
+  },
+  "$defs": {
+    "safeText": {
+      "type": "string",
+      "pattern": "^(?!.*(?:<|>|://|file:|javascript:|data:|[A-Za-z]:\\\\|\\\\\\\\|(?:^|\\s)(?:/|\\.\\.?/))).*$"
+    },
+    "semanticVersion": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "metricReference": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["core_metric"],
+          "properties": {
+            "core_metric": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^core(?:\\.[a-z][a-z0-9_]*){2,}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["derived_metric"],
+          "properties": {
+            "derived_metric": { "$ref": "#/$defs/localId" }
+          }
+        }
+      ]
+    },
+    "sumOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operands"],
+      "properties": {
+        "kind": { "const": "sum" },
+        "operands": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/metricReference" }
+        }
+      }
+    },
+    "differenceOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "minuend", "subtrahend"],
+      "properties": {
+        "kind": { "const": "difference" },
+        "minuend": { "$ref": "#/$defs/metricReference" },
+        "subtrahend": { "$ref": "#/$defs/metricReference" }
+      }
+    },
+    "productOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operands"],
+      "properties": {
+        "kind": { "const": "product" },
+        "operands": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/metricReference" }
+        }
+      }
+    },
+    "safeRatioOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "numerator", "denominator"],
+      "properties": {
+        "kind": { "const": "safe_ratio" },
+        "numerator": { "$ref": "#/$defs/metricReference" },
+        "denominator": { "$ref": "#/$defs/metricReference" },
+        "scale": { "type": "number" }
+      }
+    },
+    "scaleOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operand", "factor"],
+      "properties": {
+        "kind": { "const": "scale" },
+        "operand": { "$ref": "#/$defs/metricReference" },
+        "factor": { "type": "number" }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/sumOperation" },
+        { "$ref": "#/$defs/differenceOperation" },
+        { "$ref": "#/$defs/productOperation" },
+        { "$ref": "#/$defs/safeRatioOperation" },
+        { "$ref": "#/$defs/scaleOperation" }
+      ]
+    },
+    "derivedMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "unit", "operation"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": {
+          "$ref": "#/$defs/safeText",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "unit": {
+          "$ref": "#/$defs/safeText",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "description": {
+          "$ref": "#/$defs/safeText",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "operation": { "$ref": "#/$defs/operation" }
+      }
+    }
+  }
+}

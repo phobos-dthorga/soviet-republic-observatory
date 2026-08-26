@@ -23,7 +23,7 @@ Configured save directory
   SQLite repository ───► raw-field evidence references + normalised facts
           │
           ▼
-  analytics services ──► calculations, estimates, recommendations
+  analytics services ──► built-in + Analysis Pack calculations
           │
           ▼
   thin Tauri commands ─► Svelte presentation ─► ObservatoryChart ─► ECharts
@@ -61,6 +61,11 @@ Deterministic metrics, anomaly models, forecasts, experiments, scenarios, and
 optimisation live outside the interface. Every result records input observation
 range, rule/model version, assumptions, and evidence status.
 
+Analysis Packs are validated inert declarations evaluated by the host over
+normalised observations. Future Model Plugins sit outside the process and
+receive only bounded public models. Neither tier gains raw-save, SQLite, parser,
+private-path, or rendering access.
+
 ### Presentation
 
 Svelte owns layout, formatting, interaction state, accessibility, and calls into
@@ -78,9 +83,11 @@ decide recommendations.
   first persistent vertical slice defines the actual sensitivity and backup
   model.
 
-MapLibre, Three.js, a plugin system, a hosted service, and a general notebook
-runtime are not foundation dependencies. Each requires a demonstrated current
-use case and an explicit replacement boundary.
+MapLibre, Three.js, an executable plugin runtime, a hosted service, and a general
+notebook runtime are not foundation dependencies. The Analysis Pack schema is a
+foundation contract, while actual local import waits for branch-aware storage.
+Each later dependency requires a demonstrated current use case and an explicit
+replacement boundary.
 
 ## Initial domain concepts
 
@@ -96,6 +103,8 @@ use case and an explicit replacement boundary.
 - `InterventionAnnotation`
 - `AnalyticalResult`
 - `ChartSpec`
+- `AnalysisPackDeclaration`
+- `ExtensionContentIdentity`
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned
@@ -110,4 +119,6 @@ display catalogue; display text is not the database key.
 - An identical payload updates scanner evidence without duplicating history.
 - A rollback creates or selects a branch; it does not delete later history.
 - A model failure removes the estimate, not the underlying facts.
+- An extension failure removes that extension's result, not save observation,
+  core dashboards, or another extension.
 - The interface remains useful offline and when the game is not running.

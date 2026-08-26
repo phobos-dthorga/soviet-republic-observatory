@@ -168,6 +168,68 @@ around a player annotation. The result must expose:
 - interval, residual diagnostics, and missing periods; and
 - the phrase “estimated association” unless a stronger design is justified.
 
+## Broadcast and receiver metrics
+
+### Stable receiver-class identifiers
+
+Host API 1 publishes four normalised save-fact metrics:
+
+- `core.citizens.electronics.none`
+- `core.citizens.electronics.radio`
+- `core.citizens.electronics.television`
+- `core.citizens.electronics.computer`
+
+They map versioned source spellings into stable public names. Each value retains
+branch, observation date, geographic scope, source field, parser version, and
+coverage.
+
+### Electronics-classified population
+
+For aligned class values:
+
+`classified population = none + radio + television + computer`
+
+This denominator is not assumed to equal the total population. If any required
+class is missing or non-finite, the total and dependent shares are unavailable.
+
+### Receiver-class share
+
+For receiver class `i`:
+
+`receiver class share(i) = class(i) / classified population × 100`
+
+A zero, missing, or non-finite denominator yields unavailable. The four shares
+may form a 100% stacked view only when all inputs share branch, observation
+date, and geographic scope.
+
+### Audience utilisation
+
+After binary station telemetry is independently validated:
+
+`audience utilisation = current audience / potential audience × 100`
+
+Potential and current audience are shown beside the ratio. A zero or missing
+potential audience yields unavailable; it never implies zero utilisation.
+
+### Broadcast intervention estimate
+
+A player programme annotation may anchor a lagged outcome comparison. Results
+retain the pre/post windows, candidate lag, station, programme values,
+contemporaneous annotations, observation count, model version, and uncertainty.
+The default description is “estimated association,” not programme effect.
+
+## Analysis Pack calculations
+
+An Analysis Pack result uses evidence kind `extension_calculation`. It records
+pack ID, pack version, content hash, host API, exact operation rule, and source
+observations. Packs cannot self-declare complete or trusted evidence.
+
+Version 1 supports `sum`, `difference`, `product`, `safe_ratio`, and `scale`.
+Inputs align within one branch, observation date, and geographic scope. Derived
+metrics can reference only earlier declarations, so forward references and
+cycles are invalid. `safe_ratio` is unavailable for a missing, non-finite, or
+zero denominator.
+
 ## Statistical signals
 
 ### Robust standardised deviation

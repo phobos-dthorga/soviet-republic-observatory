@@ -10,7 +10,7 @@
   import type { ECharts } from "echarts/core";
   import { CanvasRenderer } from "echarts/renderers";
   import { onMount } from "svelte";
-  import { optionForChart } from "./chartOptions";
+  import { optionForChart, provenanceForSeries } from "./chartOptions";
   import type { ChartSpec } from "./types";
 
   echarts.use([
@@ -114,7 +114,11 @@
             (point) =>
               `${point.gap_before ? "gap before, " : ""}${point.category}, ${formatValue(point.value)}`,
           )
-          .join("; ")}.
+          .join("; ")}. Evidence: {provenanceForSeries(
+          spec,
+          series,
+        ).kind.replaceAll("_", " ")}, {provenanceForSeries(spec, series)
+          .coverage} coverage.
       {/each}
       {#each spec.reference_lines ?? [] as line}
         {line.label}: {typeof line.value === "number"

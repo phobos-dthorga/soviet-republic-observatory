@@ -47,6 +47,26 @@ feature is implemented.
 | How sensitive is unit cost?                            | Tornado or two-variable contour                         | A/C         | Keep currencies separate unless a user supplies parity           |
 | Does the accounted system reconcile?                   | Sources/uses with explicit measurement residual         | A, later D  | Never call the residual waste or stock change without evidence   |
 
+The full family, dossier, and analytical-chemistry metaphor is specified in the
+[Material Periodic Table and Industrial Laboratory](material-periodic-table.md).
+
+## Broadcast Desk
+
+| Player question                                     | Visual or model                                | Readiness  | Notes                                                              |
+| --------------------------------------------------- | ---------------------------------------------- | ---------- | ------------------------------------------------------------------ |
+| How is receiver adoption changing?                  | 100% stacked receiver ladder                   | B          | Denominator is the four electronics classes, not total population  |
+| How much reachable audience is actually listening?  | Potential/current reach lines and utilisation  | D          | Plainly label station telemetry as binary research until validated |
+| What does each station intend to influence?         | Six-part programme formulation                 | D/C        | Game-facing settings; do not assume a linear dose model            |
+| What directional outcomes does the programme imply? | Diverging influence assay                      | D, later B | Separate game-displayed expectation from calibrated estimate       |
+| Is staffing constraining reach?                     | Staffing fill, reach-per-position, rating/cost | C + D      | Nominal capacity is a definition; actual staffing is separate      |
+| What changed after a schedule intervention?         | Annotated event-time outcome trends            | B + notes  | Association only, with lag, contemporaneous changes, and gaps      |
+| Which cities or channels are exposed?               | Exposure matrix and concentration measures     | D          | National averages must not hide an unreached settlement            |
+| Would the system tolerate a station outage?         | Channel resilience scenario                    | D          | Scenario, not forecast; retain power and staffing assumptions      |
+| What deserves tonight's bulletin?                   | Evidence-linked deterministic Evening Bulletin | B, later D | Rules may be witty; claims and caveats remain deterministic        |
+
+The [Broadcast Desk specification](broadcast-desk.md) records the exact
+receiver-field and citizen-status compatibility evidence.
+
 ## Trade and markets
 
 | Player question                              | Visual or model                                         | Readiness | Notes                                                         |
@@ -114,6 +134,9 @@ plausible alternative explanations. They do not use causal language by default.
 - **Ministry Dispatch:** evidence-linked prose generated deterministically from
   ranked, thresholded findings before any optional language-generation layer is
   considered.
+- **Evening Bulletin:** receiver and station findings written with a restrained
+  newsroom wink; it links its claims and declines causal medals when evidence
+  is incomplete.
 
 ## Chart-family discipline
 

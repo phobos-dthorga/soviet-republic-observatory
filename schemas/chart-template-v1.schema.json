@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.dev/schemas/chart-template-v1.schema.json",
+  "title": "Republic Observatory Analysis Pack chart template v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "description",
+    "kind",
+    "series"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/localId" },
+    "title": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "kind": { "enum": ["line", "area", "bar"] },
+    "orientation": { "enum": ["vertical", "horizontal"] },
+    "category_axis_label": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "value_axis_label": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "unit": {
+      "$ref": "#/$defs/safeText",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "value_domain": { "$ref": "#/$defs/valueDomain" },
+    "series": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/series" }
+    }
+  },
+  "$defs": {
+    "safeText": {
+      "type": "string",
+      "pattern": "^(?!.*(?:<|>|://|file:|javascript:|data:|[A-Za-z]:\\\\|\\\\\\\\|(?:^|\\s)(?:/|\\.\\.?/))).*$"
+    },
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "metricReference": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["core_metric"],
+          "properties": {
+            "core_metric": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^core(?:\\.[a-z][a-z0-9_]*){2,}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["derived_metric"],
+          "properties": {
+            "derived_metric": { "$ref": "#/$defs/localId" }
+          }
+        }
+      ]
+    },
+    "valueDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "metric"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": {
+          "$ref": "#/$defs/safeText",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "metric": { "$ref": "#/$defs/metricReference" },
+        "style": { "enum": ["solid", "dashed"] },
+        "stack_id": { "$ref": "#/$defs/localId" }
+      }
+    }
+  }
+}

@@ -22,6 +22,20 @@
   replaceable through stable application-owned models.
 - Store observations locally. A future network feature must remain optional and
   must not become necessary for ordinary use.
+- Extensions receive only bounded normalised observations and versioned public
+  game-definition models. Never expose raw saves, binary payloads, SQLite,
+  parser internals, private paths, or credentials through an extension API.
+- The host owns chart resolution, ECharts options, themes, accessibility,
+  provenance, limits, settings, and extension failure states. Extensions never
+  submit JavaScript, Svelte, HTML, CSS, callbacks, SQL, or renderer options.
+- Preserve the external-delivery invariant: first-party and community
+  extensions use the same public contracts and can be obtained and installed
+  independently of the application source tree.
+- Capabilities are deny-by-default and bind exact extension ID, version,
+  content identity, and scope. Installation, approval, enabling, starting,
+  updating, rollback, and removal are separate lifecycle actions.
+- Out-of-process execution is failure containment, not an operating-system
+  sandbox. Do not describe it as one.
 - Treat database migrations as append-only once released.
 - Reduce duplicate calculations and magic field names as soon as their shared
   meaning is established; do not generalise hypothetical requirements.
@@ -57,3 +71,5 @@
 - Parser changes require sanitised fixtures and compatibility notes.
 - Chart-family additions require a documented analytical question and visual QA
   at desktop and narrow widths.
+- Analysis Pack changes require strict schema tests, semantic reference tests,
+  limit and injection fixtures, and compatibility notes.

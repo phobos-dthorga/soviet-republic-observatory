@@ -28,6 +28,10 @@ changing their semantic order.
 
 - **Briefing** — three headline outcomes, guardrails, change summary, and
   Ministry Dispatch.
+- **Broadcast** — receiver ladder, audience research, programme formulation,
+  influence assay, outcomes, Notebook, Bulletin, and station inspector.
+- **Extensions** — synthetic Analysis Pack inspection, public inputs, derived
+  metrics, denied capabilities, lifecycle, and future Model Plugin boundary.
 - **Plan** — targets, milestones, schedule variance, forecasts, and scenarios.
 - **Materials** — Material Periodic Table, source/use views, production network,
   and limiting-input laboratory.
@@ -36,6 +40,28 @@ changing their semantic order.
 - **Markets** — trade, prices, currencies, tourism, debt, and break-even models.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
+
+The synthetic foundation enables Briefing, Broadcast, and Extensions in primary
+navigation. The other buttons remain visibly disabled until their analytical
+vertical slices exist. The shell owns only global navigation and observation
+context; each enabled destination is a presentational workspace component.
+
+### Broadcast composition
+
+The Broadcast canvas proceeds from receiver adoption to unavailable station
+telemetry, programme intent, expected influence, and observed outcomes. The
+Notebook records hypotheses and interventions. The Evening Bulletin applies
+deterministic eligibility, ranking, wording, and caveat rules. The inspector
+switches between radio and television and keeps nominal capacity separate from
+synthetic station state.
+
+### Extensions concept
+
+The Extensions canvas shows one Receiver Adoption Laboratory proof: identity,
+four core inputs, five derived metrics, one 100% stacked-area contribution, and
+the capabilities it does not possess. Inspect, validate, and enable are separate
+future lifecycle steps. Model Plugin controls are labelled planned and
+unavailable, not disabled-but-implemented.
 
 ## Briefing hierarchy
 
@@ -116,7 +142,9 @@ Every chart specification contains:
 - chart kind and orientation;
 - axes, units, denominator, and time grain;
 - one or more typed series;
-- optional reference lines and coverage gaps;
+- optional stack identities, fixed value domain, reference lines, and coverage
+  gaps;
+- optional per-series provenance, inheriting chart provenance when absent;
 - provenance kind, source, observation date, and coverage; and
 - an accessible textual summary.
 
@@ -125,22 +153,31 @@ raw ECharts options, callbacks, HTML formatters, or executable configuration.
 This keeps rendering replaceable and prevents chart-library details from
 becoming the analytical model.
 
+`extension_calculation` is a distinct evidence kind. Analysis Pack chart
+templates reference metrics only; the host resolves observations into concrete
+points and provenance. Schema version 1 supports line, area, and bar families.
+
 ## Chart map
 
-| Workspace   | Question                              | Preferred form                                 | Fallback when sparse       |
-| ----------- | ------------------------------------- | ---------------------------------------------- | -------------------------- |
-| Briefing    | Are we on schedule?                   | actual-versus-plan line                        | KPI and period bars        |
-| Briefing    | What changed?                         | waterfall when additive; otherwise ranked bars | exact change list          |
-| Plan        | How uncertain is completion?          | fan chart                                      | milestone interval table   |
-| Materials   | Which resources are exposed?          | periodic-table cells and ranked bars           | sortable resource table    |
-| Materials   | Where are resources used?             | heatmap                                        | grouped horizontal bars    |
-| Laboratory  | What limits output?                   | required-versus-available bars                 | coefficient table          |
-| Population  | Why did population change?            | waterfall                                      | signed component bars      |
-| Population  | Are welfare measures moving together? | aligned small multiples                        | latest values with slopes  |
-| Cities      | Where is distress concentrated?       | city-by-metric heatmap                         | ranked dot plots           |
-| Markets     | How concentrated are exports?         | Pareto                                         | sorted bars plus top share |
-| Markets     | Are prices unstable?                  | indexed line with control band                 | discrete period bars       |
-| Experiments | What changed after an intervention?   | event-time line and interval                   | pre/post slope chart       |
+| Workspace   | Question                              | Preferred form                                  | Fallback when sparse       |
+| ----------- | ------------------------------------- | ----------------------------------------------- | -------------------------- |
+| Briefing    | Are we on schedule?                   | actual-versus-plan line                         | KPI and period bars        |
+| Briefing    | What changed?                         | waterfall when additive; otherwise ranked bars  | exact change list          |
+| Plan        | How uncertain is completion?          | fan chart                                       | milestone interval table   |
+| Materials   | Which resources are exposed?          | periodic-table cells and ranked bars            | sortable resource table    |
+| Materials   | Where are resources used?             | heatmap                                         | grouped horizontal bars    |
+| Laboratory  | What limits output?                   | required-versus-available bars                  | coefficient table          |
+| Population  | Why did population change?            | waterfall                                       | signed component bars      |
+| Population  | Are welfare measures moving together? | aligned small multiples                         | latest values with slopes  |
+| Cities      | Where is distress concentrated?       | city-by-metric heatmap                          | ranked dot plots           |
+| Markets     | How concentrated are exports?         | Pareto                                          | sorted bars plus top share |
+| Markets     | Are prices unstable?                  | indexed line with control band                  | discrete period bars       |
+| Experiments | What changed after an intervention?   | event-time line and interval                    | pre/post slope chart       |
+| Broadcast   | How is receiver adoption changing?    | 100% stacked area                               | latest composition bars    |
+| Broadcast   | Is potential reach being used?        | potential/current lines                         | exact audience cards       |
+| Broadcast   | What direction is influence expected? | signed horizontal bars around zero              | signed effect list         |
+| Broadcast   | What followed a programme change?     | annotated aligned outcome lines                 | pre/post status cards      |
+| Extensions  | What would this pack contribute?      | contract summary and host-rendered mini preview | exact declaration list     |
 
 ## Tables and exact detail
 

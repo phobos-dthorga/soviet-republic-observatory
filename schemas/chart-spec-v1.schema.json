@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.dev/schemas/chart-spec-v1.schema.json",
+  "title": "Republic Observatory concrete chart specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "description",
+    "kind",
+    "series",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/localId" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "kind": { "enum": ["line", "area", "bar"] },
+    "orientation": { "enum": ["vertical", "horizontal"] },
+    "category_axis_label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "value_axis_label": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "unit": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "value_domain": { "$ref": "#/$defs/valueDomain" },
+    "reference_lines": {
+      "type": "array",
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/referenceLine" }
+    },
+    "series": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": { "$ref": "#/$defs/series" }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "valueDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "type": "number" },
+        "max": { "type": "number" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source", "observed_at", "coverage"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "save_fact",
+            "game_definition",
+            "calculation",
+            "extension_calculation",
+            "estimate",
+            "recommendation"
+          ]
+        },
+        "source": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "observed_at": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "coverage": { "enum": ["complete", "partial", "experimental"] }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "value"],
+      "properties": {
+        "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "value": { "type": "number" },
+        "gap_before": { "type": "boolean" }
+      }
+    },
+    "series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "points"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "style": { "enum": ["solid", "dashed"] },
+        "stack_id": { "$ref": "#/$defs/localId" },
+        "points": {
+          "type": "array",
+          "maxItems": 10000,
+          "items": { "$ref": "#/$defs/point" }
+        },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "referenceLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "axis", "value"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "axis": { "enum": ["category", "value"] },
+        "value": {
+          "oneOf": [{ "type": "string" }, { "type": "number" }]
+        }
+      }
+    }
+  }
+}

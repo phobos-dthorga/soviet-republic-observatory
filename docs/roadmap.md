@@ -9,6 +9,10 @@ numbers are assigned only when implementation begins.
 - WyrmGrid-informed visual system with independent Observatory identity
 - Svelte 5/TypeScript preview
 - Declarative ECharts adapter with synthetic, visibly labelled data
+- Presentational Briefing, Broadcast, and Extensions workspace concepts
+- Draft 2020-12 Analysis Pack, chart-template, and concrete-chart schemas
+- Receiver Adoption Laboratory example plus structural, semantic, limit, and
+  injection tests
 - Initial calculation utilities and unit tests
 - Data limitations, metric contract, architecture decisions, and contributor
   safeguards
@@ -33,7 +37,21 @@ numbers are assigned only when implementation begins.
 - Archive timeline and two-save comparison
 - Current and city snapshot capture from every distinct save
 
-## Slice 3 — Republic Briefing
+## Slice 3 — local Analysis Packs
+
+- Authoritative Rust validation against Analysis Pack schema and semantic rules
+- Local file inspection with ID, version, content hash, inputs, and contributions
+- Distinct install, enable, disable, update, rollback, and remove records
+- Host evaluation over branch-aware normalised observations only
+- Host-resolved charts, provenance, accessibility, settings, and failure states
+- Receiver Adoption Laboratory loaded through the same public contract as any
+  community pack
+- Invalid or failed packs isolated from save observation and core dashboards
+
+This slice starts only after branch-aware storage can supply correctly aligned
+observations. A catalogue remains optional and is not required for local files.
+
+## Slice 4 — Republic Briefing and Broadcast foundation
 
 - Player plans and targets
 - Plan attainment and guardrails
@@ -41,8 +59,12 @@ numbers are assigned only when implementation begins.
 - Trade exposure and concentration
 - Deterministic Ministry Dispatch
 - Attention queue with robust baseline signals
+- Receiver adoption from the four stable citizen-electronics metrics
+- Broadcast Notebook annotations and deterministic Evening Bulletin
+- Binary station telemetry shown as unavailable until the research track
+  validates it
 
-## Slice 4 — Materials and markets
+## Slice 5 — Materials and markets
 
 - Material Periodic Table
 - Price baskets and indexed market views
@@ -50,14 +72,14 @@ numbers are assigned only when implementation begins.
 - Currency-specific trade, tourism, debt, and break-even analysis
 - Measurement coverage and accounted-flow residual presentation
 
-## Slice 5 — Population and cities
+## Slice 6 — Population and cities
 
 - Welfare small multiples from observed snapshots
 - City heatmap, ranking, weighted dispersion, and intervention queue
 - Annotations and event-time comparisons
 - Experimental control charts with baseline diagnostics
 
-## Slice 6 — Industrial Laboratory
+## Slice 7 — Industrial Laboratory
 
 - Installed game-definition catalogue and versioning
 - Production-chain graph
@@ -73,15 +95,20 @@ numbers are assigned only when implementation begins.
 - Network and geographic topology
 - City name and coordinate mapping
 - Waste treatment and recovery coverage
+- Radio and television identity, staffing, programme, reach, rating, and budget
+  telemetry
 
 Research findings do not become product claims until they have versioned
 fixtures, compatibility limits, and a safe unavailable-data path.
 
 ## Deferred until demonstrated
 
-- General plugin platform
+- Executable Model Plugin manifests, packages, protocol, and runtime; these wait
+  for a model that exceeds Analysis Pack vocabulary and a completed security
+  review
 - Hosted accounts or synchronisation
-- Community data catalogue
+- Community catalogue or marketplace; local offline installation remains the
+  baseline
 - Map or 3D renderer
 - Automated natural-language model dependency
 - Binary-save modification of any kind
