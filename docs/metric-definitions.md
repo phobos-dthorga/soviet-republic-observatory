@@ -1,0 +1,203 @@
+# Metric definitions
+
+This is the initial measurement contract. Names and formulas are provisional
+until validated against supported fixtures, but the denominator and evidence
+rules are not optional.
+
+## Primary outcomes
+
+### Plan attainment
+
+For a target with scheduled cumulative value `S(t)` and observed cumulative
+value `A(t)` at game date `t`:
+
+`plan attainment(t) = A(t) / S(t)`
+
+Display the ratio with the two underlying values, target unit, target direction,
+effective game date, and whether the target is cumulative or period-based. A
+lower-is-better target uses an explicitly defined status rule rather than
+silently inverting the ratio.
+
+### Demographic resilience
+
+For a common observation window:
+
+`net demographic change = births + immigration − deaths − escapes`
+
+`demographic resilience rate = net demographic change / population exposure × 1,000`
+
+Population exposure should be the mean or person-time approximation supported
+by the source window. If only a latest population is available, label the rate
+as an approximation. Never mix flow windows.
+
+### External dependency
+
+External dependency is a framework, not one magically authoritative number.
+The default view reports:
+
+1. import quantity and value for each critical resource;
+2. the count and share of critical resources with non-zero imports;
+3. import value per capita by currency; and
+4. an experimental resource-level reliance ratio only where production coverage
+   is acceptable:
+
+`recorded import reliance(r) = imports(r) / (imports(r) + recorded domestic production(r))`
+
+The aggregate experimental index may use a fixed base-price basket so unlike
+physical quantities are not directly summed. It must disclose the basket date,
+currency treatment, included-resource coverage, and sensitivity to missing
+production.
+
+## Trade and solvency
+
+### Net external trade
+
+`net trade(c) = export value(c) − import value(c)`
+
+Compute separately for each currency `c`. Do not add rubles and dollars unless
+the user explicitly supplies a conversion assumption, which is stored as a
+scenario calculation rather than a save fact.
+
+### Export concentration
+
+For export value shares `sᵢ` within one currency and window:
+
+`HHI = Σ sᵢ²`
+
+`effective export product count = 1 / HHI`
+
+Report the top-product share and included export value alongside HHI. A high
+index describes concentration, not necessarily bad policy.
+
+### Debt-service coverage
+
+`coverage(c) = (exports(c) + tourism receipts(c)) / interest due(c)`
+
+If the source does not establish the same period for numerator and denominator,
+the ratio is unavailable. Principal repayment and maturity risk require
+additional fields.
+
+### Price indices
+
+For a fixed reference basket with quantities `qᵢ,0` and observed prices `pᵢ,t`:
+
+`Laspeyres(t) = Σ pᵢ,t qᵢ,0 / Σ pᵢ,0 qᵢ,0 × 100`
+
+Maintain separate construction, consumer-essential, industrial-input, and
+optional player-defined baskets. Publish the basket composition and base date.
+An index does not replace the underlying nominal prices.
+
+### Terms of trade
+
+`terms of trade(t) = export price index(t) / import price index(t) × 100`
+
+The two baskets must use compatible currency treatment and stable weights.
+
+## Materials and production
+
+### Accounted sources and uses
+
+For resource `r` over one period:
+
+`sources = recorded production + imports`
+
+`uses = factories + shops + construction + vehicles + exports`
+
+`measurement residual = sources − uses`
+
+Until stock change and production coverage are proven, the residual is labelled
+“unaccounted by current sources.” It is not interpreted as inventory movement,
+loss, dumping, or parser error without further evidence.
+
+### Theoretical chain requirement
+
+For a recipe consuming `a` units of input to produce `b` units of output, the
+input required for target output `T` is:
+
+`required input = T × a / b`
+
+Propagate requirements upstream using versioned game-definition coefficients.
+Where a resource has several recipes, the selected route is part of the
+scenario and never silently chosen.
+
+### Limiting-input capacity
+
+For available quantity `xᵢ` and requirement coefficient `aᵢ` per unit output:
+
+`supported outputᵢ = xᵢ / aᵢ`
+
+The smallest supported output is the theoretical limiting capacity. “Available”
+must identify whether it means inventory, production plan, import allowance, or
+a user-entered scenario.
+
+### Actual yield
+
+`actual yield = observed output / theoretical output from observed limiting input`
+
+This metric remains unavailable until the parser establishes compatible actual
+input, output, stock change, and window coverage. Theoretical conversion alone
+is not actual yield.
+
+## Population and cities
+
+### Rate normalisation
+
+Deaths, escapes, births, and similar counts should be offered as:
+
+`rate per 1,000 = count / population exposure × 1,000`
+
+City comparisons use population weighting where the question concerns the
+resident experience. National totals and an unweighted “average city” answer
+different questions and must not share a label.
+
+### Between-city dispersion
+
+The default dispersion view reports weighted median, interquartile interval,
+and selected percentiles. Coefficient of variation is allowed for positive ratio
+measures whose mean is meaningful. Gini is optional and must state its weight
+and interpretation.
+
+### Intervention estimate
+
+An interrupted time-series model may estimate a level change and slope change
+around a player annotation. The result must expose:
+
+- intervention game date;
+- observations and duration before and after;
+- model form and version;
+- interval, residual diagnostics, and missing periods; and
+- the phrase “estimated association” unless a stronger design is justified.
+
+## Statistical signals
+
+### Robust standardised deviation
+
+For baseline median `m` and median absolute deviation `MAD`:
+
+`robust z = 0.6745 × (x − m) / MAD`
+
+When `MAD = 0`, the signal rule uses an explicit zero-variation fallback rather
+than dividing by zero. Alerts combine magnitude, persistence, practical
+threshold, and data coverage; a z-score alone is not an emergency.
+
+### Change points and control charts
+
+EWMA, CUSUM, or change-point results are calculations over a declared baseline.
+The interface displays the baseline dates, rate denominator, tuning parameters,
+and whether multiple testing is controlled. Signals invite investigation; they
+do not explain their own cause.
+
+## Forecasts and scenarios
+
+- A forecast requires enough historical points for the selected model and must
+  be evaluated through rolling-origin backtesting before it is promoted beyond
+  experimental status.
+- The default forecast visual is a median or central estimate with prediction
+  intervals.
+- A scenario is a deterministic or simulated “what if” under player-specified
+  assumptions. It is not labelled a forecast.
+- Monte Carlo outputs report iteration count, input distributions, random seed
+  policy, target probability, and percentile intervals.
+- Optimisation outputs report objective, constraints, bounds, units, infeasible
+  cases, and sensitivity. The “optimal” result is optimal only for that declared
+  mathematical problem.
