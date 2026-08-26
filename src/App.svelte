@@ -3,18 +3,25 @@
   import BriefingWorkspace from "./lib/workspaces/BriefingWorkspace.svelte";
   import BroadcastWorkspace from "./lib/workspaces/BroadcastWorkspace.svelte";
   import ExtensionsWorkspace from "./lib/workspaces/ExtensionsWorkspace.svelte";
+  import ArchiveWorkspace from "./lib/workspaces/ArchiveWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import {
     desktopHostAvailable,
+    getArchiveOverview,
     getLatestReceiverDataset,
     getSetupState,
+    selectTimelineBranch,
   } from "./lib/observations/desktopClient";
-  import type { ReceiverDataset, SetupState } from "./lib/observations/types";
+  import type {
+    ArchiveOverview,
+    ReceiverDataset,
+    SetupState,
+  } from "./lib/observations/types";
 
-  type WorkspaceName = "briefing" | "broadcast" | "extensions";
+  type WorkspaceName = "briefing" | "broadcast" | "extensions" | "archive";
   const workspaces: Array<{
     id:
       | WorkspaceName
@@ -33,7 +40,7 @@
     { id: "materials", label: "nav-materials", enabled: false },
     { id: "population", label: "nav-population", enabled: false },
     { id: "markets", label: "nav-markets", enabled: false },
-    { id: "archive", label: "nav-archive", enabled: false },
+    { id: "archive", label: "nav-archive", enabled: true },
   ];
 
   let activeWorkspace = $state<WorkspaceName>("briefing");
@@ -42,16 +49,42 @@
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
+  let archiveOverview = $state<ArchiveOverview | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
+
+  function activeBranchLabel(): string {
+    if (!receiverDataset) return "planning-preview";
+    if (receiverDataset.branch_id === "main")
+      return $translation("archive-branch-main");
+    if (receiverDataset.branch_id === "unassigned")
+      return $translation("archive-branch-unassigned");
+    return $translation("archive-branch-fork", {
+      identity: receiverDataset.branch_id.replace("fork-", "").slice(0, 6),
+    });
+  }
+
+  async function selectBranch(branchId: string): Promise<void> {
+    const result = await selectTimelineBranch(branchId);
+    archiveOverview = result.archive;
+    receiverDataset = result.dataset;
+  }
+
+  function acceptObservation(dataset: ReceiverDataset): void {
+    receiverDataset = dataset;
+    void getArchiveOverview().then((archive) => (archiveOverview = archive));
+  }
 
   onMount(() => {
     if (!desktopAvailable) return;
-    void Promise.all([getSetupState(), getLatestReceiverDataset()]).then(
-      ([setup, dataset]) => {
-        setupState = setup;
-        receiverDataset = dataset;
-      },
-    );
+    void Promise.all([
+      getSetupState(),
+      getLatestReceiverDataset(),
+      getArchiveOverview(),
+    ]).then(([setup, dataset, archive]) => {
+      setupState = setup;
+      receiverDataset = dataset;
+      archiveOverview = archive;
+    });
   });
 </script>
 
@@ -142,9 +175,7 @@
       >
       <span
         >{$translation("observation-branch", {
-          branch: receiverDataset
-            ? $translation("observation-branch-unassigned")
-            : "planning-preview",
+          branch: activeBranchLabel(),
         })}</span
       >
       <span
@@ -168,8 +199,14 @@
     <BriefingWorkspace />
   {:else if activeWorkspace === "broadcast"}
     <BroadcastWorkspace {receiverDataset} />
-  {:else}
+  {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace />
+  {:else}
+    <ArchiveWorkspace
+      archive={archiveOverview}
+      {desktopAvailable}
+      onselect={selectBranch}
+    />
   {/if}
 
   <footer class="status-bar">
@@ -191,5 +228,5 @@
   dataset={receiverDataset}
   onclose={() => (observationDialogOpen = false)}
   onsetupchange={(setup) => (setupState = setup)}
-  onobservation={(dataset) => (receiverDataset = dataset)}
+  onobservation={acceptObservation}
 />

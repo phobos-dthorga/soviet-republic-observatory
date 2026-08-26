@@ -1,107 +1,54 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::archive::{
+    persist_history_signature, persist_resolution, resolve_branch, selected_branch_id,
+};
+use super::{ObservatoryStorage, from_sql_integer, now_ms, to_sql_integer};
 use crate::error::ObservatoryError;
 use crate::model::{
-    CoverageReport, CoverageStatus, FORMAT_PROFILE, INITIAL_BRANCH_ID, MetricEvidence,
-    PARSER_VERSION, RECEIVER_METRICS, REPUBLIC_SCOPE, ReceiverDataset, ReceiverHistoryPoint,
-    SaveInspection,
+    CoverageReport, CoverageStatus, FORMAT_PROFILE, MetricEvidence, PARSER_VERSION,
+    RECEIVER_METRICS, REPUBLIC_SCOPE, ReceiverDataset, ReceiverHistoryPoint, SaveInspection,
 };
 
-const MIGRATION_0001: &str = include_str!("../migrations/0001_observations.sql");
-
-#[derive(Debug)]
-pub struct ObservationRepository {
-    database_path: PathBuf,
-}
-
-impl ObservationRepository {
-    pub fn initialise(database_path: PathBuf) -> Result<Self, ObservatoryError> {
-        if let Some(parent) = database_path.parent() {
-            fs::create_dir_all(parent).map_err(|_| ObservatoryError::StorageUnavailable)?;
-        }
-        let repository = Self { database_path };
-        let mut connection = repository.connect()?;
-        connection.execute_batch(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (\
-                 version INTEGER PRIMARY KEY,\
-                 name TEXT NOT NULL,\
-                 applied_at_ms INTEGER NOT NULL\
-             ) STRICT;",
-        )?;
-        let applied = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = 1)",
-            [],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if !applied {
-            let transaction = connection.transaction()?;
-            transaction.execute_batch(MIGRATION_0001)?;
-            transaction.execute(
-                "INSERT INTO schema_migrations(version, name, applied_at_ms) VALUES(1, ?1, ?2)",
-                params!["observation foundation", now_ms()],
-            )?;
-            transaction.commit()?;
-        }
-        Ok(repository)
-    }
-
-    pub fn set_setting(&self, key: &str, value: &Path) -> Result<(), ObservatoryError> {
-        let connection = self.connect()?;
-        connection.execute(
-            r#"INSERT INTO private_settings(setting_key, setting_value) VALUES(?1, ?2)
-               ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value"#,
-            params![key, value.to_string_lossy()],
-        )?;
-        Ok(())
-    }
-
-    pub fn get_setting(&self, key: &str) -> Result<Option<PathBuf>, ObservatoryError> {
-        let connection = self.connect()?;
-        let value = connection
-            .query_row(
-                "SELECT setting_value FROM private_settings WHERE setting_key = ?1",
-                [key],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        Ok(value.map(PathBuf::from))
-    }
-
+impl ObservatoryStorage {
     pub fn save_inspection(&self, inspection: &SaveInspection) -> Result<bool, ObservatoryError> {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
-        let warnings_json = serde_json::to_string(&inspection.coverage.warnings)
-            .map_err(|_| ObservatoryError::StorageUnavailable)?;
-        let inserted = transaction.execute(
-            "INSERT OR IGNORE INTO observation_sources(\
-                 payload_hash, source_file_name, source_file_size, source_modified_ms,\
-                 imported_at_ms, parser_version, format_profile, branch_id, geographic_scope,\
-                 coverage_status, history_records, chartable_records, dropped_records, warnings_json\
-             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            params![
-                inspection.payload_hash,
-                inspection.source_file_name,
-                i64::try_from(inspection.source_file_size)
-                    .map_err(|_| ObservatoryError::StorageUnavailable)?,
-                inspection.source_modified_ms,
-                now_ms(),
-                PARSER_VERSION,
-                FORMAT_PROFILE,
-                INITIAL_BRANCH_ID,
-                REPUBLIC_SCOPE,
-                inspection.coverage.status.as_str(),
-                inspection.coverage.history_records,
-                inspection.coverage.chartable_records,
-                inspection.coverage.dropped_records,
-                warnings_json,
-            ],
-        )? > 0;
+        let exists = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM observation_sources WHERE payload_hash = ?1)",
+            [&inspection.payload_hash],
+            |row| row.get::<_, bool>(0),
+        )?;
 
-        if inserted {
+        if !exists {
+            let resolution =
+                resolve_branch(&transaction, &inspection.payload_hash, &inspection.records)?;
+            let warnings_json = serde_json::to_string(&inspection.coverage.warnings)
+                .map_err(|_| ObservatoryError::StorageUnavailable)?;
+            transaction.execute(
+                "INSERT INTO observation_sources(\
+                     payload_hash, source_file_name, source_file_size, source_modified_ms,\
+                     imported_at_ms, parser_version, format_profile, branch_id, geographic_scope,\
+                     coverage_status, history_records, chartable_records, dropped_records, warnings_json\
+                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                params![
+                    inspection.payload_hash,
+                    inspection.source_file_name,
+                    to_sql_integer(inspection.source_file_size)?,
+                    inspection.source_modified_ms,
+                    now_ms(),
+                    PARSER_VERSION,
+                    FORMAT_PROFILE,
+                    resolution.branch_id,
+                    REPUBLIC_SCOPE,
+                    inspection.coverage.status.as_str(),
+                    inspection.coverage.history_records,
+                    inspection.coverage.chartable_records,
+                    inspection.coverage.dropped_records,
+                    warnings_json,
+                ],
+            )?;
+
             {
                 let mut insert_record = transaction.prepare(
                     "INSERT INTO embedded_records(\
@@ -148,18 +95,45 @@ impl ObservationRepository {
                     }
                 }
             }
+            persist_history_signature(&transaction, &inspection.payload_hash, &inspection.records)?;
+            persist_resolution(&transaction, &inspection.payload_hash, &resolution)?;
+        } else {
+            let branch_id = transaction.query_row(
+                "SELECT branch_id FROM observation_sources WHERE payload_hash = ?1",
+                [&inspection.payload_hash],
+                |row| row.get::<_, String>(0),
+            )?;
+            transaction.execute(
+                "UPDATE archive_state SET selected_branch_id = ?1 WHERE singleton_id = 1",
+                [branch_id],
+            )?;
         }
 
+        transaction.execute(
+            "INSERT OR IGNORE INTO archive_observations(\
+                 payload_hash, source_file_name, source_file_size, source_modified_ms, observed_at_ms\
+             ) VALUES(?1, ?2, ?3, ?4, ?5)",
+            params![
+                inspection.payload_hash,
+                inspection.source_file_name,
+                to_sql_integer(inspection.source_file_size)?,
+                inspection.source_modified_ms,
+                now_ms(),
+            ],
+        )?;
+
         transaction.commit()?;
-        Ok(inserted)
+        Ok(!exists)
     }
 
     pub fn load_latest_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
         let connection = self.connect()?;
+        let selected = selected_branch_id(&connection)?;
         let hash = connection
             .query_row(
-                "SELECT payload_hash FROM observation_sources ORDER BY imported_at_ms DESC LIMIT 1",
-                [],
+                "SELECT payload_hash FROM observation_sources \
+                 WHERE branch_id = ?1 ORDER BY imported_at_ms DESC, payload_hash DESC LIMIT 1",
+                [&selected],
                 |row| row.get::<_, String>(0),
             )
             .optional()?;
@@ -170,15 +144,6 @@ impl ObservationRepository {
     pub fn load_dataset(&self, hash: &str) -> Result<ReceiverDataset, ObservatoryError> {
         let connection = self.connect()?;
         self.load_dataset_with_connection(&connection, hash)
-    }
-
-    pub fn observation_count(&self) -> Result<u32, ObservatoryError> {
-        let connection = self.connect()?;
-        connection
-            .query_row("SELECT COUNT(*) FROM observation_sources", [], |row| {
-                row.get::<_, u32>(0)
-            })
-            .map_err(Into::into)
     }
 
     fn load_dataset_with_connection(
@@ -306,85 +271,5 @@ impl ObservationRepository {
             })?
             .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)
-    }
-
-    fn connect(&self) -> Result<Connection, ObservatoryError> {
-        let connection = Connection::open(&self.database_path)?;
-        connection.pragma_update(None, "foreign_keys", "ON")?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(connection)
-    }
-}
-
-fn to_sql_integer(value: u64) -> Result<i64, ObservatoryError> {
-    i64::try_from(value).map_err(|_| ObservatoryError::StorageUnavailable)
-}
-
-fn from_sql_integer(value: i64) -> Result<u64, rusqlite::Error> {
-    u64::try_from(value).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            0,
-            rusqlite::types::Type::Integer,
-            Box::new(error),
-        )
-    })
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
-        .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::Cursor;
-
-    use tempfile::tempdir;
-
-    use super::ObservationRepository;
-    use crate::model::SaveInspection;
-    use crate::stats_parser::parse_stats;
-
-    #[test]
-    fn stores_normalised_metrics_and_deduplicates_by_payload_hash() {
-        let directory = tempdir().expect("temporary directory");
-        let repository = ObservationRepository::initialise(directory.path().join("test.sqlite3"))
-            .expect("repository");
-        let parsed = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/valid.receiver-stats.txt"
-        )))
-        .expect("fixture");
-        let inspection = SaveInspection {
-            payload_hash: parsed.payload_hash,
-            source_file_name: "synthetic.zip".to_owned(),
-            source_file_size: 100,
-            source_modified_ms: 1,
-            records: parsed.records,
-            coverage: parsed.coverage,
-        };
-
-        assert!(
-            repository
-                .save_inspection(&inspection)
-                .expect("first import")
-        );
-        assert!(
-            !repository
-                .save_inspection(&inspection)
-                .expect("duplicate import")
-        );
-        assert_eq!(repository.observation_count().expect("count"), 1);
-
-        let dataset = repository
-            .load_latest_dataset()
-            .expect("load")
-            .expect("dataset");
-        assert_eq!(dataset.points.len(), 3);
-        assert_eq!(dataset.source_fields.len(), 4);
-        assert_eq!(dataset.branch_id, "unassigned");
-        assert_eq!(dataset.geographic_scope, "republic");
     }
 }

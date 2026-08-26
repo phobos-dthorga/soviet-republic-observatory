@@ -1,10 +1,11 @@
 # Architecture overview
 
 Republic Observatory is a local-first desktop application assembled through
-narrow vertical slices. The first production slice now observes the newest save
-on explicit request, parses the receiver-class global-history subset, stores one
-distinct observation, and renders it through the declarative chart contract.
-Automatic watching and branch ancestry remain the next slice.
+narrow vertical slices. The desktop host observes the newest save on explicit
+request, parses the receiver-class global-history subset, stores distinct states
+and file observations separately, resolves supported prefix ancestry, and
+renders the selected branch through the declarative chart contract. Automatic
+watching remains the next observation slice.
 
 ## Proposed components
 
@@ -21,7 +22,7 @@ Configured save directory
   content dedupe ──────► neutral observation identity
           │
           ▼
-  SQLite repository ───► raw-field evidence references + normalised facts
+  storage boundary ────► SQLite facts + lineage + query projections
           │
           ▼
   analytics services ──► built-in + Analysis Pack calculations
@@ -48,22 +49,33 @@ Translates supported source fields into stable facts. It emits coverage and
 unsupported-field evidence rather than leaking raw parser maps throughout the
 application. Sanitised fixtures establish compatibility.
 
-### Timeline service — next slice
+### Timeline service
 
-The current slice hashes statistical payloads and rejects duplicate history.
-The next slice compares record prefixes, records parent observation where
-supported, and starts a branch where ancestry is ambiguous or divergent. It
-will never infer historical order solely from filename.
+The implemented timeline service hashes statistical payloads, compares exact
+supported receiver-history records, continues strict prefixes, and records the
+nearest observed parent. Extending an older state after an incompatible tip,
+re-observing a shorter prefix, or finding a unique partial divergence creates a
+separate fork. Evidence tied across branches or sharing no supported prefix
+remains `unassigned`. Filename and modification order never establish ancestry.
 
 ### Storage
 
 The first append-only SQLite migration stores observation sources, embedded
-receiver records, and normalised metric observations. Source fields and lines,
-payload hash, parser/profile versions, branch placeholder, scope, and coverage
-remain queryable. Configured paths are private settings and never enter the
-presentation model. Later migrations add resolved branches, snapshots,
+receiver records, and normalised metric observations. The second separates
+observed files from distinct states and adds timeline branches, lineage
+evidence, compact cumulative history signatures, and branch selection. Prefix
+resolution scans one signature per state and loads full records only for branch
+tips when divergence evidence requires them. Connection, migration,
+observation, branch, and settings responsibilities are separate modules behind
+one application-owned storage API. Configured paths remain private settings and
+never enter the presentation model. Later migrations add snapshots,
 annotations, targets, and analytical results. Raw archives remain outside the
 database.
+
+SQLite is app-local and deliberately unencrypted: the current database contains
+no credentials or secrets that justify application key management. Ordinary OS
+file permissions are the protection boundary. Future credentials belong in an
+OS credential vault; they do not automatically justify encrypting observations.
 
 ### Analytics
 
@@ -95,9 +107,8 @@ become database keys. Analysis Pack prose carries its own declared locale.
 - **Tauri 2** for the desktop shell and a small command boundary.
 - **Svelte 5 + TypeScript** for the interface.
 - **Apache ECharts** behind an application-owned declarative adapter.
-- **SQLite** for local observations and plans; encryption is evaluated when the
-  first persistent vertical slice defines the actual sensitivity and backup
-  model.
+- **SQLite** for local observations and plans behind a modular persistence
+  boundary; the database is unencrypted by explicit decision.
 
 MapLibre, Three.js, an executable plugin runtime, a hosted service, and a general
 notebook runtime are not foundation dependencies. The Analysis Pack schema is a

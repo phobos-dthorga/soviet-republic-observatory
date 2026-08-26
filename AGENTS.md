@@ -37,6 +37,9 @@
 - Out-of-process execution is failure containment, not an operating-system
   sandbox. Do not describe it as one.
 - Treat database migrations as append-only once released.
+- Keep the app-local SQLite database unencrypted while it contains no secrets.
+  Do not add SQLCipher or application key management without a concrete threat
+  model; future credentials belong in an operating-system credential vault.
 - Reduce duplicate calculations and magic field names as soon as their shared
   meaning is established; do not generalise hypothetical requirements.
 

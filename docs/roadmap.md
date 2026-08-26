@@ -27,8 +27,8 @@ numbers are assigned only when implementation begins.
 - Bounded ZIP validation, pre/post-read stability check, and streaming read-only
   `stats.ini` access without extraction
 - Actual game year/day and the four receiver-class history fields
-- Private SQLite source, record, normalised metric, parser, coverage, and content
-  identity records through an append-only migration
+- App-local unencrypted SQLite source, record, normalised metric, parser,
+  coverage, and content identity records through an append-only migration
 - Payload deduplication and one observed 100% receiver-composition chart with an
   exact evidence inspector
 - Sanitised fixtures for complete, partial, malformed, duplicate, unsupported,
@@ -40,12 +40,22 @@ numbers are assigned only when implementation begins.
 
 ## Slice 2 — branch-aware archive
 
+Implemented foundation:
+
+- Modular application-owned SQLite persistence boundary
+- Separate file-observation and distinct-state counts
+- Prefix-based ancestry, parent evidence, rollback forks, partial-divergence
+  forks, and conservative unassigned histories
+- Branch selection shared by Archive and observed Broadcast data
+- Historical-record catalogue with coverage and content identity
+- Append-only migration and version-one database backfill
+
+Remaining in this slice:
+
+- Storage-growth benchmark and shared-prefix compaction decision before the
+  automatic watcher can import saves continuously
 - Automatic observation of stable newly written saves
-- Historical-record catalogue
-- Payload hashing and deduplication
-- Prefix-based ancestry evidence
-- Branch creation and selection
-- Archive timeline and two-save comparison
+- Archive two-save comparison
 - Current and city snapshot capture from every distinct save
 - Authoritative Rust validation and persistence for community language packs
 

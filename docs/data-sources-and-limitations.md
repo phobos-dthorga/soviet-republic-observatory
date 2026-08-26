@@ -19,13 +19,21 @@ The implemented manual observer follows this sequence:
 4. hash the statistical payload and deduplicate it;
 5. parse supported records into application-owned models;
 6. store source identity, embedded records, normalised metrics, parser version,
-   coverage, source fields, and source lines atomically in private SQLite; and
-7. return a bounded dataset to the Broadcast presentation.
+   coverage, source fields, source lines, file evidence, and lineage atomically
+   in app-local SQLite;
+7. resolve exact supported prefixes into a main timeline, successor, fork, or
+   visibly unassigned state; and
+8. return a bounded dataset for the selected branch to the presentation.
 
-Automatic watching and branch ancestry are not implemented in this slice. The
-player explicitly asks the application to inspect the newest ZIP, and imported
-history is assigned to the neutral `unassigned` branch until branch evidence is
-implemented.
+Automatic watching is not implemented in this slice: the player explicitly
+asks the application to inspect the newest ZIP. Prefix ancestry currently uses
+only the supported receiver-history record identity. It cannot claim ancestry
+from unsupported current-state or binary fields, so tied or unrelated evidence
+remains visibly `unassigned`.
+
+The SQLite database is unencrypted and contains no credentials. Full configured
+paths remain inside app-local settings and are never included in presentation or
+extension models. Raw save archives remain outside the database.
 
 ## `stats.ini` coverage
 

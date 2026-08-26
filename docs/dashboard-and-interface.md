@@ -41,10 +41,20 @@ changing their semantic order.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
 
-The current foundation enables Briefing, Broadcast, and Extensions in primary
-navigation. The other buttons remain visibly disabled until their analytical
-vertical slices exist. The shell owns only global navigation and observation
-context; each enabled destination is a presentational workspace component.
+The current foundation enables Briefing, Broadcast, Extensions, and Archive in
+primary navigation. The other buttons remain visibly disabled until their
+analytical vertical slices exist. The shell owns only global navigation and
+observation context; each enabled destination is a presentational workspace
+component.
+
+### Observation archive
+
+The Archive separates files observed from distinct statistical states. Its
+branch list changes the analytical context without rewriting history. The state
+ledger exposes game date, exact lineage relationship, shared-prefix evidence,
+coverage, content identity, and repeated-file count. An unrelated or tied
+history remains visibly unassigned. File names are display evidence only and
+never establish ancestry.
 
 ### Save observer
 
@@ -230,7 +240,7 @@ claim feature parity.
 ## Localisation boundary
 
 The interface is fully catalogue-backed rather than partially migrated: shell
-controls, all three enabled workspaces, chart titles and series, provenance,
+controls, all four enabled workspaces, chart titles and series, provenance,
 textual summaries, observer/language dialogs, and number formatting react to
 the selected locale. Document direction uses the manifest's explicit LTR/RTL
 value, and layout uses logical edges where direction affects meaning.

@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 pub const PARSER_VERSION: &str = "stats-ini.receiver-history.v1";
 pub const FORMAT_PROFILE: &str = "wrsr-stats-implicit-v1";
-pub const INITIAL_BRANCH_ID: &str = "unassigned";
 pub const REPUBLIC_SCOPE: &str = "republic";
 
 pub const RECEIVER_METRICS: [MetricDefinition; 4] = [
@@ -137,6 +136,50 @@ pub struct ReceiverDataset {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct TimelineBranch {
+    pub branch_id: String,
+    pub branch_kind: String,
+    pub parent_branch_id: Option<String>,
+    pub fork_record_id: Option<u32>,
+    pub observation_count: u32,
+    pub latest_year: Option<i32>,
+    pub latest_day: Option<u16>,
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ArchiveObservation {
+    pub payload_hash: String,
+    pub source_file_name: String,
+    pub imported_at_ms: i64,
+    pub branch_id: String,
+    pub relationship: String,
+    pub parent_payload_hash: Option<String>,
+    pub shared_record_count: u32,
+    pub latest_year: Option<i32>,
+    pub latest_day: Option<u16>,
+    pub history_records: u32,
+    pub coverage_status: CoverageStatus,
+    pub file_observation_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ArchiveOverview {
+    pub selected_branch_id: String,
+    pub file_observation_count: u32,
+    pub distinct_state_count: u32,
+    pub unresolved_state_count: u32,
+    pub branches: Vec<TimelineBranch>,
+    pub observations: Vec<ArchiveObservation>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BranchSelectionResult {
+    pub archive: ArchiveOverview,
+    pub dataset: Option<ReceiverDataset>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImportOutcome {
     Imported,
@@ -169,6 +212,7 @@ pub struct SetupState {
     pub game_directory: Option<ConfiguredDirectorySummary>,
     pub save_candidates: u32,
     pub observed_saves: u32,
+    pub distinct_states: u32,
     pub game_vocabularies: Vec<GameVocabularySource>,
 }
 

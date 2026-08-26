@@ -16,6 +16,8 @@ the game is active.
 - Open ZIP archives and entries read-only; never extract beside, rename, replace,
   or delete a save.
 - Store parsed application facts and content hashes locally in SQLite.
+- Keep SQLite unencrypted while the application stores no credentials or other
+  secrets requiring an application-managed key lifecycle.
 - Do not require an account, hosted service, game process injection, or memory
   inspection.
 - Keep raw saves outside the application database and source repository.

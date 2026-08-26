@@ -13,11 +13,13 @@ questions:
 3. What probably contributed to it?
 4. What happens if the player intervenes?
 
-> **Project status:** first trusted observation slice. The Tauri desktop program
-> can inspect the newest completed save in a player-selected folder, parse the
-> four receiver classes from `stats.ini`, store their normalised history in a
-> private local SQLite database, and replace the Broadcast receiver chart with
-> observed values. All other dashboard values remain visibly synthetic.
+> **Project status:** trusted observation and branch-archive foundation. The
+> Tauri desktop program can inspect the newest completed save in a
+> player-selected folder, parse the four receiver classes from `stats.ini`,
+> separate observed files from distinct states in app-local SQLite, resolve
+> supported history prefixes into branches, and replace the Broadcast receiver
+> chart with the selected branch. All other dashboard values remain visibly
+> synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -79,8 +81,9 @@ npm run desktop
 Open **Save observer** in the upper-right corner, choose the folder containing
 the game's save ZIP files, optionally choose the game installation folder for
 the future vocabulary catalogue, and select **Observe newest save**. The source
-archive remains untouched. Automatic watching is a later slice; observation is
-manual for now.
+archive remains untouched. Use **Archive** to inspect ancestry and select a
+timeline branch. Automatic watching is a later slice; observation is manual for
+now.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.
@@ -98,15 +101,15 @@ npm run rust:test
 
 ## Proposed technical foundation
 
-| Area                          | Direction                                            |
-| ----------------------------- | ---------------------------------------------------- |
-| Desktop shell                 | Tauri 2                                              |
-| Save observation and services | Rust, with bounded read-only ZIP access              |
-| Interface                     | Svelte 5 and TypeScript                              |
-| Charts                        | Apache ECharts behind `ObservatoryChart`             |
-| Local storage                 | Private SQLite with append-only migrations           |
-| Input                         | ZIP saves read non-destructively; `stats.ini` first  |
-| Statistical models            | Application-owned, versioned and provenance-labelled |
+| Area                          | Direction                                                |
+| ----------------------------- | -------------------------------------------------------- |
+| Desktop shell                 | Tauri 2                                                  |
+| Save observation and services | Rust, with bounded read-only ZIP access                  |
+| Interface                     | Svelte 5 and TypeScript                                  |
+| Charts                        | Apache ECharts behind `ObservatoryChart`                 |
+| Local storage                 | App-local unencrypted SQLite with append-only migrations |
+| Input                         | ZIP saves read non-destructively; `stats.ini` first      |
+| Statistical models            | Application-owned, versioned and provenance-labelled     |
 
 The browser preview and desktop program share one presentation layer. Native
 folder access, archive parsing, provenance, and persistence stay behind the

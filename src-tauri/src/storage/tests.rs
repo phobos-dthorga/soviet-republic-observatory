@@ -1,0 +1,296 @@
+use rusqlite::{Connection, params};
+use tempfile::tempdir;
+
+use super::ObservatoryStorage;
+use crate::model::{CoverageReport, CoverageStatus, ReceiverRecord, SaveInspection, SourceLineSet};
+
+#[test]
+fn stores_normalised_metrics_and_separates_files_from_distinct_states() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+    let first = inspection("aaa111", "first.zip", &[1, 2, 3]);
+
+    assert!(storage.save_inspection(&first).expect("first import"));
+    assert!(!storage.save_inspection(&first).expect("same file"));
+    let second_file = inspection("aaa111", "copy.zip", &[1, 2, 3]);
+    assert!(!storage.save_inspection(&second_file).expect("copied state"));
+
+    assert_eq!(storage.distinct_state_count().expect("distinct count"), 1);
+    assert_eq!(storage.file_observation_count().expect("file count"), 2);
+    let dataset = storage
+        .load_latest_dataset()
+        .expect("load")
+        .expect("dataset");
+    assert_eq!(dataset.points.len(), 3);
+    assert_eq!(dataset.source_fields.len(), 4);
+    assert_eq!(dataset.branch_id, "main");
+}
+
+#[test]
+fn strict_prefix_successors_remain_on_main() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("main-one", "one.zip", &[1, 2]))
+        .expect("root");
+    storage
+        .save_inspection(&inspection("main-two", "two.zip", &[1, 2, 3]))
+        .expect("successor");
+
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.distinct_state_count, 2);
+    assert_eq!(archive.branches.len(), 1);
+    assert_eq!(archive.branches[0].branch_id, "main");
+    assert_eq!(archive.branches[0].observation_count, 2);
+    assert_eq!(archive.observations[0].relationship, "successor");
+    assert_eq!(archive.observations[0].shared_record_count, 2);
+}
+
+#[test]
+fn extending_an_older_state_after_an_incompatible_tip_creates_a_fork() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("root-state", "root.zip", &[1, 2]))
+        .expect("root");
+    storage
+        .save_inspection(&inspection("long-state", "long.zip", &[1, 2, 3, 4]))
+        .expect("main tip");
+    storage
+        .save_inspection(&inspection("fork-state", "fork.zip", &[1, 2, 9]))
+        .expect("fork");
+
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.branches.len(), 2);
+    assert_eq!(archive.selected_branch_id, "fork-fork-state");
+    let fork = archive
+        .branches
+        .iter()
+        .find(|branch| branch.branch_kind == "fork")
+        .expect("fork branch");
+    assert_eq!(fork.parent_branch_id.as_deref(), Some("main"));
+    assert_eq!(fork.fork_record_id, Some(1));
+    assert_eq!(archive.observations[0].relationship, "rollback_fork");
+    assert_eq!(
+        archive.observations[0].parent_payload_hash.as_deref(),
+        Some("root-state")
+    );
+}
+
+#[test]
+fn partial_divergence_without_an_observed_fork_point_stays_explicit() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("main-state", "main.zip", &[1, 2, 3]))
+        .expect("main");
+    storage
+        .save_inspection(&inspection("diverged-state", "diverged.zip", &[1, 2, 8]))
+        .expect("divergence");
+
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.observations[0].relationship, "divergent_fork");
+    assert_eq!(archive.observations[0].shared_record_count, 2);
+    assert!(archive.observations[0].parent_payload_hash.is_none());
+}
+
+#[test]
+fn selecting_a_branch_changes_the_latest_dataset_without_rewriting_history() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("main-state", "main.zip", &[1, 2, 3]))
+        .expect("main");
+    storage
+        .save_inspection(&inspection("fork-state", "fork.zip", &[1, 2]))
+        .expect("rollback");
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("latest fork")
+            .expect("fork dataset")
+            .payload_hash,
+        "fork-state"
+    );
+
+    storage.select_branch("main").expect("select main");
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("latest main")
+            .expect("main dataset")
+            .payload_hash,
+        "main-state"
+    );
+    assert_eq!(storage.distinct_state_count().expect("count"), 2);
+
+    storage
+        .save_inspection(&inspection("fork-state", "fork.zip", &[1, 2]))
+        .expect("observe known fork");
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("reselected fork")
+            .expect("fork dataset")
+            .payload_hash,
+        "fork-state"
+    );
+}
+
+#[test]
+fn unknown_branch_selection_is_rejected() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    let error = storage
+        .select_branch("not-a-branch")
+        .expect_err("unknown branch");
+    assert_eq!(error.code(), "unknown_branch");
+}
+
+#[test]
+fn unrelated_history_remains_unassigned() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("main-state", "main.zip", &[1, 2]))
+        .expect("main");
+    storage
+        .save_inspection(&inspection("unknown-state", "unknown.zip", &[7, 8]))
+        .expect("unrelated");
+
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.unresolved_state_count, 1);
+    assert_eq!(archive.selected_branch_id, "unassigned");
+    let unresolved = archive
+        .observations
+        .iter()
+        .find(|observation| observation.payload_hash == "unknown-state")
+        .expect("unresolved observation");
+    assert_eq!(unresolved.branch_id, "unassigned");
+    assert_eq!(unresolved.relationship, "ambiguous");
+}
+
+#[test]
+fn version_one_database_is_migrated_and_backfilled_without_reimport() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("version-one.sqlite3");
+    let connection = Connection::open(&path).expect("version one connection");
+    connection
+        .execute_batch(
+            "PRAGMA foreign_keys = ON;
+             CREATE TABLE schema_migrations (
+                 version INTEGER PRIMARY KEY,
+                 name TEXT NOT NULL,
+                 applied_at_ms INTEGER NOT NULL
+             ) STRICT;",
+        )
+        .expect("migration catalogue");
+    connection
+        .execute_batch(include_str!("../../migrations/0001_observations.sql"))
+        .expect("version one schema");
+    connection
+        .execute(
+            "INSERT INTO schema_migrations(version, name, applied_at_ms)
+             VALUES(1, 'observation foundation', 1)",
+            [],
+        )
+        .expect("version one migration row");
+    connection
+        .execute(
+            "INSERT INTO observation_sources(
+                 payload_hash, source_file_name, source_file_size, source_modified_ms,
+                 imported_at_ms, parser_version, format_profile, branch_id, geographic_scope,
+                 coverage_status, history_records, chartable_records, dropped_records, warnings_json
+             ) VALUES('legacy-state', 'legacy.zip', 100, 1, 2, 'parser', 'profile',
+                      'unassigned', 'republic', 'complete', 1, 1, 0, '[]')",
+            [],
+        )
+        .expect("legacy source");
+    connection
+        .execute(
+            "INSERT INTO embedded_records(
+                 payload_hash, record_id, year, day, game_day, classified_total
+             ) VALUES('legacy-state', 0, 2000, 1, 0, 104)",
+            [],
+        )
+        .expect("legacy record");
+    for (index, metric) in crate::model::RECEIVER_METRICS.iter().enumerate() {
+        connection
+            .execute(
+                "INSERT INTO metric_observations(
+                     payload_hash, record_id, metric_id, value_integer, source_field,
+                     source_line, evidence_kind, coverage
+                 ) VALUES('legacy-state', 0, ?1, ?2, ?3, ?4, 'save_fact', 'complete')",
+                params![
+                    metric.id,
+                    11 + index as i64 * 10,
+                    metric.source_field,
+                    index as i64 + 1
+                ],
+            )
+            .expect("legacy metric");
+    }
+    drop(connection);
+
+    let storage = ObservatoryStorage::initialise(path).expect("migrated storage");
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.file_observation_count, 1);
+    assert_eq!(archive.distinct_state_count, 1);
+    assert_eq!(archive.unresolved_state_count, 0);
+    assert_eq!(archive.selected_branch_id, "main");
+    assert_eq!(archive.observations[0].relationship, "root");
+}
+
+fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
+    let records = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let base_line = (index as u64 * 5) + 1;
+            ReceiverRecord {
+                record_id: index as u32,
+                year: 2000,
+                day: index as u16 + 1,
+                game_day: index as i64,
+                none: value + 10,
+                radio: value + 20,
+                television: value + 30,
+                computer: value + 40,
+                classified_total: (value * 4) + 100,
+                source_lines: SourceLineSet {
+                    none: base_line,
+                    radio: base_line + 1,
+                    television: base_line + 2,
+                    computer: base_line + 3,
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    SaveInspection {
+        payload_hash: hash.to_owned(),
+        source_file_name: file_name.to_owned(),
+        source_file_size: 100,
+        source_modified_ms: 1,
+        coverage: CoverageReport {
+            status: CoverageStatus::Complete,
+            history_records: records.len() as u32,
+            chartable_records: records.len() as u32,
+            dropped_records: 0,
+            warnings: Vec::new(),
+        },
+        records,
+    }
+}

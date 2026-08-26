@@ -35,6 +35,8 @@ pub enum ObservatoryError {
     ReceiverHistoryUnavailable,
     #[error("Local observation storage is unavailable.")]
     StorageUnavailable,
+    #[error("The selected timeline branch does not exist.")]
+    UnknownBranch,
 }
 
 impl ObservatoryError {
@@ -56,6 +58,7 @@ impl ObservatoryError {
             Self::MalformedReceiverHistory(_) => "malformed_receiver_history",
             Self::ReceiverHistoryUnavailable => "receiver_history_unavailable",
             Self::StorageUnavailable => "storage_unavailable",
+            Self::UnknownBranch => "unknown_branch",
         }
     }
 }

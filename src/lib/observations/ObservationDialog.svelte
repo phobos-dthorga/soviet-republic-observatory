@@ -56,6 +56,7 @@
     malformed_receiver_history: "error-observer-malformed-history",
     receiver_history_unavailable: "error-observer-receiver-unavailable",
     storage_unavailable: "error-observer-storage-unavailable",
+    unknown_branch: "error-observer-unknown-branch",
     unknown: "error-observer-unknown",
   };
 

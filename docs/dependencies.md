@@ -13,10 +13,10 @@ keeping the Observatory independent and small.
 | Vitest           | MIT        | Calculation and contract tests                        | Development only                                     |
 | Ajv              | MIT        | Draft 2020-12 schema-conformance proofs               | Development only; Rust host remains authoritative    |
 | Prettier         | MIT        | Deterministic source formatting                       | Development only                                     |
-| Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Four bounded commands; no file paths reach Svelte    |
+| Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Thin bounded commands; no file paths reach Svelte    |
 | Dialog plugin    | MIT/Apache | Player-initiated native directory selection           | Directory selection only; no implicit scanning       |
 | `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction           |
-| `rusqlite`       | MIT        | Private observation and settings database             | Bundled SQLite; append-only migrations               |
+| `rusqlite`       | MIT        | App-local observation and settings database           | Bundled unencrypted SQLite; append-only migrations   |
 | `sha2`           | MIT/Apache | Statistical-payload content identity                  | Deduplication/provenance, not security attestation   |
 | `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                 |
 
@@ -37,6 +37,12 @@ from drifting away from Draft 2020-12 during development; it is not a desktop
 trust boundary. MapLibre, Three.js, hosted services, executable plugin runtimes,
 and data science environments remain outside the dependency set until a
 concrete player question requires them.
+
+SQLite encryption, SQLCipher, ORM/database-portability infrastructure, and a
+second database engine are intentionally absent. The current database contains
+no secrets, so OS file permissions are sufficient and no application key
+lifecycle is justified. If future credentials are introduced, they should use
+the operating system's credential vault rather than being placed in SQLite.
 
 Before adding a dependency, document:
 

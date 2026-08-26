@@ -1,6 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  ArchiveOverview,
+  BranchSelectionResult,
   DirectoryKind,
   ObservationImportResult,
   ObserverErrorCode,
@@ -31,6 +33,18 @@ export function getSetupState(): Promise<SetupState> {
 
 export function getLatestReceiverDataset(): Promise<ReceiverDataset | null> {
   return invoke<ReceiverDataset | null>("get_latest_receiver_dataset");
+}
+
+export function getArchiveOverview(): Promise<ArchiveOverview> {
+  return invoke<ArchiveOverview>("get_archive_overview");
+}
+
+export function selectTimelineBranch(
+  branchId: string,
+): Promise<BranchSelectionResult> {
+  return invoke<BranchSelectionResult>("select_timeline_branch", {
+    branchId,
+  });
 }
 
 export function observeLatestSave(): Promise<ObservationImportResult> {

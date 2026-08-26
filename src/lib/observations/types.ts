@@ -46,6 +46,52 @@ export type ReceiverDataset = {
   points: ReceiverHistoryPoint[];
 };
 
+export type TimelineBranch = {
+  branch_id: string;
+  branch_kind: "main" | "fork" | "unassigned";
+  parent_branch_id: string | null;
+  fork_record_id: number | null;
+  observation_count: number;
+  latest_year: number | null;
+  latest_day: number | null;
+  selected: boolean;
+};
+
+export type ArchiveObservation = {
+  payload_hash: string;
+  source_file_name: string;
+  imported_at_ms: number;
+  branch_id: string;
+  relationship:
+    | "root"
+    | "successor"
+    | "equivalent_history"
+    | "rollback_fork"
+    | "divergent_fork"
+    | "ambiguous";
+  parent_payload_hash: string | null;
+  shared_record_count: number;
+  latest_year: number | null;
+  latest_day: number | null;
+  history_records: number;
+  coverage_status: CoverageStatus;
+  file_observation_count: number;
+};
+
+export type ArchiveOverview = {
+  selected_branch_id: string;
+  file_observation_count: number;
+  distinct_state_count: number;
+  unresolved_state_count: number;
+  branches: TimelineBranch[];
+  observations: ArchiveObservation[];
+};
+
+export type BranchSelectionResult = {
+  archive: ArchiveOverview;
+  dataset: ReceiverDataset | null;
+};
+
 export type ConfiguredDirectorySummary = {
   name: string;
 };
@@ -63,6 +109,7 @@ export type SetupState = {
   game_directory?: ConfiguredDirectorySummary;
   save_candidates: number;
   observed_saves: number;
+  distinct_states: number;
   game_vocabularies: GameVocabularySource[];
 };
 
@@ -92,4 +139,5 @@ export type ObserverErrorCode =
   | "malformed_receiver_history"
   | "receiver_history_unavailable"
   | "storage_unavailable"
+  | "unknown_branch"
   | "unknown";
