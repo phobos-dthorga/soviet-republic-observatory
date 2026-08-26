@@ -1,0 +1,14 @@
+$STAT_RECORD 0
+$DATE_DAY 10
+$DATE_YEAR 1980
+$Citizens_EletronicNone 80
+$Citizens_EletrinicRadio 15
+$Citizens_EletronicTV 5
+$Citizens_EletronicComputer 0
+$STAT_RECORD 0
+$DATE_DAY 15
+$DATE_YEAR 1980
+$Citizens_EletronicNone 70
+$Citizens_EletrinicRadio 20
+$Citizens_EletronicTV 8
+$Citizens_EletronicComputer 2

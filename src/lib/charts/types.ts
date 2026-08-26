@@ -19,6 +19,7 @@ export type Provenance = {
 
 export type ChartPoint = {
   category: string;
+  category_value?: number;
   value: number;
   gap_before?: boolean;
 };
@@ -46,6 +47,7 @@ export type ChartSpec = {
   description: string;
   kind: "line" | "area" | "bar";
   orientation?: "vertical" | "horizontal";
+  category_axis_scale?: "ordinal" | "game_day";
   category_axis_label?: string;
   value_axis_label?: string;
   unit?: string;

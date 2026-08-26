@@ -1,0 +1,35 @@
+[package]
+name = "republic-observatory"
+version = "0.2.0"
+description = "Read-only save observation host for Republic Observatory"
+authors = ["Republic Observatory contributors"]
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+
+[lib]
+name = "republic_observatory_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.145"
+sha2 = "0.11.0"
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-dialog = "2.7.2"
+thiserror = "2.0.16"
+zip = { version = "8.2.0", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3.23.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

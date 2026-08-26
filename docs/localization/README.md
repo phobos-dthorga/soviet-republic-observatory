@@ -5,6 +5,7 @@ WyrmGrid, with several debt-reduction changes made before save parsing begins.
 English (Australia), `en-AU`, is the canonical source catalogue. Every current
 workspace, chart label, textual chart summary, provenance sentence, dialog, and
 locale-sensitive number passes through the same host-owned boundary.
+The current source contract is compatibility version 1, additive revision 3.
 
 ## What is implemented
 
@@ -19,10 +20,12 @@ locale-sensitive number passes through the same host-owned boundary.
 - expanded and RTL pseudo-language generators used by tests; and
 - a localisation audit in `npm run check`.
 
-The runnable webview foundation stores installed community catalogues and the
-selected ID in versioned browser-local storage. When the Tauri/Rust host exists,
-Rust becomes the authoritative validator and persistence owner. The manifest
-contract and distinct lifecycle remain the same.
+The runnable webview stores installed community catalogues and the selected ID
+in versioned webview-local storage. The Tauri/Rust save host now exists, but
+language-pack validation and persistence have not yet migrated across that
+boundary. Rust becoming their authoritative owner is a separate slice so it can
+retain the same manifest contract and distinct install/select/remove lifecycle
+without coupling translation work to save parsing.
 
 ## Manifest contract
 

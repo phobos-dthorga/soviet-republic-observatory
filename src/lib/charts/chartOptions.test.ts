@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  condensedSeriesSummary,
   expandedCategories,
+  expandedGameDayValues,
   expandedValues,
+  formatGameDayValue,
   optionForChart,
   provenanceForSeries,
 } from "./chartOptions";
@@ -43,6 +46,59 @@ describe("chart options", () => {
     expect(
       expandedCategories(baseSpec.series[0].points, "aucune observation")[1],
     ).toBe("1979 Q2 · aucune observation");
+  });
+
+  it("uses actual game-day positions instead of equally spaced categories", () => {
+    const gameDaySpec: ChartSpec = {
+      ...baseSpec,
+      category_axis_scale: "game_day",
+      series: [
+        {
+          ...baseSpec.series[0],
+          points: [
+            { category: "1980 · 363", category_value: 723063, value: 80 },
+            {
+              category: "1981 · 005",
+              category_value: 723070,
+              value: 84,
+              gap_before: true,
+            },
+          ],
+        },
+      ],
+    };
+    const option = optionForChart(gameDaySpec) as {
+      xAxis: {
+        type: string;
+        axisLabel: { formatter: (value: number) => string };
+      };
+      series: Array<{ data: ReturnType<typeof expandedGameDayValues> }>;
+    };
+
+    expect(option.xAxis.type).toBe("value");
+    expect(option.xAxis.axisLabel.formatter(1981 * 365 + 5)).toBe("1981 · 005");
+    expect(option.series[0].data).toEqual(
+      expandedGameDayValues(gameDaySpec.series[0].points),
+    );
+    expect(formatGameDayValue(1980 * 365 + 364)).toBe("1980 · 364");
+  });
+
+  it("condenses long textual series without losing extrema or gaps", () => {
+    const points = Array.from({ length: 30 }, (_, index) => ({
+      category: `Day ${index}`,
+      value: index === 12 ? -5 : index,
+      gap_before: index === 18,
+    }));
+
+    expect(condensedSeriesSummary(points)).toMatchObject({
+      count: 30,
+      first: points[0],
+      minimum: points[12],
+      maximum: points[29],
+      latest: points[29],
+      gapCount: 1,
+    });
+    expect(condensedSeriesSummary(points.slice(0, 24))).toBeNull();
   });
 
   it("uses horizontal value and category axes for a horizontal bar", () => {

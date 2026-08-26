@@ -1,9 +1,10 @@
 # Architecture overview
 
-Republic Observatory is designed as a local-first desktop application assembled
-through narrow vertical slices. The first production slice will observe one
-save, parse a supported global-history subset, store one distinct branch-aware
-observation, and render it through the existing declarative chart contract.
+Republic Observatory is a local-first desktop application assembled through
+narrow vertical slices. The first production slice now observes the newest save
+on explicit request, parses the receiver-class global-history subset, stores one
+distinct observation, and renders it through the declarative chart contract.
+Automatic watching and branch ancestry remain the next slice.
 
 ## Proposed components
 
@@ -17,7 +18,7 @@ Configured save directory
   stats.ini parser ────► application-owned facts + coverage report
           │
           ▼
-  ancestry/dedupe ─────► branch-aware observation identity
+  content dedupe ──────► neutral observation identity
           │
           ▼
   SQLite repository ───► raw-field evidence references + normalised facts
@@ -35,9 +36,11 @@ Configured save directory
 
 ### Observer
 
-Watches only configured directories, waits for a candidate file to stabilise,
-validates ZIP structure, and opens entries read-only. It never extracts beside
-the save, mutates timestamps, or manages save retention.
+Inspects only a player-configured directory after an explicit request, selects
+the newest ZIP candidate, validates bounded archive and entry sizes, compares
+file metadata before and after reading, and streams `stats.ini` read-only. It
+never extracts beside the save, mutates timestamps, or manages save retention.
+The automatic watcher is not yet implemented.
 
 ### Parser
 
@@ -45,17 +48,22 @@ Translates supported source fields into stable facts. It emits coverage and
 unsupported-field evidence rather than leaking raw parser maps throughout the
 application. Sanitised fixtures establish compatibility.
 
-### Timeline service
+### Timeline service — next slice
 
-Hashes statistical payloads, identifies duplicates, compares record prefixes,
-records parent observation where supported, and starts a branch where ancestry
-is ambiguous or divergent. It never orders saves solely by filename.
+The current slice hashes statistical payloads and rejects duplicate history.
+The next slice compares record prefixes, records parent observation where
+supported, and starts a branch where ancestry is ambiguous or divergent. It
+will never infer historical order solely from filename.
 
 ### Storage
 
-SQLite stores saves, payload identities, branches, records, snapshots, field
-coverage, annotations, targets, and versioned analytical results. Migrations
-become append-only after release. Raw save archives remain outside the database.
+The first append-only SQLite migration stores observation sources, embedded
+receiver records, and normalised metric observations. Source fields and lines,
+payload hash, parser/profile versions, branch placeholder, scope, and coverage
+remain queryable. Configured paths are private settings and never enter the
+presentation model. Later migrations add resolved branches, snapshots,
+annotations, targets, and analytical results. Raw archives remain outside the
+database.
 
 ### Analytics
 
@@ -122,7 +130,8 @@ display catalogue; display text is not the database key.
 
 ## Failure behaviour
 
-- A half-written save waits and retries without blocking previously stored data.
+- A save that changes during inspection is rejected without affecting
+  previously stored data; automatic wait/retry belongs to the watcher slice.
 - A corrupt archive is recorded as a bounded observation failure, not repaired.
 - An unsupported field is reported in coverage and does not abort unrelated
   supported metrics.

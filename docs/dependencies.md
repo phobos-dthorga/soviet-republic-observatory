@@ -13,6 +13,12 @@ keeping the Observatory independent and small.
 | Vitest           | MIT        | Calculation and contract tests                        | Development only                                     |
 | Ajv              | MIT        | Draft 2020-12 schema-conformance proofs               | Development only; Rust host remains authoritative    |
 | Prettier         | MIT        | Deterministic source formatting                       | Development only                                     |
+| Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Four bounded commands; no file paths reach Svelte    |
+| Dialog plugin    | MIT/Apache | Player-initiated native directory selection           | Directory selection only; no implicit scanning       |
+| `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction           |
+| `rusqlite`       | MIT        | Private observation and settings database             | Bundled SQLite; append-only migrations               |
+| `sha2`           | MIT/Apache | Statistical-payload content identity                  | Deduplication/provenance, not security attestation   |
+| `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                 |
 
 [OnAir WyrmGrid](https://github.com/phobos-dthorga/onair-wyrmgrid) is a design
 and architectural precedent, not a runtime dependency. Both repositories are
@@ -23,12 +29,14 @@ The small Fluent runtime replaces hand-written interpolation and pluralisation;
 it does not permit executable translation modules. The source catalogue and
 manifests remain JSON so they can be inspected and validated independently.
 
-Tauri, Rust crates, and SQLite are introduced with the first real save-observer
-vertical slice. Ajv prevents the checked-in Analysis Pack examples and invalid
-fixtures from drifting away from Draft 2020-12 during development; it is not a
-desktop trust boundary. MapLibre, Three.js, hosted services, executable plugin
-runtimes, and data science environments remain outside the dependency set until
-a concrete player question requires them.
+The Tauri/Rust/SQLite group is now the authoritative save-observation boundary.
+Its purpose is narrow: choose directories with explicit player action, inspect
+one bounded archive read-only, normalise supported facts, and persist provenance
+locally. Ajv prevents the checked-in Analysis Pack examples and invalid fixtures
+from drifting away from Draft 2020-12 during development; it is not a desktop
+trust boundary. MapLibre, Three.js, hosted services, executable plugin runtimes,
+and data science environments remain outside the dependency set until a
+concrete player question requires them.
 
 Before adding a dependency, document:
 

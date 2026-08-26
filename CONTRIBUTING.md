@@ -18,7 +18,16 @@ npm run format:check
 npm run check
 npm test
 npm run build
+npm run rust:check
+npm run rust:test
+cargo fmt --manifest-path src-tauri\Cargo.toml --check
+cargo clippy --manifest-path src-tauri\Cargo.toml --all-targets -- -D warnings
 ```
+
+Maintainers may additionally point `RO_LIVE_SAVE` at a local save ZIP and run
+the opt-in conformance path by test name. Never put that path in a
+fixture, document, log capture, or commit. A failing case must be reduced to a
+minimal sanitised text fixture before it is shared.
 
 Pull requests should explain the player question being improved, the provenance
 of any new field, the behaviour when that field is unavailable, and the tests

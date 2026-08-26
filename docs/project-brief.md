@@ -12,6 +12,15 @@ It should deepen the game rather than play it for the user. A recommendation is
 valuable only when the player can inspect the evidence, understand the rule,
 and decide whether the proposed intervention belongs in their republic.
 
+## Current delivery
+
+The first native vertical slice proves one narrow promise end to end: on
+explicit request, the desktop program reads receiver-class history directly
+from the newest save ZIP, stores normalised facts and provenance locally, and
+renders an observed Receiver Ladder. The rest of the Briefing and Broadcast
+concepts remain visibly synthetic. Automatic watching, branch resolution,
+binary station telemetry, and extension loading are not yet implemented.
+
 ## Player loop
 
 The product organises every feature around five questions:

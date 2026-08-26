@@ -1,6 +1,6 @@
 {
   "name": "soviet-republic-observatory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A local-first planning and statistical observatory for Workers & Resources: Soviet Republic saves.",
   "license": "MIT",
@@ -8,6 +8,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "desktop": "tauri dev",
+    "desktop:build": "tauri build",
+    "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
     "audit:localization": "node scripts/audit-localization.mjs",
     "check": "npm run audit:localization && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
@@ -17,11 +21,14 @@
   },
   "dependencies": {
     "@fluent/bundle": "^0.19.1",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.2",
     "echarts": "6.1.0",
     "svelte": "^5.56.6"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@tauri-apps/cli": "2.11.4",
     "@types/node": "26.1.1",
     "ajv": "^8.20.0",
     "prettier": "3.9.5",

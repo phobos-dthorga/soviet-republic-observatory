@@ -10,9 +10,22 @@ in the locally reviewed game version **1.1.1.9** and the official
 and [Citizens](https://wiki.hoodedhorse.com/Workers_Resources_Soviet_Republic/Citizens)
 references. Compatibility must be rechecked for later game versions.
 
-The current interface is entirely synthetic. It demonstrates questions and
-evidence states; it does not claim that binary station telemetry has been
-decoded.
+The desktop interface can now replace the Receiver Ladder with parsed save
+facts. Every other Broadcast panel remains synthetic and is marked accordingly;
+the application does not claim that binary station telemetry has been decoded.
+
+## Implemented receiver slice
+
+After the player chooses a save directory and requests observation, the Rust
+host streams `stats.ini` from the newest stable ZIP, normalises complete receiver
+records, and deduplicates the payload by SHA-256. The chart uses actual numeric
+game-day positions, preserves gaps, and exposes a textual series summary.
+
+Its evidence inspector reports source filename, full payload identity, parser
+and compatibility profile, branch placeholder, geographic scope, coverage,
+stable metric/source-field mappings, and the latest source lines. Full local
+paths stay private. The stacked shares are a built-in calculation mirroring the
+Receiver Adoption Laboratory example; no Analysis Pack has been loaded.
 
 ## Known plain-text save facts
 

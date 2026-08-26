@@ -41,19 +41,30 @@ changing their semantic order.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
 
-The synthetic foundation enables Briefing, Broadcast, and Extensions in primary
+The current foundation enables Briefing, Broadcast, and Extensions in primary
 navigation. The other buttons remain visibly disabled until their analytical
 vertical slices exist. The shell owns only global navigation and observation
 context; each enabled destination is a presentational workspace component.
 
+### Save observer
+
+The command-bar status opens one focus-managed dialog. In the desktop host it
+shows the selected save and game-folder names, candidate count, observed payload
+count, and game-vocabulary source identities. Directory selection and
+**Observe newest save** are distinct explicit actions. In a normal browser the
+same dialog explains that native observation is unavailable and retains the
+synthetic preview. Closing the dialog returns focus to the command-bar control.
+
 ### Broadcast composition
 
 The Broadcast canvas proceeds from receiver adoption to unavailable station
-telemetry, programme intent, expected influence, and observed outcomes. The
-Notebook records hypotheses and interventions. The Evening Bulletin applies
-deterministic eligibility, ranking, wording, and caveat rules. The inspector
-switches between radio and television and keeps nominal capacity separate from
-synthetic station state.
+telemetry, programme intent, expected influence, and observed outcomes. A
+connected save replaces only the receiver ladder; a mixed-evidence notice keeps
+the remaining concepts visibly synthetic. The Notebook records hypotheses and
+interventions. The Evening Bulletin applies deterministic eligibility,
+ranking, wording, and caveat rules. The inspector switches between receiver
+evidence and the synthetic radio/television concept while keeping nominal
+capacity separate from station state.
 
 ### Extensions concept
 
@@ -218,11 +229,11 @@ claim feature parity.
 
 ## Localisation boundary
 
-The synthetic foundation is fully catalogue-backed rather than partially
-migrated: shell controls, all three enabled workspaces, chart titles and series,
-provenance, textual summaries, dialogs, and number formatting react to the
-selected locale. Document direction uses the manifest's explicit LTR/RTL value,
-and layout uses logical edges where direction affects meaning.
+The interface is fully catalogue-backed rather than partially migrated: shell
+controls, all three enabled workspaces, chart titles and series, provenance,
+textual summaries, observer/language dialogs, and number formatting react to
+the selected locale. Document direction uses the manifest's explicit LTR/RTL
+value, and layout uses logical edges where direction affects meaning.
 
 Community `.rolanguage.json` files are inspected and installed without becoming
 active. Selection is a separate keyboard-accessible operation. Missing messages

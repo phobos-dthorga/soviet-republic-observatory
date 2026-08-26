@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { modalFocus } from "../ui/modalFocus";
   import { translation } from "./runtime";
   import {
     installLanguagePack,
@@ -13,10 +13,6 @@
 
   let { open, onclose }: { open: boolean; onclose: () => void } = $props();
   let fileInput = $state<HTMLInputElement>();
-  let dialog = $state<HTMLDialogElement>();
-  let closeButton = $state<HTMLButtonElement>();
-  let previouslyFocused: HTMLElement | null = null;
-  let wasOpen = false;
   let busy = $state(false);
   let errorMessage = $state("");
   let statusMessage = $state("");
@@ -88,50 +84,12 @@
       reportError(error);
     }
   }
-
-  function handleKeydown(event: KeyboardEvent): void {
-    if (!open) return;
-    if (event.key === "Escape" && !busy) {
-      event.preventDefault();
-      onclose();
-      return;
-    }
-    if (event.key !== "Tab" || !dialog) return;
-    const focusable = [
-      ...dialog.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])',
-      ),
-    ].filter((element) => !element.hasAttribute("hidden"));
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-
-  $effect(() => {
-    if (open && !wasOpen) {
-      previouslyFocused = document.activeElement as HTMLElement | null;
-      void tick().then(() => closeButton?.focus());
-    } else if (!open && wasOpen) {
-      previouslyFocused?.focus();
-      previouslyFocused = null;
-    }
-    wasOpen = open;
-  });
 </script>
-
-<svelte:window onkeydown={handleKeydown} />
 
 {#if open}
   <div class="language-backdrop">
     <dialog
-      bind:this={dialog}
+      use:modalFocus={{ onclose, closeDisabled: busy }}
       open
       class="language-dialog"
       aria-modal="true"
@@ -144,7 +102,7 @@
           <h2 id="language-title">{$translation("language-title")}</h2>
         </div>
         <button
-          bind:this={closeButton}
+          data-modal-autofocus
           class="language-close"
           type="button"
           aria-label={$translation("action-close")}

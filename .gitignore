@@ -14,5 +14,9 @@ Thumbs.db
 *.sav
 *.sqlite
 *.sqlite3
-observations/
-captures/
+/observations/
+/captures/
+
+# Rust and desktop-shell build output.
+src-tauri/target/
+src-tauri/gen/schemas/

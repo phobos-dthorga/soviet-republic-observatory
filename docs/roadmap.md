@@ -3,7 +3,7 @@
 The roadmap is organised as verifiable vertical slices. Dates and release
 numbers are assigned only when implementation begins.
 
-## Foundation — current repository
+## Foundation — completed
 
 - Public product and analytical specification
 - WyrmGrid-informed visual system with independent Observatory identity
@@ -21,29 +21,33 @@ numbers are assigned only when implementation begins.
 - Data limitations, metric contract, architecture decisions, and contributor
   safeguards
 
-## Slice 1 — one save, one trusted chart
+## Slice 1 — one save, one trusted chart — completed
 
-- Tauri/Rust desktop shell
-- Configured-directory selection
-- Stable-file and ZIP validation
-- Read-only `stats.ini` access
-- Supported date and one price-history field
-- SQLite observation, source, parser version, and coverage record
-- One real chart and exact evidence table
-- Sanitised fixtures for valid, partial, duplicate, and corrupt cases
-- Authoritative Rust validation and persistence for the existing language-pack
-  contract
-- A versioned installed-game vocabulary resolver kept separate from parser IDs
-  and the Observatory UI catalogue
+- Tauri/Rust desktop shell and player-selected save/game directories
+- Bounded ZIP validation, pre/post-read stability check, and streaming read-only
+  `stats.ini` access without extraction
+- Actual game year/day and the four receiver-class history fields
+- Private SQLite source, record, normalised metric, parser, coverage, and content
+  identity records through an append-only migration
+- Payload deduplication and one observed 100% receiver-composition chart with an
+  exact evidence inspector
+- Sanitised fixtures for complete, partial, malformed, duplicate, unsupported,
+  and missing-payload cases, plus an optional local-save conformance test
+- A versioned installed-game vocabulary-source catalogue kept separate from
+  parser IDs and Observatory UI language; BTF decoding remains unavailable
+- Explicit mixed-evidence presentation: only the receiver ladder becomes a save
+  fact while the remaining Broadcast concepts stay synthetic
 
 ## Slice 2 — branch-aware archive
 
+- Automatic observation of stable newly written saves
 - Historical-record catalogue
 - Payload hashing and deduplication
 - Prefix-based ancestry evidence
 - Branch creation and selection
 - Archive timeline and two-save comparison
 - Current and city snapshot capture from every distinct save
+- Authoritative Rust validation and persistence for community language packs
 
 ## Slice 3 — local Analysis Packs
 

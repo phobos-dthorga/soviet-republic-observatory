@@ -1,8 +1,14 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import { createBroadcastPreview } from "../data/broadcastPreview";
+  import { createObservedReceiverChart } from "../data/receiverObservation";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
+  import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
+  import type { ReceiverDataset } from "../observations/types";
+
+  let { receiverDataset = null }: { receiverDataset?: ReceiverDataset | null } =
+    $props();
 
   const sections: Array<{
     label: TranslationKey;
@@ -18,6 +24,11 @@
   const stationIds = ["radio", "television"] as const;
   let selectedStation = $state<(typeof stationIds)[number]>("radio");
   const preview = $derived(createBroadcastPreview($translation, $activeLocale));
+  const receiverLadder = $derived(
+    receiverDataset
+      ? createObservedReceiverChart(receiverDataset, $translation)
+      : preview.receiverLadder,
+  );
   const station = $derived(preview.station[selectedStation]);
 </script>
 
@@ -36,12 +47,18 @@
     <div class="lens-card">
       <div class="lens-row">
         <span>{$translation("filter-branch")}</span><strong
-          >planning-preview</strong
+          >{receiverDataset
+            ? $translation("observation-branch-unassigned")
+            : "planning-preview"}</strong
         >
       </div>
       <div class="lens-row">
         <span>{$translation("filter-window")}</span><strong
-          >{$translation("filter-rolling-days", { days: 360 })}</strong
+          >{receiverDataset
+            ? $translation("observation-records", {
+                count: receiverDataset.coverage.chartable_records,
+              })
+            : $translation("filter-rolling-days", { days: 360 })}</strong
         >
       </div>
       <div class="lens-row">
@@ -63,8 +80,20 @@
 
   <section class="canvas">
     <div class="preview-banner" role="status">
-      <strong>{$translation("synthetic-broadcast-desk")}</strong>
-      <span>{$translation("synthetic-no-station-telemetry")}</span>
+      <strong
+        >{$translation(
+          receiverDataset
+            ? "evidence-broadcast-mixed-desk"
+            : "synthetic-broadcast-desk",
+        )}</strong
+      >
+      <span
+        >{$translation(
+          receiverDataset
+            ? "evidence-broadcast-mixed-detail"
+            : "synthetic-no-station-telemetry",
+        )}</span
+      >
     </div>
     <header class="page-heading">
       <div>
@@ -80,10 +109,13 @@
 
     <section id="receivers" class="broadcast-chart-wide">
       <ObservatoryChart
-        spec={preview.receiverLadder}
+        spec={receiverLadder}
         height="285px"
         eyebrow={$translation("broadcast-section-receivers")}
       />
+      {#if receiverDataset}
+        <ReceiverEvidence dataset={receiverDataset} />
+      {/if}
     </section>
 
     <section id="audience" class="broadcast-chart-wide">

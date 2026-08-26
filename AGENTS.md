@@ -89,7 +89,9 @@
 
 ## Quality gates
 
-- Run formatting, Svelte type checking, unit tests, and the production build.
+- Run formatting, Svelte type checking, JavaScript unit tests, the production
+  webview build, Rust formatting/check/tests/clippy, and the desktop build when
+  the native boundary changes.
 - New calculation rules require successful, boundary, unavailable-data, and
   invalid-input tests.
 - Parser changes require sanitised fixtures and compatibility notes.

@@ -41,6 +41,7 @@ an engineering requirement.
 - [ADR-0004: branch-aware observation timeline](architecture/decisions/0004-branch-aware-observation-timeline.md)
 - [ADR-0005: declarative Analysis Packs before executable Model Plugins](architecture/decisions/0005-declarative-analysis-packs-and-model-plugins.md)
 - [ADR-0006: versioned community localisation before save parsing](architecture/decisions/0006-versioned-community-localisation.md)
+- [ADR-0007: stream receiver history read-only before adding a watcher](architecture/decisions/0007-streaming-receiver-observation.md)
 
 ## Evidence status vocabulary
 

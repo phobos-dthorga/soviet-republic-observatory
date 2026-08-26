@@ -13,9 +13,11 @@ questions:
 3. What probably contributed to it?
 4. What happens if the player intervenes?
 
-> **Project status:** product specification and interface foundation. The
-> included Svelte application is a runnable synthetic-data preview; it does not
-> yet scan or parse a real save.
+> **Project status:** first trusted observation slice. The Tauri desktop program
+> can inspect the newest completed save in a player-selected folder, parse the
+> four receiver classes from `stats.ini`, store their normalised history in a
+> private local SQLite database, and replace the Broadcast receiver chart with
+> observed values. All other dashboard values remain visibly synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -63,39 +65,52 @@ It is deliberately not a WyrmGrid reskin. The Observatory has its own visual
 identity, resource vocabulary, navigation, statistical contracts, and game-save
 architecture. See [ADR-0002](docs/architecture/decisions/0002-wyrmgrid-interface-methodology.md).
 
-## Run the preview
+## Run the program
 
-Requires Node.js 22.12 or newer and npm 10 or newer.
+Requires Node.js 22.12 or newer, npm 10 or newer, Rust 1.88 or newer, and the
+normal [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for
+Windows.
 
 ```powershell
 npm install
-npm run dev
+npm run desktop
 ```
 
-The preview contains synthetic values only. Validate the foundation with:
+Open **Save observer** in the upper-right corner, choose the folder containing
+the game's save ZIP files, optionally choose the game installation folder for
+the future vocabulary catalogue, and select **Observe newest save**. The source
+archive remains untouched. Automatic watching is a later slice; observation is
+manual for now.
+
+For interface work that does not need native folder selection or save parsing,
+`npm run dev` opens the synthetic browser preview.
+
+Validate the foundation with:
 
 ```powershell
 npm run format:check
 npm run check
 npm test
 npm run build
+npm run rust:check
+npm run rust:test
 ```
 
 ## Proposed technical foundation
 
 | Area                          | Direction                                            |
 | ----------------------------- | ---------------------------------------------------- |
-| Desktop shell                 | Tauri 2 after the scanner vertical slice begins      |
-| Save observation and services | Rust                                                 |
+| Desktop shell                 | Tauri 2                                              |
+| Save observation and services | Rust, with bounded read-only ZIP access              |
 | Interface                     | Svelte 5 and TypeScript                              |
 | Charts                        | Apache ECharts behind `ObservatoryChart`             |
-| Local storage                 | SQLite with append-only migrations                   |
+| Local storage                 | Private SQLite with append-only migrations           |
 | Input                         | ZIP saves read non-destructively; `stats.ini` first  |
 | Statistical models            | Application-owned, versioned and provenance-labelled |
 
-The repository begins with the webview-compatible interface because that is the
-smallest useful foundation. Rust, Tauri and SQLite are introduced with the
-first real save-observation vertical slice, rather than as empty scaffolding.
+The browser preview and desktop program share one presentation layer. Native
+folder access, archive parsing, provenance, and persistence stay behind the
+small Tauri command boundary and are unavailable to ordinary browser code.
 
 ## Documentation
 

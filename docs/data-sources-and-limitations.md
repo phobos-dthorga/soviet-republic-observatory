@@ -6,20 +6,26 @@ must be fixture-tested and version-aware.
 
 ## Save-container observations
 
-Cloud saves observed on 26 August 2026 were ordinary ZIP archives. A save could
+Cloud saves observed on 26–27 August 2026 were ordinary ZIP archives. A save can
 be inspected without extraction by opening `stats.ini` directly from the
 archive. Large binary entries were also present, including building, worker,
 rail, and vehicle payloads.
 
-The proposed observer therefore follows this sequence:
+The implemented manual observer follows this sequence:
 
 1. notice a candidate ZIP;
 2. wait until file size and modification time are stable;
 3. validate the archive without modifying it;
 4. hash the statistical payload and deduplicate it;
 5. parse supported records into application-owned models;
-6. determine timeline ancestry or start a separate branch; and
-7. commit the observation atomically to local storage.
+6. store source identity, embedded records, normalised metrics, parser version,
+   coverage, source fields, and source lines atomically in private SQLite; and
+7. return a bounded dataset to the Broadcast presentation.
+
+Automatic watching and branch ancestry are not implemented in this slice. The
+player explicitly asks the application to inspect the newest ZIP, and imported
+history is assigned to the neutral `unassigned` branch until branch evidence is
+implemented.
 
 ## `stats.ini` coverage
 
@@ -36,10 +42,12 @@ Observed global historical records contained fields suitable for:
 - loan balance and interest; and
 - several cost scalars.
 
-An observed save contained 1,847 `$STAT_RECORD` blocks covering a long-running
-republic. Adjacent record dates were usually five in-game days apart but varied
-roughly between four and seven days. Charts must therefore use the actual game
-date rather than record position.
+Observed saves contained long histories: one review found 1,847
+`$STAT_RECORD` blocks and the later conformance pass parsed 1,896 complete
+receiver records. Adjacent record dates were usually five in-game days apart
+but varied roughly between four and seven days. Charts therefore use numeric
+game-day positions rather than record position or equally spaced category
+labels.
 
 The history appeared append-only across successive saves: a later save retained
 the earlier record prefix and added new records. Two distinct save archives also
@@ -60,6 +68,11 @@ The inconsistent source spelling is compatibility evidence, not a public API.
 It maps to the stable `core.citizens.electronics.*` identifiers documented in
 the metric contract. A receiver share requires all inputs to have the same
 branch, observation date, and geographic scope.
+
+`$STAT_CURRENT` and `$STAT_CITY` begin after global history. Their date fields
+may be zero-valued and must not be allowed to overwrite the last historical
+record. The receiver parser closes the history section explicitly at either
+marker; a fixture protects this boundary.
 
 ## Current and city snapshots
 
@@ -84,12 +97,14 @@ Definitions should be imported into versioned application-owned models. No game
 assets are copied or redistributed.
 
 Installed-game translation files are a potential local display-vocabulary
-source, not parser truth and not Observatory UI translations. The application
-will retain exact source identifiers, resolve labels through a versioned
-`GameVocabularyCatalogue`, and fall back to reviewed Observatory labels when a
-local term is missing or unsafe. No game translation catalogue is committed or
-redistributed by this repository. Changing display language cannot change
-observation identity, metric references, joins, or calculations.
+source, not parser truth and not Observatory UI translations. The current host
+catalogues the identities of matching local BTF files and reports that their
+contents are unreadable; it does not decode, copy, or display their text. A
+later versioned `GameVocabularyCatalogue` may resolve labels while retaining
+exact source identifiers and reviewed Observatory fallbacks. No game
+translation catalogue is committed or redistributed by this repository.
+Changing display language cannot change observation identity, metric
+references, joins, or calculations.
 
 For version 1.1.1.9, reviewed station definitions provide nominal radio capacity
 of 100 workers and 50 professors, and television capacity of 120 workers and 70
@@ -121,6 +136,7 @@ transfer paths. Therefore:
 Global history is already embedded in a save, so saving more frequently does
 not create finer historical records. Frequent observation is still useful for
 current and city snapshots, branch detection, and before/after comparisons.
+The current manual observer does not yet notice new files automatically.
 
 ### Binary payloads
 

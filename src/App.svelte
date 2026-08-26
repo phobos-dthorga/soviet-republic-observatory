@@ -1,10 +1,18 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import BriefingWorkspace from "./lib/workspaces/BriefingWorkspace.svelte";
   import BroadcastWorkspace from "./lib/workspaces/BroadcastWorkspace.svelte";
   import ExtensionsWorkspace from "./lib/workspaces/ExtensionsWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
+  import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
+  import {
+    desktopHostAvailable,
+    getLatestReceiverDataset,
+    getSetupState,
+  } from "./lib/observations/desktopClient";
+  import type { ReceiverDataset, SetupState } from "./lib/observations/types";
 
   type WorkspaceName = "briefing" | "broadcast" | "extensions";
   const workspaces: Array<{
@@ -30,6 +38,21 @@
 
   let activeWorkspace = $state<WorkspaceName>("briefing");
   let languageDialogOpen = $state(false);
+  let observationDialogOpen = $state(false);
+  const desktopAvailable = desktopHostAvailable();
+  let setupState = $state<SetupState | null>(null);
+  let receiverDataset = $state<ReceiverDataset | null>(null);
+  const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
+
+  onMount(() => {
+    if (!desktopAvailable) return;
+    void Promise.all([getSetupState(), getLatestReceiverDataset()]).then(
+      ([setup, dataset]) => {
+        setupState = setup;
+        receiverDataset = dataset;
+      },
+    );
+  });
 </script>
 
 <svelte:head>
@@ -71,16 +94,38 @@
       >
         {$translation("language-open", { locale: $activeLocale })}
       </button>
-      <div
+      <button
+        type="button"
         class="scanner-state"
         aria-label={$translation("scanner-status-label")}
+        title={$translation("observer-open")}
+        onclick={() => (observationDialogOpen = true)}
       >
         <span class="state-dot" aria-hidden="true"></span>
         <div>
-          <strong>{$translation("synthetic-preview-mode")}</strong>
-          <small>{$translation("synthetic-no-save-connected")}</small>
+          {#if receiverDataset}
+            <strong>{$translation("scanner-observed")}</strong>
+            <small
+              >{$translation("scanner-observed-file", {
+                file: receiverDataset.source_file_name,
+              })}</small
+            >
+          {:else if desktopAvailable && setupState?.save_directory}
+            <strong>{$translation("scanner-ready")}</strong>
+            <small
+              >{$translation("observer-save-candidates", {
+                count: setupState.save_candidates,
+              })}</small
+            >
+          {:else if desktopAvailable}
+            <strong>{$translation("scanner-setup-required")}</strong>
+            <small>{$translation("synthetic-no-save-connected")}</small>
+          {:else}
+            <strong>{$translation("synthetic-preview-mode")}</strong>
+            <small>{$translation("synthetic-no-save-connected")}</small>
+          {/if}
         </div>
-      </div>
+      </button>
     </div>
   </header>
 
@@ -90,21 +135,31 @@
   >
     <div class="observation-copy">
       <span class="history-glyph" aria-hidden="true"></span>
-      <strong>{$translation("synthetic-observation")}</strong>
+      <strong
+        >{$translation(
+          receiverDataset ? "observation-real" : "synthetic-observation",
+        )}</strong
+      >
       <span
         >{$translation("observation-branch", {
-          branch: "planning-preview",
+          branch: receiverDataset
+            ? $translation("observation-branch-unassigned")
+            : "planning-preview",
         })}</span
       >
       <span
         >{$translation("observation-game-date", {
-          year: "2004",
-          day: 230,
+          year: latestReceiverPoint?.year ?? "2004",
+          day: latestReceiverPoint?.day ?? 230,
         })}</span
       >
     </div>
     <div class="observation-actions">
-      <span>{$translation("saves-observed", { count: 0 })}</span>
+      <span
+        >{$translation("saves-observed", {
+          count: setupState?.observed_saves ?? 0,
+        })}</span
+      >
       <button type="button" disabled>{$translation("return-latest")}</button>
     </div>
   </section>
@@ -112,7 +167,7 @@
   {#if activeWorkspace === "briefing"}
     <BriefingWorkspace />
   {:else if activeWorkspace === "broadcast"}
-    <BroadcastWorkspace />
+    <BroadcastWorkspace {receiverDataset} />
   {:else}
     <ExtensionsWorkspace />
   {/if}
@@ -127,4 +182,14 @@
 <LanguageDialog
   open={languageDialogOpen}
   onclose={() => (languageDialogOpen = false)}
+/>
+
+<ObservationDialog
+  open={observationDialogOpen}
+  {desktopAvailable}
+  setup={setupState}
+  dataset={receiverDataset}
+  onclose={() => (observationDialogOpen = false)}
+  onsetupchange={(setup) => (setupState = setup)}
+  onobservation={(dataset) => (receiverDataset = dataset)}
 />

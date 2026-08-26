@@ -13,8 +13,17 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
-  import { optionForChart, provenanceForSeries } from "./chartOptions";
-  import type { ChartSpec, EvidenceCoverage, EvidenceKind } from "./types";
+  import {
+    condensedSeriesSummary,
+    optionForChart,
+    provenanceForSeries,
+  } from "./chartOptions";
+  import type {
+    ChartPoint,
+    ChartSpec,
+    EvidenceCoverage,
+    EvidenceKind,
+  } from "./types";
 
   echarts.use([
     BarChart,
@@ -54,6 +63,29 @@
 
   function formatValue(value: number): string {
     return `${formatNumber(value, $activeLocale, { maximumFractionDigits: 2 })}${spec.unit ? ` ${spec.unit}` : ""}`;
+  }
+
+  function formatPoint(point: ChartPoint): string {
+    return $translation(
+      point.gap_before ? "chart-summary-gap-point" : "chart-summary-point",
+      { category: point.category, value: formatValue(point.value) },
+    );
+  }
+
+  function accessiblePointSummary(points: ChartPoint[]): string {
+    const condensed = condensedSeriesSummary(points);
+    if (!condensed) return points.map(formatPoint).join("; ");
+
+    const summary = $translation("chart-summary-condensed-points", {
+      count: condensed.count,
+      first: formatPoint(condensed.first),
+      minimum: formatPoint(condensed.minimum),
+      maximum: formatPoint(condensed.maximum),
+      latest: formatPoint(condensed.latest),
+    });
+    return condensed.gapCount > 0
+      ? `${summary} ${$translation("chart-summary-gap-count", { count: condensed.gapCount })}`
+      : summary;
   }
 
   function refreshChart(): void {
@@ -132,16 +164,7 @@
         <span>
           {$translation("chart-summary-series", {
             label: series.label,
-            points: series.points
-              .map((point) =>
-                $translation(
-                  point.gap_before
-                    ? "chart-summary-gap-point"
-                    : "chart-summary-point",
-                  { category: point.category, value: formatValue(point.value) },
-                ),
-              )
-              .join("; "),
+            points: accessiblePointSummary(series.points),
             evidence: $translation(
               evidenceKeys[provenanceForSeries(spec, series).kind],
             ),

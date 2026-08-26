@@ -20,6 +20,7 @@
     "description": { "type": "string", "minLength": 1, "maxLength": 500 },
     "kind": { "enum": ["line", "area", "bar"] },
     "orientation": { "enum": ["vertical", "horizontal"] },
+    "category_axis_scale": { "enum": ["ordinal", "game_day"] },
     "category_axis_label": {
       "type": "string",
       "minLength": 1,
@@ -83,6 +84,7 @@
       "required": ["category", "value"],
       "properties": {
         "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "category_value": { "type": "number" },
         "value": { "type": "number" },
         "gap_before": { "type": "boolean" }
       }

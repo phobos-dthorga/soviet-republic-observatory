@@ -1,0 +1,159 @@
+use std::fs::{self, File};
+use std::io::BufReader;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use zip::ZipArchive;
+
+use crate::error::ObservatoryError;
+use crate::model::SaveInspection;
+use crate::stats_parser::parse_stats;
+
+const MAX_ARCHIVE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_COMPRESSED_STATS_BYTES: u64 = 64 * 1024 * 1024;
+
+pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryError> {
+    let before = fs::metadata(path).map_err(|_| ObservatoryError::InvalidSaveCandidate)?;
+    if !before.is_file()
+        || before.len() == 0
+        || before.len() > MAX_ARCHIVE_BYTES
+        || !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+    {
+        return Err(ObservatoryError::InvalidSaveCandidate);
+    }
+
+    let file = File::open(path).map_err(|_| ObservatoryError::InvalidArchive)?;
+    let mut archive =
+        ZipArchive::new(BufReader::new(file)).map_err(|_| ObservatoryError::InvalidArchive)?;
+    let mut stats_index = None;
+
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        if entry.name().replace('\\', "/") != "stats.ini" {
+            continue;
+        }
+        if stats_index.replace(index).is_some() {
+            return Err(ObservatoryError::DuplicateStatsPayload);
+        }
+        if entry.size() == 0 {
+            return Err(ObservatoryError::MissingStatsPayload);
+        }
+        if entry.size() > MAX_STATS_BYTES || entry.compressed_size() > MAX_COMPRESSED_STATS_BYTES {
+            return Err(ObservatoryError::StatsPayloadTooLarge);
+        }
+    }
+
+    let stats_index = stats_index.ok_or(ObservatoryError::MissingStatsPayload)?;
+    let parsed = {
+        let entry = archive
+            .by_index(stats_index)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        parse_stats(BufReader::new(entry))?
+    };
+    drop(archive);
+
+    let after = fs::metadata(path).map_err(|_| ObservatoryError::SaveChangedDuringRead)?;
+    if before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+        || !after.is_file()
+    {
+        return Err(ObservatoryError::SaveChangedDuringRead);
+    }
+
+    let source_file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or(ObservatoryError::InvalidSaveCandidate)?
+        .to_owned();
+
+    Ok(SaveInspection {
+        payload_hash: parsed.payload_hash,
+        source_file_name,
+        source_file_size: after.len(),
+        source_modified_ms: system_time_ms(after.modified().unwrap_or(UNIX_EPOCH)),
+        records: parsed.records,
+        coverage: parsed.coverage,
+    })
+}
+
+fn system_time_ms(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::Path;
+
+    use tempfile::tempdir;
+    use zip::write::SimpleFileOptions;
+
+    use super::inspect_save_archive;
+    use crate::error::ObservatoryError;
+
+    #[test]
+    fn reads_stats_directly_from_a_synthetic_archive() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("synthetic-save.zip");
+        let file = File::create(&path).expect("fixture archive");
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file(
+                "stats.ini",
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+            )
+            .expect("stats entry");
+        archive
+            .write_all(include_bytes!("../fixtures/valid.receiver-stats.txt"))
+            .expect("stats content");
+        archive.finish().expect("finish archive");
+
+        let inspection = inspect_save_archive(&path).expect("read-only inspection");
+        assert_eq!(inspection.records.len(), 3);
+        assert_eq!(inspection.source_file_name, "synthetic-save.zip");
+    }
+
+    #[test]
+    fn rejects_an_archive_without_stats() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("no-stats.zip");
+        let file = File::create(&path).expect("fixture archive");
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("header.bin", SimpleFileOptions::default())
+            .expect("header entry");
+        archive.write_all(b"synthetic").expect("header content");
+        archive.finish().expect("finish archive");
+
+        assert!(matches!(
+            inspect_save_archive(&path),
+            Err(ObservatoryError::MissingStatsPayload)
+        ));
+    }
+
+    #[test]
+    fn optional_local_save_conformance() {
+        let Ok(path) = std::env::var("RO_LIVE_SAVE") else {
+            return;
+        };
+
+        let inspection = inspect_save_archive(Path::new(&path))
+            .expect("configured local save should satisfy the supported receiver profile");
+
+        assert!(!inspection.records.is_empty());
+        assert_eq!(
+            inspection.coverage.chartable_records as usize,
+            inspection.records.len()
+        );
+        assert_eq!(inspection.coverage.dropped_records, 0);
+    }
+}

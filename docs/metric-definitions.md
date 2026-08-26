@@ -183,6 +183,11 @@ They map versioned source spellings into stable public names. Each value retains
 branch, observation date, geographic scope, source field, parser version, and
 coverage.
 
+The implemented receiver parser also retains record ID and source line for each
+class. Its time coordinate is `year × 365 + day`, while the interface continues
+to display the original game year/day pair. This creates an ordering and spacing
+coordinate; it does not claim a Gregorian calendar date.
+
 ### Electronics-classified population
 
 For aligned class values:

@@ -227,7 +227,17 @@ h3 {
   display: flex;
   align-items: center;
   gap: 9px;
+  border: 1px solid transparent;
+  padding: 5px 7px;
   color: var(--colour-muted);
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+}
+
+.scanner-state:hover {
+  border-color: var(--colour-line-faint);
+  background: var(--colour-surface-soft);
 }
 
 .scanner-state strong,
@@ -1706,6 +1716,229 @@ h3 {
   clip: rect(0, 0, 0, 0);
 }
 
+.observer-dialog {
+  width: min(860px, 100%);
+}
+
+.observer-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.observer-source-grid > article,
+.observer-browser-state {
+  border: 1px solid var(--colour-line-faint);
+  padding: 15px;
+  background: var(--colour-surface-raised);
+}
+
+.observer-source-grid > article.configured {
+  border-color: rgba(128, 198, 216, 0.4);
+}
+
+.observer-source-grid article > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.observer-source-grid h3 {
+  margin-top: 5px;
+  font-size: 19px;
+}
+
+.observer-source-grid article > p,
+.observer-browser-state p {
+  min-height: 46px;
+  margin-top: 9px;
+  color: var(--colour-muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.observer-source-grid article > button,
+.observer-primary-action {
+  border: 1px solid var(--colour-line-faint);
+  padding: 8px 10px;
+  color: var(--colour-text);
+  background: var(--colour-surface-soft);
+  cursor: pointer;
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.observer-source-grid article > button:disabled,
+.observer-primary-action:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.observer-primary-action {
+  border-color: rgba(128, 198, 216, 0.5);
+  color: var(--colour-observed);
+  background: var(--colour-observed-soft);
+}
+
+.observer-source-state {
+  display: grid;
+  gap: 4px;
+  min-height: 48px;
+  margin: 14px 0;
+  border-inline-start: 2px solid var(--colour-gold);
+  padding: 8px 10px;
+  background: var(--colour-gold-soft);
+}
+
+.observer-source-state strong {
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.observer-source-state span {
+  color: var(--colour-muted);
+  font-size: 8px;
+}
+
+.observer-boundary {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  border: 1px solid rgba(216, 184, 106, 0.3);
+  padding: 11px 13px;
+  color: var(--colour-muted);
+  background: var(--colour-gold-soft);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.observer-boundary strong {
+  color: var(--colour-gold);
+}
+
+.observer-browser-state {
+  margin-top: 18px;
+  border-inline-start: 2px solid var(--colour-gold);
+}
+
+.observer-browser-state strong {
+  color: var(--colour-gold);
+}
+
+.observer-browser-state p {
+  min-height: 0;
+}
+
+.observer-footer {
+  align-items: center !important;
+}
+
+.receiver-evidence-panel {
+  margin-top: 8px;
+  border: 1px solid var(--colour-line-faint);
+  padding: 16px;
+  background: rgba(13, 23, 33, 0.74);
+}
+
+.receiver-evidence-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 15px;
+}
+
+.receiver-evidence-facts > div {
+  min-width: 0;
+  border: 1px solid var(--colour-line-faint);
+  padding: 10px;
+  background: var(--colour-surface-raised);
+}
+
+.receiver-evidence-facts .receiver-evidence-wide {
+  grid-column: span 2;
+}
+
+.receiver-evidence-facts span,
+.receiver-evidence-facts strong,
+.receiver-evidence-facts small,
+.receiver-evidence-facts code {
+  display: block;
+}
+
+.receiver-evidence-facts span {
+  color: var(--colour-muted);
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.receiver-evidence-facts strong,
+.receiver-evidence-facts code {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.receiver-evidence-facts code,
+.receiver-metric-table code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.receiver-evidence-facts small {
+  margin-top: 5px;
+  color: var(--colour-muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.receiver-metric-table {
+  margin-top: 10px;
+  border-top: 1px solid var(--colour-line-faint);
+}
+
+.receiver-metric-table > header,
+.receiver-metric-table > div {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 1fr) 100px;
+  gap: 8px 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--colour-line-faint);
+  padding: 9px 7px;
+}
+
+.receiver-metric-table > header {
+  color: var(--colour-gold);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.receiver-metric-table code,
+.receiver-metric-table strong {
+  overflow-wrap: anywhere;
+  font-size: 8px;
+}
+
+.receiver-metric-table small {
+  grid-column: 3;
+  color: var(--colour-muted);
+  font-size: 7px;
+}
+
+.receiver-evidence-caveat {
+  margin-top: 12px;
+  border-inline-start: 2px solid var(--colour-gold);
+  padding: 9px 11px;
+  color: var(--colour-muted);
+  background: var(--colour-gold-soft);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 210px minmax(540px, 1fr);
@@ -1819,6 +2052,10 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .receiver-evidence-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .lifecycle-flow {
     grid-template-columns: 1fr;
   }
@@ -1867,9 +2104,35 @@ h3 {
   }
 
   .language-card,
-  .language-dialog > footer {
+  .language-dialog > footer,
+  .observer-source-grid {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .observer-source-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .receiver-evidence-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .receiver-evidence-facts .receiver-evidence-wide {
+    grid-column: auto;
+  }
+
+  .receiver-metric-table > header {
+    display: none;
+  }
+
+  .receiver-metric-table > div {
+    grid-template-columns: 1fr;
+  }
+
+  .receiver-metric-table small {
+    grid-column: auto;
   }
 
   .language-actions {

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">Republic Observatory mark</title>
+  <desc id="description">A gold diamond instrument frame containing the letters R and O on a dark blue field.</desc>
+  <rect width="512" height="512" rx="72" fill="#080e15"/>
+  <g transform="translate(256 256) rotate(45)">
+    <rect x="-146" y="-146" width="292" height="292" fill="#0d1721" stroke="#d8b86a" stroke-width="16"/>
+    <rect x="-112" y="-112" width="224" height="224" fill="none" stroke="#627986" stroke-width="6" opacity=".65"/>
+  </g>
+  <text x="155" y="226" fill="#d8b86a" font-family="Georgia, serif" font-size="124">R</text>
+  <text x="270" y="342" fill="#80c6d8" font-family="Georgia, serif" font-size="124">O</text>
+</svg>

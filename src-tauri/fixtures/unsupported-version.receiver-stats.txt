@@ -1,0 +1,8 @@
+$STATS_FORMAT 2
+$STAT_RECORD 0
+$DATE_DAY 10
+$DATE_YEAR 1980
+$Citizens_EletronicNone 80
+$Citizens_EletrinicRadio 15
+$Citizens_EletronicTV 5
+$Citizens_EletronicComputer 0
