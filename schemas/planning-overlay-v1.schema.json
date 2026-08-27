@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.dev/schemas/planning-overlay-v1.schema.json",
+  "title": "Republic Observatory Planning Overlay v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "name",
+    "author",
+    "default_locale",
+    "description",
+    "operations",
+    "supplements"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 96,
+      "pattern": "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?){2,}$"
+    },
+    "version": { "$ref": "#/$defs/semanticVersion" },
+    "name": { "$ref": "#/$defs/name" },
+    "author": { "$ref": "#/$defs/name" },
+    "default_locale": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+    },
+    "description": { "$ref": "#/$defs/description" },
+    "target_game_build": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[A-Za-z0-9._+-]+$"
+    },
+    "operations": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "$ref": "#/$defs/operation" }
+    },
+    "supplements": {
+      "type": "array",
+      "maxItems": 512,
+      "items": { "$ref": "#/$defs/supplement" }
+    }
+  },
+  "$defs": {
+    "safeText": {
+      "type": "string",
+      "pattern": "^(?!.*(?:<|>|://|file:|javascript:|data:|[A-Za-z]:\\\\|\\\\\\\\|(?:^|\\s)(?:/|\\.\\.?/))).*$"
+    },
+    "name": {
+      "type": "string",
+      "allOf": [
+        { "$ref": "#/$defs/safeText" },
+        { "type": "string", "minLength": 1, "maxLength": 120 }
+      ]
+    },
+    "description": {
+      "type": "string",
+      "allOf": [
+        { "$ref": "#/$defs/safeText" },
+        { "type": "string", "minLength": 1, "maxLength": 500 }
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "allOf": [
+        { "$ref": "#/$defs/safeText" },
+        { "type": "string", "minLength": 1, "maxLength": 300 }
+      ]
+    },
+    "semanticVersion": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "entityId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 320,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+    },
+    "fieldId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+    },
+    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "number"],
+          "properties": {
+            "kind": { "const": "number" },
+            "number": { "type": "number" },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9 %/._*^-]+$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "text"],
+          "properties": {
+            "kind": { "const": "text" },
+            "text": {
+              "type": "string",
+              "allOf": [
+                { "$ref": "#/$defs/safeText" },
+                { "type": "string", "minLength": 1, "maxLength": 240 }
+              ]
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9 %/._*^-]+$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "boolean"],
+          "properties": {
+            "kind": { "const": "boolean" },
+            "boolean": { "type": "boolean" },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[A-Za-z0-9 %/._*^-]+$"
+            }
+          }
+        }
+      ]
+    },
+    "operation": {
+      "oneOf": [
+        { "$ref": "#/$defs/valueOperation" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "entity_id",
+            "field_id",
+            "expected_revision_hash",
+            "reason"
+          ],
+          "properties": {
+            "operation": { "const": "unset" },
+            "entity_id": { "$ref": "#/$defs/entityId" },
+            "field_id": { "$ref": "#/$defs/fieldId" },
+            "occurrence": { "type": "integer", "minimum": 0 },
+            "expected_revision_hash": { "$ref": "#/$defs/hash" },
+            "expected_value": { "$ref": "#/$defs/value" },
+            "reason": { "$ref": "#/$defs/reason" }
+          }
+        }
+      ]
+    },
+    "valueOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "entity_id",
+        "field_id",
+        "expected_revision_hash",
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "operation": { "enum": ["set", "add"] },
+        "entity_id": { "$ref": "#/$defs/entityId" },
+        "field_id": { "$ref": "#/$defs/fieldId" },
+        "occurrence": { "type": "integer", "minimum": 0 },
+        "expected_revision_hash": { "$ref": "#/$defs/hash" },
+        "expected_value": { "$ref": "#/$defs/value" },
+        "value": { "$ref": "#/$defs/value" },
+        "reason": { "$ref": "#/$defs/reason" }
+      }
+    },
+    "supplement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_id",
+        "entity_kind",
+        "display_name",
+        "reason",
+        "properties"
+      ],
+      "properties": {
+        "local_id": { "$ref": "#/$defs/localId" },
+        "entity_kind": {
+          "enum": ["resource", "building", "vehicle", "recipe"]
+        },
+        "display_name": { "$ref": "#/$defs/name" },
+        "reason": { "$ref": "#/$defs/reason" },
+        "properties": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field_id", "value"],
+            "properties": {
+              "field_id": { "$ref": "#/$defs/fieldId" },
+              "occurrence": { "type": "integer", "minimum": 0 },
+              "value": { "$ref": "#/$defs/value" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

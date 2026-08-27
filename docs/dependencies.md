@@ -18,6 +18,7 @@ keeping the Observatory independent and small.
 | `notify`         | CC0-1.0    | Native save-directory event wake-ups                  | Hints only; reconciliation remains authoritative     |
 | `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction           |
 | `rusqlite`       | MIT        | App-local observation and settings database           | Bundled unencrypted SQLite; append-only migrations   |
+| `duckdb`         | MIT        | Definition catalogue and analytical warehouse         | Pinned bundled engine; no extension autoload/install |
 | `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation   |
 | `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                 |
 
@@ -30,7 +31,7 @@ The small Fluent runtime replaces hand-written interpolation and pluralisation;
 it does not permit executable translation modules. The source catalogue and
 manifests remain JSON so they can be inspected and validated independently.
 
-The Tauri/Rust/SQLite group is now the authoritative save-observation boundary.
+The Tauri/Rust/SQLite group is the authoritative save-observation boundary.
 Its purpose is narrow: choose directories with explicit player action, inspect
 bounded archives read-only, normalise supported facts, compact shared history,
 and persist provenance locally. The automatic observer uses `notify` behind a
@@ -44,11 +45,17 @@ boundary. MapLibre, Three.js, hosted services, executable plugin runtimes, and
 data science environments remain outside the dependency set until a concrete
 player question requires them.
 
-SQLite encryption, SQLCipher, ORM/database-portability infrastructure, and a
-second database engine are intentionally absent. The current database contains
-no secrets, so OS file permissions are sufficient and no application key
+SQLite encryption, SQLCipher, and ORM/database-portability infrastructure are
+intentionally absent. The SQLite and DuckDB databases contain no secrets, so OS
+file permissions are sufficient and no application key
 lifecycle is justified. If future credentials are introduced, they should use
 the operating system's credential vault rather than being placed in SQLite.
+
+Bundled DuckDB is introduced for the demonstrated catalogue and matrix-query
+workload. The crate is pinned to `1.10505.0` and distributed under MIT. Runtime
+extension autoloading, automatic installation, and external access are disabled;
+the project does not use DuckDB's SQLite extension or download optional
+extensions. Data crosses from SQLite only through application-owned Rust models.
 
 Before adding a dependency, document:
 

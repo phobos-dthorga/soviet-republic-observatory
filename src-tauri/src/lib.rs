@@ -1,13 +1,18 @@
 mod application;
 mod automatic_observer;
+mod catalogue_service;
 mod commands;
+mod definition_catalogue;
 mod error;
 mod game_vocabulary;
 mod model;
+mod planning_overlay;
 mod recorder_service;
 mod save_archive;
 mod stats_parser;
 mod storage;
+mod warehouse;
+mod warehouse_service;
 
 use std::sync::Arc;
 
@@ -25,13 +30,16 @@ pub fn run() {
             let application = Arc::new(
                 ObservatoryApplication::initialise(
                     data_directory.join("republic-observatory.sqlite3"),
+                    data_directory.join("republic-observatory.duckdb"),
                 )
                 .map_err(|error| std::io::Error::other(error.to_string()))?,
             );
             app.manage(AppState {
                 application: Arc::clone(&application),
             });
-            recorder_service::spawn(app.handle().clone(), application);
+            recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
+            catalogue_service::spawn(app.handle().clone(), Arc::clone(&application));
+            warehouse_service::spawn(app.handle().clone(), application);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -44,6 +52,20 @@ pub fn run() {
             commands::set_automatic_observation,
             commands::select_timeline_branch,
             commands::compare_archive_observations,
+            commands::get_catalogue_status,
+            commands::refresh_definitions,
+            commands::rebuild_warehouse,
+            commands::search_catalogue,
+            commands::get_definition_dossier,
+            commands::inspect_planning_overlay,
+            commands::import_planning_overlay,
+            commands::export_planning_overlay,
+            commands::list_planning_overlays,
+            commands::activate_planning_overlay,
+            commands::rollback_planning_overlay,
+            commands::deactivate_planning_overlay,
+            commands::remove_planning_overlay,
+            commands::get_warehouse_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");

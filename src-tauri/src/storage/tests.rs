@@ -33,6 +33,65 @@ fn stores_normalised_metrics_and_separates_files_from_distinct_states() {
 }
 
 #[test]
+fn interrupted_warehouse_jobs_return_to_pending_without_losing_the_observation() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("recovery.sqlite3");
+    {
+        let storage = ObservatoryStorage::initialise(path.clone()).expect("storage");
+        storage
+            .save_inspection(&inspection("projection-state", "state.zip", &[1, 2]))
+            .expect("observation");
+        let claimed = storage
+            .claim_projection_job()
+            .expect("claim")
+            .expect("pending job");
+        assert_eq!(claimed.source_identity, "projection-state");
+        assert_eq!(
+            storage
+                .projection_job_status(&claimed.projection_id)
+                .expect("running status")
+                .as_deref(),
+            Some("running")
+        );
+    }
+    let reopened = ObservatoryStorage::initialise(path).expect("reopen storage");
+    assert_eq!(
+        reopened
+            .projection_job_status("observation:projection-state")
+            .expect("recovered status")
+            .as_deref(),
+        Some("pending")
+    );
+    assert_eq!(reopened.distinct_state_count().expect("state count"), 1);
+}
+
+#[test]
+fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("retry.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&inspection("warehouse-outage", "outage.zip", &[1, 2]))
+        .expect("observation remains committed");
+    let job = storage
+        .claim_projection_job()
+        .expect("claim")
+        .expect("observation projection");
+    storage
+        .fail_projection_job(&job.projection_id, "warehouse_unavailable")
+        .expect("record analytical failure");
+    let failed = storage.projection_queue_status().expect("queue health");
+    assert_eq!(failed.failed_jobs, 1);
+    assert_eq!(storage.distinct_state_count().expect("retained state"), 1);
+
+    storage.enqueue_warehouse_rebuild().expect("request rebuild");
+    let retry = storage.projection_queue_status().expect("retry health");
+    assert_eq!(retry.failed_jobs, 0);
+    assert_eq!(retry.pending_jobs, 2);
+    assert!(retry.oldest_unresolved_at_ms.is_some());
+}
+
+#[test]
 fn strict_prefix_successors_remain_on_main() {
     let directory = tempdir().expect("temporary directory");
     let storage =

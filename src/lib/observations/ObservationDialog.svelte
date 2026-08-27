@@ -78,7 +78,9 @@
       const title = $translation(
         kind === "save"
           ? "observer-choose-save-folder"
-          : "observer-choose-game-folder",
+          : kind === "game"
+            ? "observer-choose-game-folder"
+            : "observer-choose-workshop-folder",
       );
       const selected = await chooseDirectory(title);
       if (!selected) return;
@@ -268,6 +270,41 @@
               onclick={() => void selectDirectory("game")}
             >
               {$translation("observer-choose-game-folder")}
+            </button>
+          </article>
+
+          <article class:configured={Boolean(setup?.workshop_directory)}>
+            <header>
+              <div>
+                <span class="eyebrow">03</span>
+                <h3>{$translation("observer-workshop-folder")}</h3>
+              </div>
+              <span
+                class="status-chip"
+                data-status={setup?.workshop_directory ? "stable" : "watch"}
+              >
+                {setup?.workshop_directory
+                  ? $translation("coverage-complete")
+                  : $translation("observer-optional")}
+              </span>
+            </header>
+            <p>{$translation("observer-workshop-folder-detail")}</p>
+            <div class="observer-source-state">
+              <strong>
+                {setup?.workshop_directory
+                  ? $translation("observer-folder-selected", {
+                      name: setup.workshop_directory.name,
+                    })
+                  : $translation("observer-automatic-discovery")}
+              </strong>
+              <span>{$translation("observer-workshop-private")}</span>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onclick={() => void selectDirectory("workshop")}
+            >
+              {$translation("observer-choose-workshop-folder")}
             </button>
           </article>
         </div>

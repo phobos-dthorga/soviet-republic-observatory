@@ -1,6 +1,6 @@
 # ADR-0008: application-owned SQLite persistence boundary
 
-Status: Accepted
+Status: Accepted, storage-engine scope superseded by ADR-0011
 
 ## Context
 
@@ -17,7 +17,9 @@ server is also not a current product requirement.
 
 ## Decision
 
-- Use bundled SQLite as the sole authoritative local storage engine.
+- Use bundled SQLite as the authoritative operational storage engine. ADR-0011
+  supersedes the former “sole storage engine” clause for the analytical
+  catalogue and warehouse.
 - Place an application-owned persistence API between services and SQLite.
 - Keep connection configuration, migrations, settings, observations, branch
   resolution, and query projections in cohesive storage modules.
@@ -33,8 +35,9 @@ server is also not a current product requirement.
   different fake backend.
 - Keep the database unencrypted. Ordinary operating-system file permissions
   are the current protection boundary.
-- Do not introduce an ORM, database-agnostic query layer, SQLCipher, or a second
-  storage engine without a demonstrated requirement and compatibility decision.
+- Do not introduce an ORM, database-agnostic query layer, or SQLCipher. A second
+  engine requires a demonstrated workload and explicit compatibility decision;
+  ADR-0011 records that decision for DuckDB.
 
 ## Consequences
 
@@ -45,9 +48,9 @@ a single repository file and cannot be called directly from presentation code.
 Backups and exports are unencrypted and must be labelled accordingly when they
 are implemented. If a future feature introduces credentials, those credentials
 should normally use the operating system's credential vault rather than cause
-the observation database to acquire its own encryption-key lifecycle. A future
-analytical accelerator such as DuckDB would be a derived-query implementation,
-not a second source of truth.
+the observation database to acquire its own encryption-key lifecycle. DuckDB is
+now the catalogue-history and derived analytical authority described by
+ADR-0011; it does not replace SQLite operational truth.
 
 ADR-0009 records the completed growth benchmark and replaces complete
 per-payload receiver-history writes with content-addressed shared-prefix nodes

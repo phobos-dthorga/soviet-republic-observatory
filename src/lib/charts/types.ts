@@ -5,6 +5,8 @@ export type EvidenceKind =
   | "game_definition"
   | "calculation"
   | "extension_calculation"
+  | "player_override"
+  | "player_definition"
   | "estimate"
   | "recommendation";
 

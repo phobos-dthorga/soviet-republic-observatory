@@ -52,6 +52,8 @@
     game_definition: "evidence-game-definition",
     calculation: "evidence-calculation",
     extension_calculation: "evidence-extension-calculation",
+    player_override: "evidence-player-override",
+    player_definition: "evidence-player-definition",
     estimate: "evidence-estimate",
     recommendation: "evidence-recommendation",
   };

@@ -63,7 +63,27 @@ Remaining in this slice:
 
 - Authoritative Rust validation and persistence for community language packs
 
-## Slice 3 — local Analysis Packs
+## Slice 3 — definition catalogue and planning warehouse — implemented foundation
+
+- SQLite operational authority plus content-addressed projection outbox
+- Pinned bundled DuckDB with independent append-only migrations, receipts,
+  watermarks, rebuilds, and visible analytical lag
+- Source-qualified base, DLC, subscribed Workshop, and WIP discovery
+- Changed-file hashing with unchanged-revision reuse and source-removal handling
+- Typed building, vehicle, resource, production, construction, capacity, and
+  unknown-directive records with retained catalogue generations
+- Five-second native refresh batching, startup fingerprint reconciliation, and
+  transactional generation publication
+- Materials catalogue search, dossiers, warehouse health, and provenance
+- Strict `.rooverlay.json` contract with immutable named revisions, explicit
+  lifecycle, conflict fallbacks, and supplemental player definitions
+- Model snapshots pin catalogue generation, overlay revision, observation
+  watermark, schema, and projector versions
+
+Ignored reference-machine scale and growth benchmarks accompany the automated
+suite. Broader verified directive coverage remains ongoing catalogue hardening.
+
+## Slice 4 — local Analysis Packs
 
 - Authoritative Rust validation against Analysis Pack schema and semantic rules
 - Local file inspection with ID, version, content hash, inputs, and contributions
@@ -74,10 +94,11 @@ Remaining in this slice:
   community pack
 - Invalid or failed packs isolated from save observation and core dashboards
 
-This slice starts only after branch-aware storage can supply correctly aligned
-observations. A catalogue remains optional and is not required for local files.
+This slice follows branch-aware storage and the catalogue warehouse. Packs
+remain independent of installed definitions unless they explicitly request
+published catalogue metrics.
 
-## Slice 4 — Republic Briefing and Broadcast foundation
+## Slice 5 — Republic Briefing and Broadcast foundation
 
 - Player plans and targets
 - Plan attainment and guardrails
@@ -90,7 +111,7 @@ observations. A catalogue remains optional and is not required for local files.
 - Binary station telemetry shown as unavailable until the research track
   validates it
 
-## Slice 5 — Materials and markets
+## Slice 6 — Materials and markets
 
 - Material Periodic Table
 - Price baskets and indexed market views
@@ -98,16 +119,16 @@ observations. A catalogue remains optional and is not required for local files.
 - Currency-specific trade, tourism, debt, and break-even analysis
 - Measurement coverage and accounted-flow residual presentation
 
-## Slice 6 — Population and cities
+## Slice 7 — Population and cities
 
 - Welfare small multiples from observed snapshots
 - City heatmap, ranking, weighted dispersion, and intervention queue
 - Annotations and event-time comparisons
 - Experimental control charts with baseline diagnostics
 
-## Slice 7 — Industrial Laboratory
+## Slice 8 — Industrial Laboratory
 
-- Installed game-definition catalogue and versioning
+- Expanded definition coverage and verified automatic-cost rules
 - Production-chain graph
 - Target propagation and limiting-input analysis
 - Cost sensitivity and scenario engine

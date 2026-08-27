@@ -40,6 +40,12 @@ The SQLite database is unencrypted and contains no credentials. Full configured
 paths remain inside app-local settings and are never included in presentation or
 extension models. Raw save archives remain outside the database.
 
+Completed observations enqueue content-addressed analytical projection jobs in
+the same SQLite transaction. App-local DuckDB receives those jobs later. A
+warehouse outage delays model matrices but cannot invalidate or block an
+observation. Both database files are unencrypted and must remain on local
+storage, not a NAS or cloud-synchronised folder.
+
 ## `stats.ini` coverage
 
 Observed global historical records contained fields suitable for:
@@ -126,7 +132,11 @@ stable neutral label and explain the limitation.
 
 ## Game definitions
 
-Installed game definitions can provide resource catalogues and production
+The implemented catalogue indexes locally available base-game, DLC, subscribed
+Workshop, and WIP building and vehicle definitions. It retains source-qualified
+identities, content-addressed generations, typed properties, repeatable
+relations, line evidence, and unknown-directive diagnostics in DuckDB. Installed
+game definitions can provide resource catalogues and production
 recipes independently of a republic save. These are game-definition facts, not
 observed republic activity. They can support theoretical material requirements,
 limiting-input calculations, and scenario models, but cannot establish that a
@@ -134,6 +144,18 @@ specific building operated at that theoretical rate.
 
 Definitions should be imported into versioned application-owned models. No game
 assets are copied or redistributed.
+
+`$COST_RESOURCE` is an explicit construction quantity. `$COST_RESOURCE_AUTO` is
+only an automatic-cost coefficient and remains visibly unresolved alongside
+construction nodes, keywords, and phases until its conversion is verified.
+Definition repair or maintenance values are unavailable unless an explicit
+source directive or reviewed game rule establishes them.
+
+Planning overlays preserve installed originals and add player-authored
+`player_override` or `player_definition` evidence. A conflict falls back to the
+installed original; it never silently rebases after a game or Workshop update.
+The strict contract and lifecycle are documented in
+[Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md).
 
 Installed-game translation files are a potential local display-vocabulary
 source, not parser truth and not Observatory UI translations. The current host

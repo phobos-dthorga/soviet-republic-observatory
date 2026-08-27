@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "community.example.planning-material",
+  "version": "1.0.0",
+  "name": "Supplemental Planning Material",
+  "author": "Republic Observatory contributors",
+  "default_locale": "en-AU",
+  "description": "An inert example that adds one local planning material without claiming it is installed game content.",
+  "operations": [],
+  "supplements": [
+    {
+      "local_id": "planning_composite",
+      "entity_kind": "resource",
+      "display_name": "Planning composite",
+      "reason": "Demonstrate a player definition with explicit authorship and no installed-game claim.",
+      "properties": [
+        {
+          "field_id": "resource.planning.density",
+          "value": { "kind": "number", "number": 1.25, "unit": "t/m3" }
+        }
+      ]
+    }
+  ]
+}

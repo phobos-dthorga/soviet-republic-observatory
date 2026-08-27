@@ -43,8 +43,8 @@ changing their semantic order.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
 
-The current foundation enables Briefing, Monitor, Broadcast, Extensions, and Archive in
-primary navigation. The other buttons remain visibly disabled until their
+The current application enables Briefing, Monitor, Broadcast, Extensions,
+Materials, and Archive in primary navigation. The other buttons remain visibly disabled until their
 analytical vertical slices exist. The shell owns only global navigation and
 observation context; each enabled destination is a presentational workspace
 component.
@@ -107,6 +107,20 @@ four core inputs, five derived metrics, one 100% stacked-area contribution, and
 the capabilities it does not possess. Inspect, validate, and enable are separate
 future lifecycle steps. Model Plugin controls are labelled planned and
 unavailable, not disabled-but-implemented.
+
+### Industrial catalogue
+
+Materials now opens a source-backed catalogue workspace. Its health strip shows
+the active DuckDB generation, source/file/entity counts, database size, pending
+projection jobs, failures, and observation watermark. Search spans Resources,
+Buildings, and Vehicles and preserves source/package identity. The dossier
+separates typed facts, repeatable production/construction/capability relations,
+unknown-directive diagnostics, and unresolved automatic-cost coefficients.
+
+The planning-overlay laboratory keeps inspect, validate, import, activate,
+rollback, deactivate, export, and remove distinct. Affected fields display
+`original → override → effective`; conflicts never silently replace installed
+facts. Guided supplemental definitions are explicitly player-authored.
 
 ## Briefing hierarchy
 

@@ -229,6 +229,25 @@ retain the pre/post windows, candidate lag, station, programme values,
 contemporaneous annotations, observation count, model version, and uncertainty.
 The default description is “estimated association,” not programme effect.
 
+## Definition and overlay values
+
+An installed definition fact is `game_definition` evidence and retains its
+source-qualified entity identity, revision hash, directive, bounded arguments,
+line number, unit, parser version, and catalogue generation. An unresolved
+automatic construction coefficient is a rule input, not a material-demand
+quantity.
+
+An overlay operation is `player_override`; a supplemental entity is
+`player_definition`. For every affected scalar or repeatable value the public
+shape is `original → override → effective`. A failed revision or value
+precondition makes the override unavailable and leaves the original effective.
+It is never silently rebased.
+
+Planning and model results pin the catalogue generation, active profile and
+revision, SQLite observation watermark, warehouse schema, and projector
+version. Results from different snapshots cannot be joined as though they were
+one coherent model run.
+
 ## Analysis Pack calculations
 
 An Analysis Pack result uses evidence kind `extension_calculation`. It records

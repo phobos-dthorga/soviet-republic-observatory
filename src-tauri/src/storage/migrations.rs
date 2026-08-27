@@ -29,6 +29,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "recorder directory baseline state",
         include_str!("../../migrations/0005_recorder_directories.sql"),
     ),
+    (
+        6,
+        "warehouse projection outbox and planning overlays",
+        include_str!("../../migrations/0006_warehouse_outbox_and_overlays.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

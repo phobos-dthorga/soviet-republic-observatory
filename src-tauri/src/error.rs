@@ -45,6 +45,16 @@ pub enum ObservatoryError {
     SameObservationComparison,
     #[error("One of the selected observations no longer exists.")]
     UnknownObservation,
+    #[error("The analytical warehouse is unavailable.")]
+    WarehouseUnavailable,
+    #[error("No installed-game definition catalogue is available.")]
+    CatalogueUnavailable,
+    #[error("The definition catalogue request is invalid.")]
+    InvalidCatalogueRequest,
+    #[error("The planning overlay is invalid: {0}")]
+    InvalidPlanningOverlay(&'static str),
+    #[error("The selected planning overlay profile does not exist.")]
+    UnknownPlanningOverlay,
 }
 
 impl ObservatoryError {
@@ -71,6 +81,11 @@ impl ObservatoryError {
             Self::IncompatibleComparison => "incompatible_comparison",
             Self::SameObservationComparison => "same_observation_comparison",
             Self::UnknownObservation => "unknown_observation",
+            Self::WarehouseUnavailable => "warehouse_unavailable",
+            Self::CatalogueUnavailable => "catalogue_unavailable",
+            Self::InvalidCatalogueRequest => "invalid_catalogue_request",
+            Self::InvalidPlanningOverlay(_) => "invalid_planning_overlay",
+            Self::UnknownPlanningOverlay => "unknown_planning_overlay",
         }
     }
 }
@@ -95,6 +110,12 @@ impl From<rusqlite::Error> for ObservatoryError {
         #[cfg(debug_assertions)]
         eprintln!("SQLite diagnostic: {_error}");
         Self::StorageUnavailable
+    }
+}
+
+impl From<duckdb::Error> for ObservatoryError {
+    fn from(_: duckdb::Error) -> Self {
+        Self::WarehouseUnavailable
     }
 }
 

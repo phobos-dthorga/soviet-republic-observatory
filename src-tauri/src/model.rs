@@ -512,6 +512,7 @@ pub struct GameVocabularySource {
 pub struct SetupState {
     pub save_directory: Option<ConfiguredDirectorySummary>,
     pub game_directory: Option<ConfiguredDirectorySummary>,
+    pub workshop_directory: Option<ConfiguredDirectorySummary>,
     pub save_candidates: u32,
     pub observed_saves: u32,
     pub distinct_states: u32,
@@ -524,4 +525,169 @@ pub struct SetupState {
 pub enum DirectoryKind {
     Save,
     Game,
+    Workshop,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WarehousePhase {
+    Ready,
+    Lagging,
+    Rebuilding,
+    Attention,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct WarehouseHealth {
+    pub phase: WarehousePhase,
+    pub schema_version: u32,
+    pub pending_jobs: u32,
+    pub failed_jobs: u32,
+    pub lag_ms: Option<i64>,
+    pub last_projected_at_ms: Option<i64>,
+    pub observation_watermark: Option<String>,
+    pub database_size_bytes: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CatalogueGenerationSummary {
+    pub generation_id: String,
+    pub game_build_id: Option<String>,
+    pub parser_version: String,
+    pub created_at_ms: i64,
+    pub source_count: u32,
+    pub file_count: u32,
+    pub entity_count: u32,
+    pub property_count: u32,
+    pub relation_count: u32,
+    pub warning_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CatalogueStatus {
+    pub warehouse: WarehouseHealth,
+    pub generation: Option<CatalogueGenerationSummary>,
+    pub last_checked_at_ms: Option<i64>,
+    pub last_refreshed_at_ms: Option<i64>,
+    pub last_filesystem_event_ms: Option<i64>,
+    pub error_code: Option<String>,
+    pub active_overlay: Option<OverlayProfileSummary>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct CatalogueSearchFilter {
+    pub query: Option<String>,
+    pub entity_kind: Option<String>,
+    pub source_kind: Option<String>,
+    pub package_query: Option<String>,
+    pub coverage: Option<String>,
+    pub available_year: Option<u32>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefinitionSummary {
+    pub entity_id: String,
+    pub revision_hash: String,
+    pub entity_kind: String,
+    pub source_id: String,
+    pub source_kind: String,
+    pub package_name: String,
+    pub display_name: String,
+    pub coverage: String,
+    pub property_count: u32,
+    pub relation_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CataloguePage {
+    pub total: u32,
+    pub limit: u32,
+    pub offset: u32,
+    pub items: Vec<DefinitionSummary>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefinitionValue {
+    pub value_kind: String,
+    pub number: Option<f64>,
+    pub text: Option<String>,
+    pub unit: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefinitionFact {
+    pub field_id: String,
+    pub occurrence: u32,
+    pub original: Option<DefinitionValue>,
+    pub override_value: Option<DefinitionValue>,
+    pub effective: Option<DefinitionValue>,
+    pub source_directive: String,
+    pub source_line: u32,
+    pub raw_arguments: String,
+    pub evidence_kind: String,
+    pub resolution: String,
+    pub conflict_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefinitionRelation {
+    pub relation_kind: String,
+    pub occurrence: u32,
+    pub target_id: String,
+    pub quantity: Option<f64>,
+    pub unit: Option<String>,
+    pub phase_id: Option<String>,
+    pub source_directive: String,
+    pub source_line: u32,
+    pub raw_arguments: String,
+    pub resolution: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefinitionDossier {
+    pub summary: DefinitionSummary,
+    pub facts: Vec<DefinitionFact>,
+    pub relations: Vec<DefinitionRelation>,
+    pub unknown_directives: Vec<UnknownDirectiveSummary>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct UnknownDirectiveSummary {
+    pub directive: String,
+    pub occurrence_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct OverlayProfileSummary {
+    pub profile_id: String,
+    pub display_name: String,
+    pub active_revision: Option<u32>,
+    pub latest_revision: u32,
+    pub revision_count: u32,
+    pub semantic_version: String,
+    pub content_hash: String,
+    pub conflict_count: u32,
+    pub active: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct OverlayInspection {
+    pub valid: bool,
+    pub code: Option<String>,
+    pub profile: Option<OverlayProfileSummary>,
+    pub operation_count: u32,
+    pub supplement_count: u32,
+    pub document: Option<serde_json::Value>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct WarehouseSnapshot {
+    pub catalogue_generation_id: String,
+    pub overlay_profile_id: Option<String>,
+    pub overlay_revision: Option<u32>,
+    pub observation_watermark: Option<String>,
+    pub warehouse_schema_version: u32,
+    pub projector_version: String,
 }

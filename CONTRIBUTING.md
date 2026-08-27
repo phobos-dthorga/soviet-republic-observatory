@@ -21,7 +21,7 @@ npm run build
 npm run rust:check
 npm run rust:test
 cargo fmt --manifest-path src-tauri\Cargo.toml --check
-cargo clippy --manifest-path src-tauri\Cargo.toml --all-targets -- -D warnings
+npm run rust:clippy
 ```
 
 Maintainers may additionally point `RO_LIVE_SAVE` at a local save ZIP and run
@@ -47,3 +47,21 @@ do not construct keys dynamically. Language-pack contributions should follow
 the [localisation guide](docs/localization/README.md), retain Fluent variables,
 and avoid protected evidence and safety namespaces. New Analysis Pack prose
 should declare its own `default_locale` and is not host UI text.
+
+SQLite owns operational truth; DuckDB owns catalogue generations and derived
+analytical projections. Never connect the engines through DuckDB extensions or
+expose either connection, SQL, table name, database path, complete definition,
+or raw save through a command or extension contract. Transfers use bounded,
+versioned Rust models and the idempotent SQLite projection outbox. A warehouse
+failure must not block save observation or SQLite-backed views.
+
+Planning overlays and Analysis Packs are inert data. They cannot contain code,
+expressions, markup, URLs, paths, renderer configuration, or direct ECharts
+options. Future executable plugins remain out of process with deny-by-default
+capabilities; process separation must never be described as an operating-system
+sandbox.
+
+The bundled DuckDB build produces long intermediate C++ paths. The npm Rust and
+Tauri scripts select a short operating-system temporary target directory so the
+Windows compiler does not exceed legacy path limits. Do not replace that helper
+with a personal absolute path.

@@ -5,6 +5,7 @@
   import ExtensionsWorkspace from "./lib/workspaces/ExtensionsWorkspace.svelte";
   import ArchiveWorkspace from "./lib/workspaces/ArchiveWorkspace.svelte";
   import MonitorWorkspace from "./lib/workspaces/MonitorWorkspace.svelte";
+  import MaterialsWorkspace from "./lib/workspaces/MaterialsWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
@@ -28,7 +29,12 @@
   } from "./lib/observations/types";
 
   type WorkspaceName =
-    "briefing" | "monitor" | "broadcast" | "extensions" | "archive";
+    | "briefing"
+    | "monitor"
+    | "broadcast"
+    | "extensions"
+    | "materials"
+    | "archive";
   const workspaces: Array<{
     id:
       | WorkspaceName
@@ -45,7 +51,7 @@
     { id: "broadcast", label: "nav-broadcast", enabled: true },
     { id: "extensions", label: "nav-extensions", enabled: true },
     { id: "plan", label: "nav-plan", enabled: false },
-    { id: "materials", label: "nav-materials", enabled: false },
+    { id: "materials", label: "nav-materials", enabled: true },
     { id: "population", label: "nav-population", enabled: false },
     { id: "markets", label: "nav-markets", enabled: false },
     { id: "archive", label: "nav-archive", enabled: true },
@@ -293,6 +299,11 @@
     <BroadcastWorkspace {receiverDataset} />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace />
+  {:else if activeWorkspace === "materials"}
+    <MaterialsWorkspace
+      {desktopAvailable}
+      gameConfigured={Boolean(setupState?.game_directory)}
+    />
   {:else}
     <ArchiveWorkspace
       archive={archiveOverview}

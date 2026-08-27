@@ -5,6 +5,10 @@ import type {
   ArchiveOverview,
   ArchiveComparison,
   BranchSelectionResult,
+  CataloguePage,
+  CatalogueSearchFilter,
+  CatalogueStatus,
+  DefinitionDossier,
   DirectoryKind,
   ObservationImportResult,
   ObserverErrorCode,
@@ -12,6 +16,8 @@ import type {
   RecorderHealth,
   RecorderUpdate,
   SetupState,
+  OverlayInspection,
+  OverlayProfileSummary,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -91,4 +97,93 @@ export function observerErrorCode(error: unknown): ObserverErrorCode {
     return error.code as ObserverErrorCode;
   }
   return "unknown";
+}
+
+export function getCatalogueStatus(): Promise<CatalogueStatus> {
+  return invoke<CatalogueStatus>("get_catalogue_status");
+}
+
+export function refreshDefinitions(): Promise<CatalogueStatus> {
+  return invoke<CatalogueStatus>("refresh_definitions");
+}
+
+export function rebuildWarehouse(): Promise<CatalogueStatus> {
+  return invoke<CatalogueStatus>("rebuild_warehouse");
+}
+
+export function searchCatalogue(
+  filter: CatalogueSearchFilter,
+): Promise<CataloguePage> {
+  return invoke<CataloguePage>("search_catalogue", { filter });
+}
+
+export function getDefinitionDossier(
+  entityId: string,
+): Promise<DefinitionDossier> {
+  return invoke<DefinitionDossier>("get_definition_dossier", { entityId });
+}
+
+export function inspectPlanningOverlay(
+  json: string,
+): Promise<OverlayInspection> {
+  return invoke<OverlayInspection>("inspect_planning_overlay", { json });
+}
+
+export function importPlanningOverlay(
+  json: string,
+): Promise<OverlayProfileSummary> {
+  return invoke<OverlayProfileSummary>("import_planning_overlay", { json });
+}
+
+export function exportPlanningOverlay(
+  profileId: string,
+  revision: number,
+): Promise<string> {
+  return invoke<string>("export_planning_overlay", { profileId, revision });
+}
+
+export function listPlanningOverlays(): Promise<OverlayProfileSummary[]> {
+  return invoke<OverlayProfileSummary[]>("list_planning_overlays");
+}
+
+export function activatePlanningOverlay(
+  profileId: string,
+  revision?: number,
+): Promise<OverlayProfileSummary> {
+  return invoke<OverlayProfileSummary>("activate_planning_overlay", {
+    profileId,
+    revision,
+  });
+}
+
+export function rollbackPlanningOverlay(
+  profileId: string,
+): Promise<OverlayProfileSummary> {
+  return invoke<OverlayProfileSummary>("rollback_planning_overlay", {
+    profileId,
+  });
+}
+
+export function deactivatePlanningOverlay(): Promise<void> {
+  return invoke<void>("deactivate_planning_overlay");
+}
+
+export function removePlanningOverlay(profileId: string): Promise<void> {
+  return invoke<void>("remove_planning_overlay", { profileId });
+}
+
+export function listenForCatalogueUpdates(
+  accept: (status: CatalogueStatus) => void,
+): Promise<UnlistenFn> {
+  return listen<CatalogueStatus>("catalogue-update", (event) =>
+    accept(event.payload),
+  );
+}
+
+export function listenForWarehouseUpdates(
+  accept: (status: CatalogueStatus) => void,
+): Promise<UnlistenFn> {
+  return listen<CatalogueStatus>("warehouse-update", (event) =>
+    accept(event.payload),
+  );
 }

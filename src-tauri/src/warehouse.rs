@@ -1,0 +1,1342 @@
+use std::collections::{BTreeMap, HashMap};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use duckdb::{Connection, OptionalExt, params};
+
+use crate::definition_catalogue::{
+    CatalogueGeneration, CatalogueReuseEntry, DEFINITION_PARSER_VERSION,
+};
+use crate::error::ObservatoryError;
+use crate::model::{
+    CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter, DefinitionDossier,
+    DefinitionFact, DefinitionRelation, DefinitionSummary, DefinitionValue, ReceiverDataset,
+    UnknownDirectiveSummary, WarehouseHealth, WarehousePhase, WarehouseSnapshot,
+};
+use crate::planning_overlay::{
+    OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
+};
+
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 2;
+pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
+pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
+
+const MIGRATIONS: &[(u32, &str)] = &[
+    (
+        1,
+        include_str!("../warehouse_migrations/0001_catalogue_and_analytics.sql"),
+    ),
+    (
+        2,
+        include_str!("../warehouse_migrations/0002_planning_projections.sql"),
+    ),
+];
+
+pub struct AnalyticalWarehouse {
+    database_path: PathBuf,
+    connection: Mutex<Connection>,
+    available: bool,
+}
+
+impl std::fmt::Debug for AnalyticalWarehouse {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("AnalyticalWarehouse")
+            .field("database_path", &"<app-local warehouse>")
+            .finish_non_exhaustive()
+    }
+}
+
+impl AnalyticalWarehouse {
+    pub fn initialise(database_path: PathBuf) -> Result<Self, ObservatoryError> {
+        if let Some(parent) = database_path.parent() {
+            fs::create_dir_all(parent).map_err(|_| ObservatoryError::WarehouseUnavailable)?;
+        }
+        let mut connection = Connection::open(&database_path)?;
+        connection.execute_batch(
+            "SET autoinstall_known_extensions = false;\
+             SET autoload_known_extensions = false;\
+             SET enable_external_access = false;",
+        )?;
+        migrate(&mut connection)?;
+        Ok(Self {
+            database_path,
+            connection: Mutex::new(connection),
+            available: true,
+        })
+    }
+
+    /// Keeps the operational SQLite recorder available when the analytical
+    /// warehouse cannot be opened. All analytical operations fail closed until
+    /// the next application start, while `health` remains queryable.
+    pub fn unavailable(database_path: PathBuf) -> Self {
+        Self {
+            database_path,
+            connection: Mutex::new(
+                Connection::open_in_memory().expect("an in-memory DuckDB connection must open"),
+            ),
+            available: false,
+        }
+    }
+
+    pub fn publish_catalogue(
+        &self,
+        generation: &CatalogueGeneration,
+    ) -> Result<bool, ObservatoryError> {
+        let mut connection = self.lock()?;
+        let current = connection.query_row(
+            "SELECT current_catalogue_generation_id FROM warehouse_metadata WHERE singleton_id = 1",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )?;
+        connection.execute(
+            "UPDATE warehouse_metadata SET last_catalogue_check_ms = ?1 WHERE singleton_id = 1",
+            [generation.created_at_ms],
+        )?;
+        if current.as_deref() == Some(&generation.generation_id) {
+            return Ok(false);
+        }
+
+        let transaction = connection.transaction()?;
+        let warning_count = generation
+            .files
+            .iter()
+            .map(|file| u64::from(file.warning_count))
+            .sum::<u64>();
+        transaction.execute(
+            "INSERT INTO catalogue_generations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                generation.generation_id,
+                generation.game_build_id,
+                DEFINITION_PARSER_VERSION,
+                generation.created_at_ms,
+                generation.sources.len() as u64,
+                generation.files.len() as u64,
+                generation.entities.len() as u64,
+                0_u64,
+                0_u64,
+                warning_count,
+            ],
+        )?;
+
+        {
+            let mut statement = transaction
+                .prepare("INSERT INTO catalogue_sources VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+            for source in &generation.sources {
+                statement.execute(params![
+                    generation.generation_id,
+                    source.source_id,
+                    source.source_kind,
+                    source.package_name,
+                    source.package_version,
+                    source.content_hash,
+                    source.file_count,
+                ])?;
+            }
+        }
+        {
+            let mut statement = transaction
+                .prepare("INSERT INTO catalogue_files VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+            for file in &generation.files {
+                statement.execute(params![
+                    generation.generation_id,
+                    file.source_id,
+                    file.logical_path,
+                    file.content_hash,
+                    file.byte_size,
+                    DEFINITION_PARSER_VERSION,
+                    file.warning_count,
+                ])?;
+            }
+        }
+        for entity in &generation.entities {
+            let revision_exists = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM definition_entity_revisions WHERE revision_hash = ?1)",
+                [&entity.revision_hash],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !revision_exists {
+                transaction.execute(
+                    "INSERT INTO definition_entity_revisions VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        entity.revision_hash,
+                        entity.entity_kind,
+                        entity.source_id,
+                        entity.source_object_id,
+                        entity.display_name,
+                        entity.coverage,
+                    ],
+                )?;
+                {
+                    let mut statement = transaction.prepare(
+                        "INSERT INTO definition_properties VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'game_definition', ?11)",
+                    )?;
+                    for property in &entity.properties {
+                        statement.execute(params![
+                            entity.revision_hash,
+                            property.field_id,
+                            property.occurrence,
+                            property.value_kind,
+                            property.value_number,
+                            property.value_text,
+                            property.unit,
+                            property.source_directive,
+                            property.source_line,
+                            property.raw_arguments,
+                            property.resolution,
+                        ])?;
+                    }
+                }
+                {
+                    let mut statement = transaction.prepare(
+                        "INSERT INTO definition_relations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    )?;
+                    for relation in &entity.relations {
+                        statement.execute(params![
+                            entity.revision_hash,
+                            relation.relation_kind,
+                            relation.occurrence,
+                            relation.target_id,
+                            relation.quantity,
+                            relation.unit,
+                            relation.phase_id,
+                            relation.source_directive,
+                            relation.source_line,
+                            relation.raw_arguments,
+                            relation.resolution,
+                        ])?;
+                    }
+                }
+                {
+                    let mut statement = transaction
+                        .prepare("INSERT INTO definition_unknown_directives VALUES(?1, ?2, ?3)")?;
+                    for (directive, count) in &entity.unknown_directives {
+                        statement.execute(params![entity.revision_hash, directive, count])?;
+                    }
+                }
+            }
+            transaction.execute(
+                "INSERT INTO catalogue_generation_entities VALUES(?1, ?2, ?3)",
+                params![
+                    generation.generation_id,
+                    entity.entity_id,
+                    entity.revision_hash
+                ],
+            )?;
+        }
+        transaction.execute(
+            "UPDATE catalogue_generations SET \
+                 property_count = (SELECT COUNT(*) FROM catalogue_generation_entities membership \
+                     JOIN definition_properties properties USING(revision_hash) \
+                     WHERE membership.generation_id = ?1), \
+                 relation_count = (SELECT COUNT(*) FROM catalogue_generation_entities membership \
+                     JOIN definition_relations relations USING(revision_hash) \
+                     WHERE membership.generation_id = ?1) \
+             WHERE generation_id = ?1",
+            [&generation.generation_id],
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET current_catalogue_generation_id = ?1, \
+             last_catalogue_refresh_ms = ?2, last_catalogue_error_code = NULL WHERE singleton_id = 1",
+            params![generation.generation_id, generation.created_at_ms],
+        )?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
+    pub fn note_catalogue_failure(&self, checked_at_ms: i64, code: &str) {
+        if let Ok(connection) = self.lock() {
+            let _ = connection.execute(
+                "UPDATE warehouse_metadata SET last_catalogue_check_ms = ?1, \
+                 last_catalogue_error_code = ?2 WHERE singleton_id = 1",
+                params![checked_at_ms, code],
+            );
+        }
+    }
+
+    pub fn catalogue_reuse_cache(
+        &self,
+    ) -> Result<HashMap<String, CatalogueReuseEntry>, ObservatoryError> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT revisions.revision_hash, revisions.display_name, revisions.coverage, \
+                    relations.target_id, relations.relation_kind \
+             FROM catalogue_generation_entities membership \
+             JOIN warehouse_metadata metadata ON membership.generation_id = metadata.current_catalogue_generation_id \
+             JOIN definition_entity_revisions revisions USING(revision_hash) \
+             LEFT JOIN definition_relations relations ON relations.revision_hash = revisions.revision_hash \
+                  AND relations.target_id LIKE 'resource::%' \
+             WHERE metadata.singleton_id = 1 \
+               AND revisions.entity_kind IN ('building', 'vehicle')",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let mut cache = HashMap::<String, CatalogueReuseEntry>::new();
+        for row in rows {
+            let (revision_hash, display_name, coverage, resource_target, relation_kind) = row?;
+            let entry = cache.entry(revision_hash).or_insert(CatalogueReuseEntry {
+                display_name,
+                coverage,
+                resource_targets: Vec::new(),
+                has_production_route: false,
+            });
+            entry.has_production_route |= relation_kind.is_some_and(|kind| {
+                matches!(
+                    kind.as_str(),
+                    "production_input" | "production_output" | "waste_input"
+                )
+            });
+            if let Some(resource) = resource_target
+                .and_then(|target| target.strip_prefix("resource::").map(str::to_owned))
+                && !entry.resource_targets.contains(&resource)
+            {
+                entry.resource_targets.push(resource);
+            }
+        }
+        Ok(cache)
+    }
+
+    pub fn project_observation(
+        &self,
+        projection_id: &str,
+        dataset: &ReceiverDataset,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            return Ok(());
+        }
+        let transaction = connection.transaction()?;
+        {
+            let mut statement = transaction.prepare(
+                "INSERT INTO observation_metrics VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                 ON CONFLICT DO NOTHING",
+            )?;
+            for point in &dataset.points {
+                for (metric_id, value) in [
+                    ("core.citizens.electronics.none", point.none),
+                    ("core.citizens.electronics.radio", point.radio),
+                    ("core.citizens.electronics.television", point.television),
+                    ("core.citizens.electronics.computer", point.computer),
+                ] {
+                    statement.execute(params![
+                        dataset.payload_hash,
+                        dataset.branch_id,
+                        point.record_id,
+                        point.year,
+                        point.day,
+                        point.game_day,
+                        metric_id,
+                        value,
+                    ])?;
+                }
+            }
+        }
+        record_receipt(
+            &transaction,
+            projection_id,
+            "observation",
+            &dataset.payload_hash,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1, observation_watermark = ?2 \
+             WHERE singleton_id = 1",
+            params![applied_at_ms, dataset.payload_hash],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn project_overlay(
+        &self,
+        projection_id: &str,
+        active: Option<(&str, u32, &PlanningOverlayDocument)>,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            return Ok(());
+        }
+        let transaction = connection.transaction()?;
+        transaction.execute("DELETE FROM active_overlay_operations", [])?;
+        transaction.execute("DELETE FROM active_overlay_entities", [])?;
+        if let Some((profile_id, revision, document)) = active {
+            for (index, operation) in document.operations.iter().enumerate() {
+                let conflict = overlay_conflict(&transaction, operation)?;
+                let value = operation.value.as_ref();
+                transaction.execute(
+                    "INSERT INTO active_overlay_operations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    params![
+                        profile_id,
+                        revision,
+                        index as u64,
+                        match operation.operation {
+                            OverlayOperationKind::Set => "set",
+                            OverlayOperationKind::Unset => "unset",
+                            OverlayOperationKind::Add => "add",
+                        },
+                        operation.entity_id,
+                        operation.field_id,
+                        operation.occurrence,
+                        operation.expected_revision_hash,
+                        value.map(|value| value.kind.as_str()),
+                        value.and_then(|value| value.number),
+                        value.and_then(overlay_text),
+                        value.and_then(|value| value.unit.as_deref()),
+                        operation.reason,
+                        conflict,
+                    ],
+                )?;
+            }
+            for supplement in &document.supplements {
+                let entity_id = format!(
+                    "overlay::{profile_id}::{}::{}",
+                    supplement.entity_kind, supplement.local_id
+                );
+                let properties_json = serde_json::to_string(&supplement.properties)
+                    .map_err(|_| ObservatoryError::InvalidPlanningOverlay("invalid_json"))?;
+                transaction.execute(
+                    "INSERT INTO active_overlay_entities VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        profile_id,
+                        revision,
+                        entity_id,
+                        supplement.entity_kind,
+                        supplement.display_name,
+                        supplement.reason,
+                        properties_json,
+                    ],
+                )?;
+            }
+            transaction.execute(
+                "UPDATE warehouse_metadata SET active_overlay_profile_id = ?1, \
+                 active_overlay_revision = ?2 WHERE singleton_id = 1",
+                params![profile_id, revision],
+            )?;
+        } else {
+            transaction.execute(
+                "UPDATE warehouse_metadata SET active_overlay_profile_id = NULL, \
+                 active_overlay_revision = NULL WHERE singleton_id = 1",
+                [],
+            )?;
+        }
+        let source_identity = active
+            .map(|(profile, revision, _)| format!("{profile}:{revision}"))
+            .unwrap_or_else(|| "none".to_owned());
+        record_receipt(
+            &transaction,
+            projection_id,
+            "overlay_state",
+            &source_identity,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1 WHERE singleton_id = 1",
+            [applied_at_ms],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn rebuild_observations(
+        &self,
+        projection_id: &str,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            return Ok(());
+        }
+        let transaction = connection.transaction()?;
+        transaction.execute("DELETE FROM observation_metrics", [])?;
+        transaction.execute(
+            "DELETE FROM projection_receipts WHERE projection_kind = 'observation'",
+            [],
+        )?;
+        record_receipt(
+            &transaction,
+            projection_id,
+            "rebuild",
+            "all_observations",
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET observation_watermark = NULL, last_projection_ms = ?1 \
+             WHERE singleton_id = 1",
+            [applied_at_ms],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn health(
+        &self,
+        pending_jobs: u32,
+        failed_jobs: u32,
+        lag_ms: Option<i64>,
+        rebuilding: bool,
+    ) -> Result<WarehouseHealth, ObservatoryError> {
+        if !self.available {
+            return Ok(WarehouseHealth {
+                phase: WarehousePhase::Attention,
+                schema_version: WAREHOUSE_SCHEMA_VERSION,
+                pending_jobs,
+                failed_jobs,
+                lag_ms,
+                last_projected_at_ms: None,
+                observation_watermark: None,
+                database_size_bytes: fs::metadata(&self.database_path)
+                    .map(|metadata| metadata.len())
+                    .unwrap_or_default(),
+            });
+        }
+        let connection = self.lock()?;
+        let (last_projected_at_ms, observation_watermark) = connection.query_row(
+            "SELECT last_projection_ms, observation_watermark FROM warehouse_metadata WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let phase = if failed_jobs > 0 {
+            WarehousePhase::Attention
+        } else if rebuilding {
+            WarehousePhase::Rebuilding
+        } else if pending_jobs > 0 {
+            WarehousePhase::Lagging
+        } else {
+            WarehousePhase::Ready
+        };
+        Ok(WarehouseHealth {
+            phase,
+            schema_version: WAREHOUSE_SCHEMA_VERSION,
+            pending_jobs,
+            failed_jobs,
+            lag_ms,
+            last_projected_at_ms,
+            observation_watermark,
+            database_size_bytes: fs::metadata(&self.database_path)
+                .map(|metadata| metadata.len())
+                .unwrap_or_default(),
+        })
+    }
+
+    pub fn catalogue_generation(
+        &self,
+    ) -> Result<Option<CatalogueGenerationSummary>, ObservatoryError> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT generation.generation_id, generation.game_build_id, generation.parser_version, \
+                        generation.created_at_ms, generation.source_count, generation.file_count, \
+                        generation.entity_count, generation.property_count, generation.relation_count, \
+                        generation.warning_count \
+                 FROM catalogue_generations generation JOIN warehouse_metadata metadata \
+                   ON generation.generation_id = metadata.current_catalogue_generation_id \
+                 WHERE metadata.singleton_id = 1",
+                [],
+                |row| {
+                    Ok(CatalogueGenerationSummary {
+                        generation_id: row.get(0)?,
+                        game_build_id: row.get(1)?,
+                        parser_version: row.get(2)?,
+                        created_at_ms: row.get(3)?,
+                        source_count: row.get(4)?,
+                        file_count: row.get(5)?,
+                        entity_count: row.get(6)?,
+                        property_count: row.get(7)?,
+                        relation_count: row.get(8)?,
+                        warning_count: row.get(9)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn catalogue_runtime(
+        &self,
+    ) -> Result<CatalogueRuntime, ObservatoryError> {
+        self.lock()?.query_row(
+            "SELECT last_catalogue_check_ms, last_catalogue_refresh_ms, last_catalogue_error_code \
+             FROM warehouse_metadata WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).map_err(Into::into)
+    }
+
+    pub fn search(
+        &self,
+        filter: &CatalogueSearchFilter,
+    ) -> Result<CataloguePage, ObservatoryError> {
+        let query = filter.query.as_deref().unwrap_or("").trim();
+        if query.len() > 120 {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let kind = filter.entity_kind.as_deref().unwrap_or("");
+        if !kind.is_empty() && !matches!(kind, "resource" | "building" | "vehicle" | "recipe") {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let source_kind = filter.source_kind.as_deref().unwrap_or("");
+        if !source_kind.is_empty()
+            && !matches!(source_kind, "base" | "dlc" | "workshop" | "wip" | "derived")
+        {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let package_query = filter.package_query.as_deref().unwrap_or("").trim();
+        if package_query.len() > 120 {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let coverage = filter.coverage.as_deref().unwrap_or("");
+        if !coverage.is_empty() && !matches!(coverage, "complete" | "partial") {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let available_year = filter.available_year.map(i64::from);
+        if available_year.is_some_and(|year| !(1800..=3000).contains(&year)) {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let limit = filter.limit.unwrap_or(50).clamp(1, 100);
+        let offset = filter.offset.unwrap_or(0).min(1_000_000);
+        let connection = self.lock()?;
+        let base = " FROM catalogue_generation_entities membership \
+                    JOIN warehouse_metadata metadata ON membership.generation_id = metadata.current_catalogue_generation_id \
+                    JOIN definition_entity_revisions revisions USING(revision_hash) \
+                    JOIN catalogue_sources sources ON sources.generation_id = membership.generation_id \
+                         AND sources.source_id = revisions.source_id \
+                    WHERE metadata.singleton_id = 1 \
+                      AND (?1 = '' OR lower(revisions.display_name) LIKE concat('%', lower(?1), '%') \
+                           OR lower(membership.entity_id) LIKE concat('%', lower(?1), '%')) \
+                      AND (?2 = '' OR revisions.entity_kind = ?2) \
+                      AND (?3 = '' OR sources.source_kind = ?3) \
+                      AND (?4 = '' OR lower(sources.package_name) LIKE concat('%', lower(?4), '%')) \
+                      AND (?5 = '' OR revisions.coverage = ?5) \
+                      AND (?6 IS NULL OR ( \
+                          EXISTS(SELECT 1 FROM definition_properties available_from \
+                            WHERE available_from.revision_hash = revisions.revision_hash \
+                              AND available_from.field_id = 'definition.available.from_year' \
+                              AND available_from.value_number <= ?6) \
+                          AND EXISTS(SELECT 1 FROM definition_properties available_to \
+                            WHERE available_to.revision_hash = revisions.revision_hash \
+                              AND available_to.field_id = 'definition.available.to_year' \
+                              AND available_to.value_number >= ?6)))";
+        let total = connection.query_row(
+            &format!("SELECT COUNT(*){base}"),
+            params![
+                query,
+                kind,
+                source_kind,
+                package_query,
+                coverage,
+                available_year
+            ],
+            |row| row.get::<_, u32>(0),
+        )?;
+        let mut statement = connection.prepare(&format!(
+            "SELECT membership.entity_id, revisions.revision_hash, revisions.entity_kind, \
+                    revisions.source_id, sources.source_kind, sources.package_name, \
+                    revisions.display_name, revisions.coverage, \
+                    (SELECT COUNT(*) FROM definition_properties properties WHERE properties.revision_hash = revisions.revision_hash), \
+                    (SELECT COUNT(*) FROM definition_relations relations WHERE relations.revision_hash = revisions.revision_hash) \
+             {base} ORDER BY revisions.display_name, membership.entity_id LIMIT ?7 OFFSET ?8"
+        ))?;
+        let items = statement
+            .query_map(
+                params![
+                    query,
+                    kind,
+                    source_kind,
+                    package_query,
+                    coverage,
+                    available_year,
+                    limit,
+                    offset
+                ],
+                summary_from_row,
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(CataloguePage {
+            total,
+            limit,
+            offset,
+            items,
+        })
+    }
+
+    pub fn dossier(&self, entity_id: &str) -> Result<DefinitionDossier, ObservatoryError> {
+        if entity_id.is_empty() || entity_id.len() > 320 {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let connection = self.lock()?;
+        let summary = connection
+            .query_row(
+                "SELECT membership.entity_id, revisions.revision_hash, revisions.entity_kind, \
+                        revisions.source_id, sources.source_kind, sources.package_name, \
+                        revisions.display_name, revisions.coverage, \
+                        (SELECT COUNT(*) FROM definition_properties properties WHERE properties.revision_hash = revisions.revision_hash), \
+                        (SELECT COUNT(*) FROM definition_relations relations WHERE relations.revision_hash = revisions.revision_hash) \
+                 FROM catalogue_generation_entities membership \
+                 JOIN warehouse_metadata metadata ON membership.generation_id = metadata.current_catalogue_generation_id \
+                 JOIN definition_entity_revisions revisions USING(revision_hash) \
+                 JOIN catalogue_sources sources ON sources.generation_id = membership.generation_id \
+                      AND sources.source_id = revisions.source_id \
+                 WHERE metadata.singleton_id = 1 AND membership.entity_id = ?1",
+                [entity_id],
+                summary_from_row,
+            )
+            .optional()?
+            .ok_or(ObservatoryError::CatalogueUnavailable)?;
+
+        let mut facts = BTreeMap::<(String, u32), DefinitionFact>::new();
+        {
+            let mut statement = connection.prepare(
+                "SELECT field_id, occurrence, value_kind, value_number, value_text, unit, \
+                        source_directive, source_line, raw_arguments, evidence_kind, resolution \
+                 FROM definition_properties WHERE revision_hash = ?1 ORDER BY field_id, occurrence",
+            )?;
+            for row in statement.query_map([&summary.revision_hash], |row| {
+                let field_id = row.get::<_, String>(0)?;
+                let occurrence = row.get::<_, u32>(1)?;
+                let value = DefinitionValue {
+                    value_kind: row.get(2)?,
+                    number: row.get(3)?,
+                    text: row.get(4)?,
+                    unit: row.get(5)?,
+                };
+                Ok((
+                    (field_id.clone(), occurrence),
+                    DefinitionFact {
+                        field_id,
+                        occurrence,
+                        original: Some(value.clone()),
+                        override_value: None,
+                        effective: Some(value),
+                        source_directive: row.get(6)?,
+                        source_line: row.get(7)?,
+                        raw_arguments: row.get(8)?,
+                        evidence_kind: row.get(9)?,
+                        resolution: row.get(10)?,
+                        conflict_code: None,
+                    },
+                ))
+            })? {
+                let (key, fact) = row?;
+                facts.insert(key, fact);
+            }
+        }
+        {
+            let mut statement = connection.prepare(
+                "SELECT operation, field_id, occurrence, value_kind, value_number, value_text, unit, \
+                        reason, conflict_code FROM active_overlay_operations \
+                 WHERE entity_id = ?1 ORDER BY operation_index",
+            )?;
+            for row in statement.query_map([entity_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<u32>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<f64>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                ))
+            })? {
+                let (operation, field, occurrence, kind, number, text, unit, reason, conflict) =
+                    row?;
+                let occurrence = occurrence.unwrap_or_else(|| next_occurrence(&facts, &field));
+                let key = (field.clone(), occurrence);
+                let override_value = kind.map(|value_kind| DefinitionValue {
+                    value_kind,
+                    number,
+                    text,
+                    unit,
+                });
+                let entry = facts.entry(key).or_insert_with(|| DefinitionFact {
+                    field_id: field,
+                    occurrence,
+                    original: None,
+                    override_value: None,
+                    effective: None,
+                    source_directive: "planning overlay".to_owned(),
+                    source_line: 0,
+                    raw_arguments: reason,
+                    evidence_kind: "player_definition".to_owned(),
+                    resolution: "overlay".to_owned(),
+                    conflict_code: conflict.clone(),
+                });
+                entry.override_value = override_value.clone();
+                entry.conflict_code = conflict.clone();
+                entry.evidence_kind = "player_override".to_owned();
+                if conflict.is_none() {
+                    entry.effective = if operation == "unset" {
+                        None
+                    } else {
+                        override_value
+                    };
+                }
+            }
+        }
+        let relations = {
+            let mut statement = connection.prepare(
+                "SELECT relation_kind, occurrence, target_id, quantity, unit, phase_id, \
+                        source_directive, source_line, raw_arguments, resolution \
+                 FROM definition_relations WHERE revision_hash = ?1 \
+                 ORDER BY relation_kind, occurrence",
+            )?;
+            statement
+                .query_map([&summary.revision_hash], |row| {
+                    Ok(DefinitionRelation {
+                        relation_kind: row.get(0)?,
+                        occurrence: row.get(1)?,
+                        target_id: row.get(2)?,
+                        quantity: row.get(3)?,
+                        unit: row.get(4)?,
+                        phase_id: row.get(5)?,
+                        source_directive: row.get(6)?,
+                        source_line: row.get(7)?,
+                        raw_arguments: row.get(8)?,
+                        resolution: row.get(9)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let unknown_directives = {
+            let mut statement = connection.prepare(
+                "SELECT directive, occurrence_count FROM definition_unknown_directives \
+                 WHERE revision_hash = ?1 ORDER BY occurrence_count DESC, directive LIMIT 100",
+            )?;
+            statement
+                .query_map([&summary.revision_hash], |row| {
+                    Ok(UnknownDirectiveSummary {
+                        directive: row.get(0)?,
+                        occurrence_count: row.get(1)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(DefinitionDossier {
+            summary,
+            facts: facts.into_values().collect(),
+            relations,
+            unknown_directives,
+        })
+    }
+
+    pub fn overlay_conflict_count(&self, profile_id: &str, revision: u32) -> u32 {
+        self.lock()
+            .ok()
+            .and_then(|connection| {
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM active_overlay_operations WHERE profile_id = ?1 \
+                         AND revision = ?2 AND conflict_code IS NOT NULL",
+                        params![profile_id, revision],
+                        |row| row.get(0),
+                    )
+                    .ok()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn snapshot(&self) -> Result<WarehouseSnapshot, ObservatoryError> {
+        self.lock()?
+            .query_row(
+                "SELECT current_catalogue_generation_id, active_overlay_profile_id, \
+                    active_overlay_revision, observation_watermark \
+             FROM warehouse_metadata WHERE singleton_id = 1 \
+               AND current_catalogue_generation_id IS NOT NULL",
+                [],
+                |row| {
+                    Ok(WarehouseSnapshot {
+                        catalogue_generation_id: row.get(0)?,
+                        overlay_profile_id: row.get(1)?,
+                        overlay_revision: row.get(2)?,
+                        observation_watermark: row.get(3)?,
+                        warehouse_schema_version: WAREHOUSE_SCHEMA_VERSION,
+                        projector_version: PROJECTOR_VERSION.to_owned(),
+                    })
+                },
+            )
+            .map_err(Into::into)
+    }
+
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, ObservatoryError> {
+        if !self.available {
+            return Err(ObservatoryError::WarehouseUnavailable);
+        }
+        self.connection
+            .lock()
+            .map_err(|_| ObservatoryError::WarehouseUnavailable)
+    }
+}
+
+fn migrate(connection: &mut Connection) -> Result<(), ObservatoryError> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS warehouse_schema_migrations(\
+             version INTEGER PRIMARY KEY, applied_at TIMESTAMP DEFAULT current_timestamp\
+         );",
+    )?;
+    let version = connection.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM warehouse_schema_migrations",
+        [],
+        |row| row.get::<_, u32>(0),
+    )?;
+    if version > WAREHOUSE_SCHEMA_VERSION {
+        return Err(ObservatoryError::WarehouseUnavailable);
+    }
+    for (migration_version, sql) in MIGRATIONS {
+        if *migration_version > version {
+            let transaction = connection.transaction()?;
+            transaction.execute_batch(sql)?;
+            transaction.execute(
+                "INSERT INTO warehouse_schema_migrations(version) VALUES(?1)",
+                [migration_version],
+            )?;
+            transaction.commit()?;
+        }
+    }
+    Ok(())
+}
+
+fn summary_from_row(row: &duckdb::Row<'_>) -> Result<DefinitionSummary, duckdb::Error> {
+    Ok(DefinitionSummary {
+        entity_id: row.get(0)?,
+        revision_hash: row.get(1)?,
+        entity_kind: row.get(2)?,
+        source_id: row.get(3)?,
+        source_kind: row.get(4)?,
+        package_name: row.get(5)?,
+        display_name: row.get(6)?,
+        coverage: row.get(7)?,
+        property_count: row.get(8)?,
+        relation_count: row.get(9)?,
+    })
+}
+
+fn receipt_exists(connection: &Connection, projection_id: &str) -> Result<bool, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM projection_receipts WHERE projection_id = ?1)",
+            [projection_id],
+            |row| row.get(0),
+        )
+        .map_err(Into::into)
+}
+
+fn record_receipt(
+    transaction: &duckdb::Transaction<'_>,
+    projection_id: &str,
+    kind: &str,
+    source_identity: &str,
+    applied_at_ms: i64,
+) -> Result<(), ObservatoryError> {
+    transaction.execute(
+        "INSERT INTO projection_receipts VALUES(?1, ?2, ?3, ?4)",
+        params![projection_id, kind, source_identity, applied_at_ms],
+    )?;
+    Ok(())
+}
+
+fn overlay_conflict(
+    transaction: &duckdb::Transaction<'_>,
+    operation: &crate::planning_overlay::OverlayOperation,
+) -> Result<Option<&'static str>, ObservatoryError> {
+    let current_revision = transaction
+        .query_row(
+            "SELECT membership.revision_hash FROM catalogue_generation_entities membership \
+             JOIN warehouse_metadata metadata ON membership.generation_id = metadata.current_catalogue_generation_id \
+             WHERE metadata.singleton_id = 1 AND membership.entity_id = ?1",
+            [&operation.entity_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let Some(current_revision) = current_revision else {
+        return Ok(Some("target_missing"));
+    };
+    if current_revision != operation.expected_revision_hash {
+        return Ok(Some("revision_changed"));
+    }
+    if let Some(expected) = &operation.expected_value {
+        let current = transaction
+            .query_row(
+                "SELECT value_kind, value_number, value_text, unit FROM definition_properties \
+                 WHERE revision_hash = ?1 AND field_id = ?2 AND occurrence = ?3",
+                params![
+                    current_revision,
+                    operation.field_id,
+                    operation.occurrence.unwrap_or(0)
+                ],
+                |row| {
+                    Ok(DefinitionValue {
+                        value_kind: row.get(0)?,
+                        number: row.get(1)?,
+                        text: row.get(2)?,
+                        unit: row.get(3)?,
+                    })
+                },
+            )
+            .optional()?;
+        if current
+            .as_ref()
+            .is_none_or(|value| !overlay_value_matches(expected, value))
+        {
+            return Ok(Some("value_changed"));
+        }
+    }
+    Ok(None)
+}
+
+fn overlay_value_matches(expected: &OverlayValue, current: &DefinitionValue) -> bool {
+    current.value_kind == expected.kind.as_str()
+        && current.number == expected.number
+        && current.text.as_deref() == expected.text.as_deref()
+        && current.unit.as_deref() == expected.unit.as_deref()
+}
+
+fn overlay_text(value: &OverlayValue) -> Option<&str> {
+    match value.kind {
+        OverlayValueKind::Text => value.text.as_deref(),
+        OverlayValueKind::Boolean => Some(if value.boolean == Some(true) {
+            "true"
+        } else {
+            "false"
+        }),
+        OverlayValueKind::Number => None,
+    }
+}
+
+fn next_occurrence(facts: &BTreeMap<(String, u32), DefinitionFact>, field_id: &str) -> u32 {
+    facts
+        .keys()
+        .filter(|(field, _)| field == field_id)
+        .map(|(_, occurrence)| occurrence.saturating_add(1))
+        .max()
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+    use crate::definition_catalogue::{
+        CatalogueFile, CatalogueSource, ParsedDefinition, ParsedProperty, ParsedRelation,
+    };
+    use crate::planning_overlay::{OverlayOperation, OverlayOperationKind};
+    use tempfile::tempdir;
+
+    #[test]
+    fn creates_and_reopens_warehouse() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("test.duckdb");
+        let warehouse = AnalyticalWarehouse::initialise(path.clone()).expect("create warehouse");
+        assert_eq!(
+            warehouse
+                .health(0, 0, None, false)
+                .expect("health")
+                .schema_version,
+            WAREHOUSE_SCHEMA_VERSION
+        );
+        drop(warehouse);
+        AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn upgrades_a_version_one_warehouse_independently() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("version-one.duckdb");
+        {
+            let connection = Connection::open(&path).expect("version one warehouse");
+            connection
+                .execute_batch(
+                    "CREATE TABLE warehouse_schema_migrations(\
+                         version INTEGER PRIMARY KEY, \
+                         applied_at TIMESTAMP DEFAULT current_timestamp\
+                     );",
+                )
+                .expect("migration ledger");
+            connection
+                .execute_batch(include_str!(
+                    "../warehouse_migrations/0001_catalogue_and_analytics.sql"
+                ))
+                .expect("version one schema");
+            connection
+                .execute("INSERT INTO warehouse_schema_migrations VALUES(1, now())", [])
+                .expect("version one marker");
+        }
+
+        let warehouse = AnalyticalWarehouse::initialise(path).expect("upgrade warehouse");
+        let view_count = warehouse
+            .lock()
+            .expect("connection")
+            .query_row(
+                "SELECT COUNT(*) FROM duckdb_views() \
+                 WHERE view_name = 'effective_value_projection'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("planning projection view");
+        assert_eq!(view_count, 1);
+    }
+
+    #[test]
+    fn refuses_a_newer_schema() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("newer.duckdb");
+        {
+            let connection = Connection::open(&path).expect("open database");
+            connection
+                .execute_batch(
+                    "CREATE TABLE warehouse_schema_migrations(version INTEGER PRIMARY KEY);\
+                     INSERT INTO warehouse_schema_migrations VALUES(999);",
+                )
+                .expect("future marker");
+        }
+        assert!(AnalyticalWarehouse::initialise(path).is_err());
+    }
+
+    #[test]
+    fn catalogue_publication_overlay_projection_and_retries_are_idempotent() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("catalogue.duckdb"))
+            .expect("warehouse");
+        let revision_hash = "a".repeat(64);
+        let entity_id = "base.buildings::building::factory".to_owned();
+        let generation = CatalogueGeneration {
+            generation_id: "b".repeat(64),
+            game_build_id: Some("test-build".to_owned()),
+            created_at_ms: 10,
+            sources: vec![CatalogueSource {
+                source_id: "base.buildings".to_owned(),
+                source_kind: "base".to_owned(),
+                package_name: "Base buildings".to_owned(),
+                package_version: None,
+                content_hash: "c".repeat(64),
+                file_count: 1,
+            }],
+            files: vec![CatalogueFile {
+                source_id: "base.buildings".to_owned(),
+                logical_path: "factory.ini".to_owned(),
+                content_hash: "d".repeat(64),
+                byte_size: 10,
+                warning_count: 0,
+            }],
+            entities: vec![ParsedDefinition {
+                entity_id: entity_id.clone(),
+                revision_hash: revision_hash.clone(),
+                entity_kind: "building".to_owned(),
+                source_id: "base.buildings".to_owned(),
+                source_object_id: "factory".to_owned(),
+                display_name: "Test factory".to_owned(),
+                coverage: "complete".to_owned(),
+                properties: vec![ParsedProperty {
+                    field_id: "building.workers.required".to_owned(),
+                    occurrence: 0,
+                    value_kind: "number".to_owned(),
+                    value_number: Some(20.0),
+                    value_text: None,
+                    unit: Some("workers".to_owned()),
+                    source_directive: "$WORKERS_NEEDED".to_owned(),
+                    source_line: 3,
+                    raw_arguments: "20".to_owned(),
+                    resolution: "verified".to_owned(),
+                }],
+                relations: vec![ParsedRelation {
+                    relation_kind: "construction_material_explicit".to_owned(),
+                    occurrence: 0,
+                    target_id: "resource::steel".to_owned(),
+                    quantity: Some(12.0),
+                    unit: Some("source_quantity".to_owned()),
+                    phase_id: Some("groundworks:1".to_owned()),
+                    source_directive: "$COST_RESOURCE".to_owned(),
+                    source_line: 5,
+                    raw_arguments: "steel 12".to_owned(),
+                    resolution: "explicit_quantity".to_owned(),
+                }],
+                unknown_directives: vec![("$UNREVIEWED".to_owned(), 1)],
+            }],
+        };
+        assert!(warehouse.publish_catalogue(&generation).expect("publish"));
+        assert!(!warehouse.publish_catalogue(&generation).expect("same generation"));
+        assert_eq!(
+            warehouse.catalogue_reuse_cache().expect("cache").len(),
+            1
+        );
+
+        let document = PlanningOverlayDocument {
+            schema_version: 1,
+            id: "org.example.factory-plan".to_owned(),
+            version: "1.0.0".to_owned(),
+            name: "Factory plan".to_owned(),
+            author: "Planner".to_owned(),
+            default_locale: "en-AU".to_owned(),
+            description: "A local staffing assumption".to_owned(),
+            target_game_build: None,
+            operations: vec![OverlayOperation {
+                operation: OverlayOperationKind::Set,
+                entity_id: entity_id.clone(),
+                field_id: "building.workers.required".to_owned(),
+                occurrence: Some(0),
+                expected_revision_hash: revision_hash,
+                expected_value: Some(OverlayValue {
+                    kind: OverlayValueKind::Number,
+                    number: Some(20.0),
+                    text: None,
+                    boolean: None,
+                    unit: Some("workers".to_owned()),
+                }),
+                value: Some(OverlayValue {
+                    kind: OverlayValueKind::Number,
+                    number: Some(25.0),
+                    text: None,
+                    boolean: None,
+                    unit: Some("workers".to_owned()),
+                }),
+                reason: "Planning allowance".to_owned(),
+            }],
+            supplements: Vec::new(),
+        };
+        warehouse
+            .project_overlay("overlay:test", Some((&document.id, 1, &document)), 20)
+            .expect("overlay projection");
+        warehouse
+            .project_overlay("overlay:test", Some((&document.id, 1, &document)), 21)
+            .expect("duplicate projection");
+        let dossier = warehouse.dossier(&entity_id).expect("dossier");
+        assert_eq!(dossier.facts.len(), 1);
+        assert_eq!(
+            dossier.facts[0]
+                .effective
+                .as_ref()
+                .and_then(|value| value.number),
+            Some(25.0)
+        );
+        assert_eq!(dossier.facts[0].evidence_kind, "player_override");
+        let snapshot = warehouse.snapshot().expect("pinned model snapshot");
+        assert_eq!(snapshot.catalogue_generation_id, generation.generation_id);
+        assert_eq!(snapshot.overlay_profile_id.as_deref(), Some(document.id.as_str()));
+        assert_eq!(snapshot.overlay_revision, Some(1));
+        assert_eq!(snapshot.warehouse_schema_version, WAREHOUSE_SCHEMA_VERSION);
+        assert_eq!(snapshot.projector_version, PROJECTOR_VERSION);
+        let effective = warehouse
+            .lock()
+            .expect("connection")
+            .query_row(
+                "SELECT value_number, evidence_kind FROM effective_value_projection \
+                 WHERE entity_id = ?1 AND field_id = 'building.workers.required'",
+                [&entity_id],
+                |row| Ok((row.get::<_, f64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .expect("effective planning projection");
+        assert_eq!(effective, (25.0, "player_override".to_owned()));
+    }
+
+    #[test]
+    #[ignore = "reference-machine scale and growth benchmark"]
+    fn synthetic_catalogue_and_observation_scale_targets() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("scale.duckdb");
+        let warehouse = AnalyticalWarehouse::initialise(path.clone()).expect("warehouse");
+        let started = Instant::now();
+        {
+            let connection = warehouse.lock().expect("connection");
+            connection
+                .execute_batch(
+                    r#"
+                    INSERT INTO catalogue_generations
+                    VALUES('scale', NULL, 'scale.v1', 1, 1, 100000, 100000, 2000000, 200000, 0);
+                    INSERT INTO catalogue_sources
+                    VALUES('scale', 'synthetic', 'test', 'Synthetic', NULL, 'hash', 100000);
+                    INSERT INTO definition_entity_revisions
+                    SELECT 'revision-' || range::VARCHAR,
+                           CASE WHEN range % 5 = 0 THEN 'vehicle' ELSE 'building' END,
+                           'synthetic',
+                           range::VARCHAR, 'Entity ' || range::VARCHAR, 'complete'
+                    FROM range(100000);
+                    INSERT INTO catalogue_generation_entities
+                    SELECT 'scale', 'synthetic::building::' || range::VARCHAR,
+                           'revision-' || range::VARCHAR
+                    FROM range(100000);
+                    INSERT INTO definition_properties
+                    SELECT 'revision-' || (range % 100000)::VARCHAR,
+                           CASE WHEN range % 100000 % 5 = 0
+                                THEN 'vehicle.speed.maximum'
+                                ELSE 'building.synthetic.field' END,
+                           floor(range / 100000.0)::BIGINT,
+                           'number', range::DOUBLE, NULL, 'unit', '$SYNTHETIC', 1,
+                           'bounded', 'game_definition', 'synthetic'
+                    FROM range(2000000);
+                    INSERT INTO definition_relations
+                    SELECT 'revision-' || range::VARCHAR, 'production_input', 0,
+                           'resource::steel', 1.0, 't/day', NULL, '$CONSUMPTION', 1,
+                           'steel 1', 'verified_time_basis'
+                    FROM range(100000)
+                    UNION ALL
+                    SELECT 'revision-' || range::VARCHAR, 'construction_material_explicit', 0,
+                           'resource::concrete', 10.0, 't', 'groundworks:1',
+                           '$COST_RESOURCE', 2, 'concrete 10', 'explicit_quantity'
+                    FROM range(100000);
+                    UPDATE warehouse_metadata
+                    SET current_catalogue_generation_id = 'scale'
+                    WHERE singleton_id = 1;
+                    INSERT INTO observation_metrics
+                    SELECT 'payload-' || floor(range / 1000.0)::BIGINT::VARCHAR,
+                           'main', range % 1000,
+                           2000, range % 365, range, 'core.synthetic.metric', range % 10000
+                    FROM range(5000000);
+                    "#,
+                )
+                .expect("synthetic load");
+        }
+        assert!(started.elapsed() < Duration::from_secs(90));
+        let connection = warehouse.lock().expect("connection");
+        let query_cases = [
+            (
+                "filtered aggregate",
+                "SELECT SUM(value)::DOUBLE FROM observation_metrics \
+                 WHERE game_day BETWEEN 100000 AND 200000",
+            ),
+            (
+                "material demand",
+                "SELECT SUM(quantity)::DOUBLE FROM construction_demand \
+                 WHERE target_id = 'resource::concrete'",
+            ),
+            (
+                "production chain",
+                "SELECT SUM(quantity)::DOUBLE FROM material_flows \
+                 WHERE target_id = 'resource::steel'",
+            ),
+            (
+                "fleet capability",
+                "SELECT AVG(value_number) FROM fleet_capabilities \
+                 WHERE field_id = 'vehicle.speed.maximum'",
+            ),
+        ];
+        let mut query_measurements = Vec::new();
+        for (name, query) in query_cases {
+            let query_started = Instant::now();
+            let total = connection
+                .query_row(query, [], |row| row.get::<_, f64>(0))
+                .expect(name);
+            let elapsed = query_started.elapsed();
+            assert!(total > 0.0);
+            assert!(elapsed < Duration::from_millis(500), "{name}: {elapsed:?}");
+            query_measurements.push((name, elapsed));
+        }
+        drop(connection);
+        let database_size = fs::metadata(path).expect("database size").len();
+        eprintln!(
+            "synthetic warehouse facts=2200000 observations=5000000 size_bytes={database_size} load={:?} queries={query_measurements:?}",
+            started.elapsed(),
+        );
+        assert!(database_size > 0);
+    }
+}

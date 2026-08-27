@@ -22,6 +22,8 @@ an engineering requirement.
   structure, coverage, and claims the product must not make
 - [Dependency decisions](dependencies.md) — current libraries, licences, and
   complexity budget
+- [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)
+  — dual-engine ownership, projection recovery, generations, and overlays
 - [Roadmap](roadmap.md) — vertical slices from synthetic preview to advanced
   industrial analysis
 - [Community Extensions](extensions/overview.md) — Analysis Packs now and the
@@ -45,6 +47,7 @@ an engineering requirement.
 - [ADR-0008: application-owned SQLite persistence boundary](architecture/decisions/0008-sqlite-persistence-boundary.md)
 - [ADR-0009: compact history before automatic observation](architecture/decisions/0009-compact-history-before-automatic-observation.md)
 - [ADR-0010: native recorder and durable candidate ledger](architecture/decisions/0010-native-recorder-and-durable-candidate-ledger.md)
+- [ADR-0011: dual-engine definition catalogue and planning warehouse](architecture/decisions/0011-dual-engine-catalogue-and-warehouse.md)
 
 ## Evidence status vocabulary
 
@@ -59,3 +62,5 @@ Every public finding and visual should carry one of these statuses:
 | Estimate              | Model result with uncertainty and stated assumptions             |
 | Recommendation        | Suggested player action, never presented as a fact               |
 | Unavailable           | The source did not establish the value                           |
+| Player override       | Player replacement layered over an installed definition fact     |
+| Player definition     | Player supplemental planning entity                              |

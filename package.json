@@ -1,6 +1,6 @@
 {
   "name": "soviet-republic-observatory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A local-first planning and statistical observatory for Workers & Resources: Soviet Republic saves.",
   "license": "MIT",
@@ -8,15 +8,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "desktop": "tauri dev",
-    "desktop:build": "tauri build",
-    "rust:check": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "rust:test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "desktop": "node scripts/run-with-short-cargo-target.mjs npx tauri dev",
+    "desktop:build": "node scripts/run-with-short-cargo-target.mjs npx tauri build",
+    "rust:check": "node scripts/run-with-short-cargo-target.mjs cargo check --manifest-path src-tauri/Cargo.toml",
+    "rust:test": "node scripts/run-with-short-cargo-target.mjs cargo test --manifest-path src-tauri/Cargo.toml",
     "audit:localization": "node scripts/audit-localization.mjs",
     "check": "npm run audit:localization && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "rust:clippy": "node scripts/run-with-short-cargo-target.mjs cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -139,6 +139,7 @@ export type GameVocabularySource = {
 export type SetupState = {
   save_directory?: ConfiguredDirectorySummary;
   game_directory?: ConfiguredDirectorySummary;
+  workshop_directory?: ConfiguredDirectorySummary;
   save_candidates: number;
   observed_saves: number;
   distinct_states: number;
@@ -222,7 +223,7 @@ export type RecorderUpdate = {
   import_result: ObservationImportResult | null;
 };
 
-export type DirectoryKind = "save" | "game";
+export type DirectoryKind = "save" | "game" | "workshop";
 
 export type ObserverErrorCode =
   | "invalid_directory"
@@ -247,3 +248,141 @@ export type ObserverErrorCode =
   | "same_observation_comparison"
   | "unknown_observation"
   | "unknown";
+
+export type WarehousePhase = "ready" | "lagging" | "rebuilding" | "attention";
+
+export type WarehouseHealth = {
+  phase: WarehousePhase;
+  schema_version: number;
+  pending_jobs: number;
+  failed_jobs: number;
+  lag_ms: number | null;
+  last_projected_at_ms: number | null;
+  observation_watermark: string | null;
+  database_size_bytes: number;
+};
+
+export type CatalogueGenerationSummary = {
+  generation_id: string;
+  game_build_id: string | null;
+  parser_version: string;
+  created_at_ms: number;
+  source_count: number;
+  file_count: number;
+  entity_count: number;
+  property_count: number;
+  relation_count: number;
+  warning_count: number;
+};
+
+export type OverlayProfileSummary = {
+  profile_id: string;
+  display_name: string;
+  active_revision: number | null;
+  latest_revision: number;
+  revision_count: number;
+  semantic_version: string;
+  content_hash: string;
+  conflict_count: number;
+  active: boolean;
+};
+
+export type CatalogueStatus = {
+  warehouse: WarehouseHealth;
+  generation: CatalogueGenerationSummary | null;
+  last_checked_at_ms: number | null;
+  last_refreshed_at_ms: number | null;
+  last_filesystem_event_ms: number | null;
+  error_code: string | null;
+  active_overlay: OverlayProfileSummary | null;
+};
+
+export type CatalogueSearchFilter = {
+  query?: string;
+  entity_kind?: "resource" | "building" | "vehicle" | "recipe";
+  source_kind?: string;
+  package_query?: string;
+  coverage?: "complete" | "partial";
+  available_year?: number;
+  limit?: number;
+  offset?: number;
+};
+
+export type DefinitionSummary = {
+  entity_id: string;
+  revision_hash: string;
+  entity_kind: string;
+  source_id: string;
+  source_kind: string;
+  package_name: string;
+  display_name: string;
+  coverage: string;
+  property_count: number;
+  relation_count: number;
+};
+
+export type CataloguePage = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: DefinitionSummary[];
+};
+
+export type DefinitionValue = {
+  value_kind: string;
+  number: number | null;
+  text: string | null;
+  unit: string | null;
+};
+
+export type DefinitionFact = {
+  field_id: string;
+  occurrence: number;
+  original: DefinitionValue | null;
+  override_value: DefinitionValue | null;
+  effective: DefinitionValue | null;
+  source_directive: string;
+  source_line: number;
+  raw_arguments: string;
+  evidence_kind: string;
+  resolution: string;
+  conflict_code: string | null;
+};
+
+export type DefinitionRelation = {
+  relation_kind: string;
+  occurrence: number;
+  target_id: string;
+  quantity: number | null;
+  unit: string | null;
+  phase_id: string | null;
+  source_directive: string;
+  source_line: number;
+  raw_arguments: string;
+  resolution: string;
+};
+
+export type DefinitionDossier = {
+  summary: DefinitionSummary;
+  facts: DefinitionFact[];
+  relations: DefinitionRelation[];
+  unknown_directives: Array<{ directive: string; occurrence_count: number }>;
+};
+
+export type OverlayInspection = {
+  valid: boolean;
+  code: string | null;
+  profile: OverlayProfileSummary | null;
+  operation_count: number;
+  supplement_count: number;
+  document: unknown | null;
+};
+
+export type WarehouseSnapshot = {
+  catalogue_generation_id: string;
+  overlay_profile_id: string | null;
+  overlay_revision: number | null;
+  observation_watermark: string | null;
+  warehouse_schema_version: number;
+  projector_version: string;
+};

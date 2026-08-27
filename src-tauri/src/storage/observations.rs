@@ -70,6 +70,13 @@ impl ObservatoryStorage {
             )?;
             persist_history_signature(&transaction, &inspection.payload_hash, &inspection.records)?;
             persist_resolution(&transaction, &inspection.payload_hash, &resolution)?;
+            super::warehouse_jobs::enqueue_projection_job(
+                &transaction,
+                &format!("observation:{}", inspection.payload_hash),
+                "observation",
+                &inspection.payload_hash,
+                now_ms(),
+            )?;
         } else {
             let branch_id = transaction.query_row(
                 "SELECT branch_id FROM observation_sources WHERE payload_hash = ?1",

@@ -25,10 +25,13 @@ Configured save directory
   content dedupe ──────► neutral observation identity
           │
           ▼
-  storage boundary ────► SQLite facts + lineage + query projections
+  operational store ───► SQLite facts + lineage + projection outbox
+          │ versioned idempotent models
+          ▼
+  DuckDB warehouse ────► catalogue generations + analytical projections
           │
           ▼
-  analytics services ──► built-in + Analysis Pack calculations
+  analytics services ──► pinned snapshots + Analysis Pack calculations
           │
           ▼
   Tauri events/commands ► Svelte presentation ─► ObservatoryChart ─► ECharts
@@ -99,6 +102,14 @@ no credentials or secrets that justify application key management. Ordinary OS
 file permissions are the protection boundary. Future credentials belong in an
 OS credential vault; they do not automatically justify encrypting observations.
 
+The sixth SQLite migration adds the projection outbox, immutable planning-overlay
+revisions, global overlay state, and catalogue refresh metadata. App-local
+DuckDB has independent append-only migrations and stores retained definition
+generations, normalised properties and relations, effective overlay projections,
+and large observation matrices. A receipt written with each DuckDB projection
+closes the crash gap before SQLite acknowledgement. DuckDB failure is visible
+analytical lag and cannot block SQLite ingestion.
+
 ### Analytics
 
 Deterministic metrics, anomaly models, forecasts, experiments, scenarios, and
@@ -124,13 +135,15 @@ become database keys. Analysis Pack prose carries its own declared locale.
 
 ## Technology direction
 
-- **Rust** for bounded archive access, parsing, timeline logic, SQLite, and
+- **Rust** for bounded archive access, parsing, timeline logic, SQLite, DuckDB, and
   analytical services where correctness and performance matter.
 - **Tauri 2** for the desktop shell and a small command boundary.
 - **Svelte 5 + TypeScript** for the interface.
 - **Apache ECharts** behind an application-owned declarative adapter.
 - **SQLite** for local observations and plans behind a modular persistence
   boundary; the database is unencrypted by explicit decision.
+- **DuckDB** for source-qualified catalogue history and model-ready analytical
+  projections, with bundled operation and extension loading disabled.
 
 MapLibre, Three.js, an executable plugin runtime, a hosted service, and a general
 notebook runtime are not foundation dependencies. The Analysis Pack schema is a
@@ -157,6 +170,8 @@ replacement boundary.
 - `ExtensionContentIdentity`
 - `LanguagePackManifest` and `LanguageSelection`
 - `GameVocabularyCatalogue`
+- `CatalogueGeneration`, `DefinitionDossier`, and `PlanningOverlayRevision`
+- `ProjectionJob` and `WarehouseSnapshot`
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned
@@ -174,4 +189,7 @@ display catalogue; display text is not the database key.
 - A model failure removes the estimate, not the underlying facts.
 - An extension failure removes that extension's result, not save observation,
   core dashboards, or another extension.
+- A catalogue refresh failure preserves the last published generation.
+- A warehouse write failure creates visible lag and leaves the recorder,
+  Archive, and SQLite-backed charts usable.
 - The interface remains useful offline and when the game is not running.

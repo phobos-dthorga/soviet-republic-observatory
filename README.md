@@ -18,9 +18,11 @@ questions:
 > a fallback, waits for newly written saves to stabilise, parses supported
 > history plus current/city snapshots from `stats.ini`, compact shared history
 > prefixes in app-local SQLite, records a crash-recoverable candidate ledger,
-> resolves branches, compares two states on one branch, and presents Observer
-> Health and Republic Pulse. All unrelated dashboard values remain visibly
-> synthetic.
+> projects idempotently into a bundled DuckDB analytical warehouse, catalogues
+> local base/DLC/Workshop/WIP definitions, and supports inert planning overlays.
+> It resolves branches, compares states on one branch, and presents Observer
+> Health, Republic Pulse, and the Industrial Catalogue. Unrelated dashboard
+> values remain visibly synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -89,8 +91,10 @@ seconds as a fallback, waits for unchanged file metadata before reading, and
 retries temporary incomplete archives. The source archive remains untouched.
 Use **Monitor** to inspect recorder health and Republic Pulse, and **Archive** to
 inspect ancestry, select a timeline branch, and
-compare two distinct states on that branch. The game installation folder is
-optional and currently supplies only a future vocabulary-source catalogue.
+compare two distinct states on that branch. Configure the game installation
+folder to build the Industrial Catalogue from local base, DLC, subscribed
+Workshop, and WIP definitions. A separate Workshop-folder selector is available
+when Steam discovery cannot resolve external Workshop content.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.
@@ -114,7 +118,8 @@ npm run rust:test
 | Save observation and services | Rust, native folder events, and bounded read-only ZIP access |
 | Interface                     | Svelte 5 and TypeScript                                      |
 | Charts                        | Apache ECharts behind `ObservatoryChart`                     |
-| Local storage                 | App-local unencrypted SQLite with append-only migrations     |
+| Operational storage           | App-local unencrypted SQLite with append-only migrations     |
+| Catalogue and analytics       | App-local bundled DuckDB with independent migrations         |
 | Input                         | ZIP saves read non-destructively; `stats.ini` first          |
 | Statistical models            | Application-owned, versioned and provenance-labelled         |
 

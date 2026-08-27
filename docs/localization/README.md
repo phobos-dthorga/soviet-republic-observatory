@@ -5,7 +5,7 @@ WyrmGrid, with several debt-reduction changes made before save parsing begins.
 English (Australia), `en-AU`, is the canonical source catalogue. Every current
 workspace, chart label, textual chart summary, provenance sentence, dialog, and
 locale-sensitive number passes through the same host-owned boundary.
-The current source contract is compatibility version 1, additive revision 3.
+The current source contract is compatibility version 1, additive revision 12.
 
 ## What is implemented
 

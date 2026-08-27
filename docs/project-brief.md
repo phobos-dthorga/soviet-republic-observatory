@@ -22,7 +22,9 @@ directly from `stats.ini`, compacts shared history prefixes, separates files fro
 distinct states, resolves supported ancestry, compares two states within one
 branch, and renders Observer Health, Republic Pulse, and an observed Receiver
 Ladder. The rest of the Briefing and Broadcast concepts remain visibly
-synthetic. Binary station telemetry and extension loading are not yet
+synthetic. The Industrial Catalogue now retains local definition generations in
+DuckDB, projects save observations through a durable SQLite outbox, and supports
+strict inert planning overlays. Binary station telemetry and Analysis Pack loading are not yet
 implemented.
 
 ## Player loop
@@ -96,6 +98,11 @@ limiting inputs, yield, titration-style sensitivity, and shock response make
 administration memorable. The Observatory clearly distinguishes those
 metaphors from actual chemical and thermodynamic laws.
 
+The first source-backed Materials slice precedes those models: a searchable
+catalogue of installed resources, buildings, vehicles, construction phases,
+production relations, and capabilities. Player overlays preserve installed
+originals and present every assumption as `original → override → effective`.
+
 ### Broadcast Desk
 
 Radio and television become a first-class administrative workspace. Receiver
@@ -166,8 +173,8 @@ bad news, invent a causal story, or turn opaque scores into authority.
 - Claiming complete factory, route, worker, or inventory telemetry before the
   relevant binary payloads are documented
 - Hosted accounts, social comparison, or global leaderboards
-- Loading or enabling user Analysis Packs before branch-aware normalised
-  storage exists
+- Executing community code or exposing database connections, SQL, private paths,
+  raw saves, or renderer configuration to extensions
 - An executable Model Plugin runtime before a demonstrated model and security
   review justify its contracts
 - Automated play or prescriptive “optimal republic” judgement

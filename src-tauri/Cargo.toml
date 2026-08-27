@@ -1,6 +1,6 @@
 [package]
 name = "republic-observatory"
-version = "0.2.0"
+version = "0.3.0"
 description = "Read-only save observation host for Republic Observatory"
 authors = ["Republic Observatory contributors"]
 edition = "2024"
@@ -15,6 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+duckdb = { version = "=1.10505.0", default-features = false, features = ["bundled"] }
 notify = "8.2.0"
 rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }

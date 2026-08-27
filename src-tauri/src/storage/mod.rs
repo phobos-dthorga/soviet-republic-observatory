@@ -4,9 +4,11 @@ mod connection;
 mod history;
 mod migrations;
 mod observations;
+mod planning_overlays;
 mod recorder;
 mod settings;
 mod snapshots;
+mod warehouse_jobs;
 
 #[cfg(test)]
 mod tests;
@@ -34,6 +36,7 @@ impl ObservatoryStorage {
         history::backfill_compacted_histories(&mut connection)?;
         archive::reconcile_unassigned_observations(&mut connection)?;
         recorder::recover_interrupted_candidates(&connection)?;
+        warehouse_jobs::recover_interrupted_projection_jobs(&connection)?;
         Ok(storage)
     }
 }
