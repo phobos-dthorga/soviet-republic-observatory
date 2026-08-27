@@ -188,6 +188,12 @@ class. Its time coordinate is `year × 365 + day`, while the interface continues
 to display the original game year/day pair. This creates an ordering and spacing
 coordinate; it does not claim a Gregorian calendar date.
 
+The same four class identifiers may appear in a save-sampled republic snapshot
+when `$STAT_CURRENT` supplies all values. Other captured current/city scalar
+fields use internal `source.stats.*` fact identifiers. Those identifiers are not
+published Analysis Pack inputs until their precise game meaning, accumulation
+window, and compatibility range are validated.
+
 ### Electronics-classified population
 
 For aligned class values:

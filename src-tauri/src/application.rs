@@ -1,28 +1,40 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::Mutex;
 
+use crate::automatic_observer::{AutomaticObserver, latest_save_candidate_path};
 use crate::error::ObservatoryError;
 use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_directory};
 use crate::model::{
-    ArchiveOverview, BranchSelectionResult, ConfiguredDirectorySummary, DirectoryKind,
-    ImportOutcome, ObservationImportResult, ReceiverDataset, SetupState,
+    ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
+    ConfiguredDirectorySummary, DirectoryKind, ImportOutcome, ObservationImportResult,
+    ReceiverDataset, SetupState,
 };
 use crate::save_archive::inspect_save_archive;
-use crate::storage::ObservatoryStorage;
+use crate::storage::{ObservatoryStorage, now_ms};
 
 const SAVE_DIRECTORY_KEY: &str = "save_directory";
 const GAME_MEDIA_DIRECTORY_KEY: &str = "game_media_directory";
+const AUTOMATIC_OBSERVATION_KEY: &str = "automatic_observation_enabled";
 
 #[derive(Debug)]
 pub struct ObservatoryApplication {
     storage: ObservatoryStorage,
+    automatic_observer: Mutex<AutomaticObserver>,
 }
 
 impl ObservatoryApplication {
     pub fn initialise(database_path: PathBuf) -> Result<Self, ObservatoryError> {
+        let storage = ObservatoryStorage::initialise(database_path)?;
+        let automatic_observation_enabled = storage.get_bool_setting(AUTOMATIC_OBSERVATION_KEY)?;
+        let directory_configured = storage
+            .get_setting(SAVE_DIRECTORY_KEY)?
+            .is_some_and(|path| path.is_dir());
+        let mut automatic_observer = AutomaticObserver::new(automatic_observation_enabled);
+        automatic_observer.set_enabled(automatic_observation_enabled, directory_configured);
         Ok(Self {
-            storage: ObservatoryStorage::initialise(database_path)?,
+            storage,
+            automatic_observer: Mutex::new(automatic_observer),
         })
     }
 
@@ -61,6 +73,7 @@ impl ObservatoryApplication {
             observed_saves: self.storage.file_observation_count()?,
             distinct_states: self.storage.distinct_state_count()?,
             game_vocabularies,
+            automatic_observer: self.observer_status()?,
         })
     }
 
@@ -87,6 +100,12 @@ impl ObservatoryApplication {
                     return Err(ObservatoryError::InvalidDirectory);
                 }
                 self.storage.set_setting(SAVE_DIRECTORY_KEY, &canonical)?;
+                let mut observer = self
+                    .automatic_observer
+                    .lock()
+                    .map_err(|_| ObservatoryError::StorageUnavailable)?;
+                let enabled = observer.status().enabled;
+                observer.set_enabled(enabled, true);
             }
             DirectoryKind::Game => {
                 let media = resolve_game_media_directory(&selected)?;
@@ -101,10 +120,14 @@ impl ObservatoryApplication {
             .storage
             .get_setting(SAVE_DIRECTORY_KEY)?
             .ok_or(ObservatoryError::SaveDirectoryNotConfigured)?;
-        let path = latest_save_candidate(&directory)?;
+        let path = latest_save_candidate_path(&directory)?;
         let inspection = inspect_save_archive(&path)?;
         let inserted = self.storage.save_inspection(&inspection)?;
         let dataset = self.storage.load_dataset(&inspection.payload_hash)?;
+        self.automatic_observer
+            .lock()
+            .map_err(|_| ObservatoryError::StorageUnavailable)?
+            .record_observation(&inspection.source_file_name, now_ms());
         Ok(ObservationImportResult {
             outcome: if inserted {
                 ImportOutcome::Imported
@@ -125,6 +148,46 @@ impl ObservatoryApplication {
             dataset: self.storage.load_latest_dataset()?,
         })
     }
+
+    pub fn set_automatic_observation(&self, enabled: bool) -> Result<SetupState, ObservatoryError> {
+        self.storage
+            .set_bool_setting(AUTOMATIC_OBSERVATION_KEY, enabled)?;
+        let directory_configured = self
+            .storage
+            .get_setting(SAVE_DIRECTORY_KEY)?
+            .is_some_and(|path| path.is_dir());
+        self.automatic_observer
+            .lock()
+            .map_err(|_| ObservatoryError::StorageUnavailable)?
+            .set_enabled(enabled, directory_configured);
+        self.setup_state()
+    }
+
+    pub fn poll_automatic_observation(
+        &self,
+    ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
+        let directory = self.storage.get_setting(SAVE_DIRECTORY_KEY)?;
+        self.automatic_observer
+            .lock()
+            .map_err(|_| ObservatoryError::StorageUnavailable)?
+            .poll(&self.storage, directory.as_deref(), now_ms())
+    }
+
+    pub fn compare_observations(
+        &self,
+        from_payload_hash: &str,
+        to_payload_hash: &str,
+    ) -> Result<ArchiveComparison, ObservatoryError> {
+        self.storage
+            .compare_observations(from_payload_hash, to_payload_hash)
+    }
+
+    fn observer_status(&self) -> Result<crate::model::AutomaticObserverStatus, ObservatoryError> {
+        self.automatic_observer
+            .lock()
+            .map(|observer| observer.status())
+            .map_err(|_| ObservatoryError::StorageUnavailable)
+    }
 }
 
 fn count_save_candidates(directory: &Path) -> Result<u32, ObservatoryError> {
@@ -136,26 +199,6 @@ fn count_save_candidates(directory: &Path) -> Result<u32, ObservatoryError> {
         })
         .count();
     Ok(count.min(u32::MAX as usize) as u32)
-}
-
-fn latest_save_candidate(directory: &Path) -> Result<PathBuf, ObservatoryError> {
-    fs::read_dir(directory)
-        .map_err(|_| ObservatoryError::InvalidDirectory)?
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let metadata = entry.metadata().ok()?;
-            let path = entry.path();
-            (metadata.is_file() && has_zip_extension(&path)).then(|| {
-                (
-                    metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-                    entry.file_name(),
-                    path,
-                )
-            })
-        })
-        .max_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)))
-        .map(|candidate| candidate.2)
-        .ok_or(ObservatoryError::NoSaveCandidate)
 }
 
 fn has_zip_extension(path: &Path) -> bool {
@@ -188,7 +231,8 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{count_save_candidates, latest_save_candidate};
+    use super::count_save_candidates;
+    use crate::automatic_observer::latest_save_candidate_path;
 
     #[test]
     fn candidates_are_zip_files_only() {
@@ -198,7 +242,7 @@ mod tests {
 
         assert_eq!(count_save_candidates(directory.path()).expect("count"), 1);
         assert_eq!(
-            latest_save_candidate(directory.path())
+            latest_save_candidate_path(directory.path())
                 .expect("candidate")
                 .file_name()
                 .and_then(|name| name.to_str()),

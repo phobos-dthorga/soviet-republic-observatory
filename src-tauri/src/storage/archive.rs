@@ -1,47 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write;
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use sha2::{Digest, Sha256};
 
-use super::{ObservatoryStorage, from_sql_integer, now_ms};
+use super::history::{HistoryRecord, history_prefix_fingerprints, load_history};
+use super::{ObservatoryStorage, now_ms};
 use crate::error::ObservatoryError;
 use crate::model::{
-    ArchiveObservation, ArchiveOverview, CoverageStatus, RECEIVER_METRICS, ReceiverRecord,
-    TimelineBranch,
+    ArchiveObservation, ArchiveOverview, CoverageStatus, ReceiverRecord, TimelineBranch,
 };
 
 const MAIN_BRANCH_ID: &str = "main";
 const UNASSIGNED_BRANCH_ID: &str = "unassigned";
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct HistoryRecord {
-    record_id: u32,
-    year: i32,
-    day: u16,
-    game_day: i64,
-    none: u64,
-    radio: u64,
-    television: u64,
-    computer: u64,
-    classified_total: u64,
-}
-
-impl From<&ReceiverRecord> for HistoryRecord {
-    fn from(record: &ReceiverRecord) -> Self {
-        Self {
-            record_id: record.record_id,
-            year: record.year,
-            day: record.day,
-            game_day: record.game_day,
-            none: record.none,
-            radio: record.radio,
-            television: record.television,
-            computer: record.computer,
-            classified_total: record.classified_total,
-        }
-    }
-}
 
 #[derive(Debug)]
 struct StoredHistorySummary {
@@ -66,7 +35,7 @@ pub(crate) struct BranchResolution {
     fork_record_id: Option<u32>,
     parent_payload_hash: Option<String>,
     relationship: &'static str,
-    shared_record_count: u32,
+    pub shared_record_count: u32,
 }
 
 impl BranchResolution {
@@ -278,30 +247,6 @@ fn persist_history_signature_records(
     Ok(())
 }
 
-fn history_prefix_fingerprints(records: &[HistoryRecord]) -> Vec<String> {
-    let mut hasher = Sha256::new();
-    records
-        .iter()
-        .map(|record| {
-            hasher.update(record.record_id.to_le_bytes());
-            hasher.update(record.year.to_le_bytes());
-            hasher.update(record.day.to_le_bytes());
-            hasher.update(record.game_day.to_le_bytes());
-            hasher.update(record.none.to_le_bytes());
-            hasher.update(record.radio.to_le_bytes());
-            hasher.update(record.television.to_le_bytes());
-            hasher.update(record.computer.to_le_bytes());
-            hasher.update(record.classified_total.to_le_bytes());
-            let digest = hasher.clone().finalize();
-            let mut fingerprint = String::with_capacity(digest.len() * 2);
-            for byte in digest {
-                write!(&mut fingerprint, "{byte:02x}").expect("writing to a String cannot fail");
-            }
-            fingerprint
-        })
-        .collect()
-}
-
 pub(crate) fn persist_resolution(
     transaction: &Transaction<'_>,
     payload_hash: &str,
@@ -503,50 +448,6 @@ fn load_branch_tips(
         .collect()
 }
 
-fn load_history(
-    connection: &Connection,
-    payload_hash: &str,
-) -> Result<Vec<HistoryRecord>, ObservatoryError> {
-    let mut statement = connection.prepare(
-        r#"SELECT er.record_id, er.year, er.day, er.game_day, er.classified_total,
-                  MAX(CASE WHEN mo.metric_id = ?2 THEN mo.value_integer END),
-                  MAX(CASE WHEN mo.metric_id = ?3 THEN mo.value_integer END),
-                  MAX(CASE WHEN mo.metric_id = ?4 THEN mo.value_integer END),
-                  MAX(CASE WHEN mo.metric_id = ?5 THEN mo.value_integer END)
-           FROM embedded_records er
-           JOIN metric_observations mo
-             ON mo.payload_hash = er.payload_hash AND mo.record_id = er.record_id
-           WHERE er.payload_hash = ?1
-           GROUP BY er.record_id, er.year, er.day, er.game_day, er.classified_total
-           ORDER BY er.record_id"#,
-    )?;
-    statement
-        .query_map(
-            params![
-                payload_hash,
-                RECEIVER_METRICS[0].id,
-                RECEIVER_METRICS[1].id,
-                RECEIVER_METRICS[2].id,
-                RECEIVER_METRICS[3].id,
-            ],
-            |row| {
-                Ok(HistoryRecord {
-                    record_id: row.get(0)?,
-                    year: row.get(1)?,
-                    day: row.get(2)?,
-                    game_day: row.get(3)?,
-                    classified_total: from_sql_integer(row.get(4)?)?,
-                    none: from_sql_integer(row.get(5)?)?,
-                    radio: from_sql_integer(row.get(6)?)?,
-                    television: from_sql_integer(row.get(7)?)?,
-                    computer: from_sql_integer(row.get(8)?)?,
-                })
-            },
-        )?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(Into::into)
-}
-
 fn load_branches(
     connection: &Connection,
     selected_branch_id: &str,
@@ -599,14 +500,21 @@ fn load_archive_observations(
         r#"SELECT os.payload_hash, os.source_file_name, os.imported_at_ms, os.branch_id,
                   ol.relationship, ol.parent_payload_hash, ol.shared_record_count,
                   os.history_records, os.coverage_status,
-                  (SELECT er.year FROM embedded_records er
-                   WHERE er.payload_hash = os.payload_hash
-                   ORDER BY er.game_day DESC, er.record_id DESC LIMIT 1),
-                  (SELECT er.day FROM embedded_records er
-                   WHERE er.payload_hash = os.payload_hash
-                   ORDER BY er.game_day DESC, er.record_id DESC LIMIT 1),
+                  (SELECT node.year FROM observation_history_tips tip
+                   JOIN receiver_history_nodes node ON node.node_id = tip.tip_node_id
+                   WHERE tip.payload_hash = os.payload_hash),
+                  (SELECT node.day FROM observation_history_tips tip
+                   JOIN receiver_history_nodes node ON node.node_id = tip.tip_node_id
+                   WHERE tip.payload_hash = os.payload_hash),
                   (SELECT COUNT(*) FROM archive_observations ao
-                   WHERE ao.payload_hash = os.payload_hash)
+                   WHERE ao.payload_hash = os.payload_hash),
+                  COALESCE((SELECT scope.supported_fact_count FROM snapshot_scopes scope
+                   WHERE scope.payload_hash = os.payload_hash
+                     AND scope.scope_kind = 'republic' AND scope.scope_id = 'republic'), 0),
+                  (SELECT COUNT(*) FROM snapshot_scopes scope
+                   WHERE scope.payload_hash = os.payload_hash AND scope.scope_kind = 'city'),
+                  COALESCE((SELECT SUM(scope.supported_fact_count) FROM snapshot_scopes scope
+                   WHERE scope.payload_hash = os.payload_hash AND scope.scope_kind = 'city'), 0)
            FROM observation_sources os
            JOIN observation_lineage ol ON ol.payload_hash = os.payload_hash
            ORDER BY os.imported_at_ms DESC, os.payload_hash DESC
@@ -631,6 +539,9 @@ fn load_archive_observations(
                 latest_year: row.get(9)?,
                 latest_day: row.get(10)?,
                 file_observation_count: row.get(11)?,
+                republic_snapshot_fields: row.get(12)?,
+                city_snapshot_count: row.get(13)?,
+                city_snapshot_fields: row.get(14)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()
@@ -643,10 +554,11 @@ fn latest_date_for_branch(
 ) -> Result<Option<(i32, u16)>, ObservatoryError> {
     connection
         .query_row(
-            "SELECT er.year, er.day FROM embedded_records er \
-             JOIN observation_sources os ON os.payload_hash = er.payload_hash \
+            "SELECT node.year, node.day FROM observation_sources os \
+             JOIN observation_history_tips tip ON tip.payload_hash = os.payload_hash \
+             JOIN receiver_history_nodes node ON node.node_id = tip.tip_node_id \
              WHERE os.branch_id = ?1 \
-             ORDER BY er.game_day DESC, er.record_id DESC LIMIT 1",
+             ORDER BY node.game_day DESC, node.record_id DESC LIMIT 1",
             [branch_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

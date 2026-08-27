@@ -14,13 +14,13 @@ and decide whether the proposed intervention belongs in their republic.
 
 ## Current delivery
 
-The native foundation proves one narrow promise end to end: on explicit
-request, the desktop program reads receiver-class history directly from the
-newest save ZIP, stores normalised facts and provenance locally, separates files
-from distinct states, resolves supported prefix ancestry, and renders an
-observed Receiver Ladder for the selected branch. The rest of the Briefing and
-Broadcast concepts remain visibly synthetic. Automatic watching, binary station
-telemetry, and extension loading are not yet implemented.
+The native foundation observes stable saves manually or automatically while the
+desktop program is open. It reads receiver-class history and bounded
+current/city facts directly from `stats.ini`, compacts shared history prefixes,
+separates files from distinct states, resolves supported ancestry, compares two
+states within one branch, and renders an observed Receiver Ladder. The rest of
+the Briefing and Broadcast concepts remain visibly synthetic. Binary station
+telemetry and extension loading are not yet implemented.
 
 ## Player loop
 

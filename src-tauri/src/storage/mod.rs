@@ -1,8 +1,11 @@
 mod archive;
+mod comparison;
 mod connection;
+mod history;
 mod migrations;
 mod observations;
 mod settings;
+mod snapshots;
 
 #[cfg(test)]
 mod tests;
@@ -27,6 +30,7 @@ impl ObservatoryStorage {
         let mut connection = storage.connect()?;
         migrations::apply(&mut connection)?;
         archive::backfill_missing_history_signatures(&mut connection)?;
+        history::backfill_compacted_histories(&mut connection)?;
         archive::reconcile_unassigned_observations(&mut connection)?;
         Ok(storage)
     }

@@ -49,7 +49,6 @@ the observation database to acquire its own encryption-key lifecycle. A future
 analytical accelerator such as DuckDB would be a derived-query implementation,
 not a second source of truth.
 
-The current manual observer still retains complete normalised receiver records
-per distinct payload. Continuous watching is gated on a storage-growth benchmark
-and an explicit decision about shared-prefix compaction; the watcher must not
-turn an acceptable manual-slice representation into unbounded quadratic growth.
+ADR-0009 records the completed growth benchmark and replaces complete
+per-payload receiver-history writes with content-addressed shared-prefix nodes
+before continuous observation is enabled.

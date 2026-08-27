@@ -76,6 +76,9 @@ export type ArchiveObservation = {
   history_records: number;
   coverage_status: CoverageStatus;
   file_observation_count: number;
+  republic_snapshot_fields: number;
+  city_snapshot_count: number;
+  city_snapshot_fields: number;
 };
 
 export type ArchiveOverview = {
@@ -90,6 +93,35 @@ export type ArchiveOverview = {
 export type BranchSelectionResult = {
   archive: ArchiveOverview;
   dataset: ReceiverDataset | null;
+};
+
+export type ComparisonObservation = {
+  payload_hash: string;
+  source_file_name: string;
+  branch_id: string;
+  year: number;
+  day: number;
+  game_day: number;
+  coverage_status: CoverageStatus;
+  republic_snapshot_fields: number;
+  city_snapshot_count: number;
+  city_snapshot_fields: number;
+};
+
+export type ReceiverClassChange = {
+  metric_id: string;
+  from_value: number;
+  to_value: number;
+  delta: number;
+};
+
+export type ArchiveComparison = {
+  branch_id: string;
+  elapsed_game_days: number;
+  from: ComparisonObservation;
+  to: ComparisonObservation;
+  receiver_changes: ReceiverClassChange[];
+  classified_total_change: ReceiverClassChange;
 };
 
 export type ConfiguredDirectorySummary = {
@@ -111,6 +143,7 @@ export type SetupState = {
   observed_saves: number;
   distinct_states: number;
   game_vocabularies: GameVocabularySource[];
+  automatic_observer: AutomaticObserverStatus;
 };
 
 export type ImportOutcome = "imported" | "duplicate";
@@ -118,6 +151,30 @@ export type ImportOutcome = "imported" | "duplicate";
 export type ObservationImportResult = {
   outcome: ImportOutcome;
   dataset: ReceiverDataset;
+};
+
+export type AutomaticObserverPhase =
+  | "disabled"
+  | "not_configured"
+  | "watching"
+  | "waiting_for_stability"
+  | "retrying"
+  | "observed"
+  | "failed";
+
+export type AutomaticObserverStatus = {
+  enabled: boolean;
+  phase: AutomaticObserverPhase;
+  candidate_file_name: string | null;
+  retry_attempt: number;
+  error_code: string | null;
+  last_observed_file_name: string | null;
+  last_observed_at_ms: number | null;
+};
+
+export type AutomaticObservationUpdate = {
+  status: AutomaticObserverStatus;
+  import_result: ObservationImportResult | null;
 };
 
 export type DirectoryKind = "save" | "game";
@@ -137,7 +194,11 @@ export type ObserverErrorCode =
   | "stats_line_too_long"
   | "unsupported_stats_format"
   | "malformed_receiver_history"
+  | "malformed_snapshot"
   | "receiver_history_unavailable"
   | "storage_unavailable"
   | "unknown_branch"
+  | "incompatible_comparison"
+  | "same_observation_comparison"
+  | "unknown_observation"
   | "unknown";

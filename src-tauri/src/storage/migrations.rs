@@ -14,6 +14,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "branch-aware archive",
         include_str!("../../migrations/0002_branch_archive.sql"),
     ),
+    (
+        3,
+        "compacted history and save-sampled snapshots",
+        include_str!("../../migrations/0003_compacted_history_and_snapshots.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

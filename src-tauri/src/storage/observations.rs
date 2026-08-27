@@ -3,11 +3,13 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::archive::{
     persist_history_signature, persist_resolution, resolve_branch, selected_branch_id,
 };
+use super::history::{load_history, persist_compacted_history, persist_latest_metric_evidence};
+use super::snapshots::persist_snapshots;
 use super::{ObservatoryStorage, from_sql_integer, now_ms, to_sql_integer};
 use crate::error::ObservatoryError;
 use crate::model::{
-    CoverageReport, CoverageStatus, FORMAT_PROFILE, MetricEvidence, PARSER_VERSION,
-    RECEIVER_METRICS, REPUBLIC_SCOPE, ReceiverDataset, ReceiverHistoryPoint, SaveInspection,
+    CoverageReport, CoverageStatus, FORMAT_PROFILE, MetricEvidence, PARSER_VERSION, REPUBLIC_SCOPE,
+    ReceiverDataset, ReceiverHistoryPoint, SaveInspection,
 };
 
 impl ObservatoryStorage {
@@ -49,52 +51,23 @@ impl ObservatoryStorage {
                 ],
             )?;
 
-            {
-                let mut insert_record = transaction.prepare(
-                    "INSERT INTO embedded_records(\
-                         payload_hash, record_id, year, day, game_day, classified_total\
-                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-                )?;
-                let mut insert_metric = transaction.prepare(
-                    "INSERT INTO metric_observations(\
-                         payload_hash, record_id, metric_id, value_integer, source_field,\
-                         source_line, evidence_kind, coverage\
-                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, 'save_fact', 'complete')",
-                )?;
-
-                for record in &inspection.records {
-                    insert_record.execute(params![
-                        inspection.payload_hash,
-                        record.record_id,
-                        record.year,
-                        record.day,
-                        record.game_day,
-                        to_sql_integer(record.classified_total)?,
-                    ])?;
-                    let values = [
-                        record.none,
-                        record.radio,
-                        record.television,
-                        record.computer,
-                    ];
-                    let lines = [
-                        record.source_lines.none,
-                        record.source_lines.radio,
-                        record.source_lines.television,
-                        record.source_lines.computer,
-                    ];
-                    for ((metric, value), line) in RECEIVER_METRICS.iter().zip(values).zip(lines) {
-                        insert_metric.execute(params![
-                            inspection.payload_hash,
-                            record.record_id,
-                            metric.id,
-                            to_sql_integer(value)?,
-                            metric.source_field,
-                            to_sql_integer(line)?,
-                        ])?;
-                    }
-                }
-            }
+            persist_compacted_history(
+                &transaction,
+                &inspection.payload_hash,
+                &inspection.records,
+                resolution.shared_record_count as usize,
+            )?;
+            persist_latest_metric_evidence(
+                &transaction,
+                &inspection.payload_hash,
+                &inspection.records,
+            )?;
+            persist_snapshots(
+                &transaction,
+                &inspection.payload_hash,
+                &inspection.snapshots,
+                &inspection.records,
+            )?;
             persist_history_signature(&transaction, &inspection.payload_hash, &inspection.records)?;
             persist_resolution(&transaction, &inspection.payload_hash, &resolution)?;
         } else {
@@ -107,18 +80,45 @@ impl ObservatoryStorage {
                 "UPDATE archive_state SET selected_branch_id = ?1 WHERE singleton_id = 1",
                 [branch_id],
             )?;
+            let snapshots_exist = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM snapshot_scopes WHERE payload_hash = ?1)",
+                [&inspection.payload_hash],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !snapshots_exist && !inspection.snapshots.is_empty() {
+                persist_snapshots(
+                    &transaction,
+                    &inspection.payload_hash,
+                    &inspection.snapshots,
+                    &inspection.records,
+                )?;
+            }
         }
 
         transaction.execute(
             "INSERT OR IGNORE INTO archive_observations(\
-                 payload_hash, source_file_name, source_file_size, source_modified_ms, observed_at_ms\
-             ) VALUES(?1, ?2, ?3, ?4, ?5)",
+                 payload_hash, source_file_name, source_file_size, source_modified_ms,\
+                 observed_at_ms, source_directory_identity\
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 inspection.payload_hash,
                 inspection.source_file_name,
                 to_sql_integer(inspection.source_file_size)?,
                 inspection.source_modified_ms,
                 now_ms(),
+                inspection.source_directory_identity,
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE archive_observations SET source_directory_identity = ?1 \
+             WHERE payload_hash = ?2 AND source_file_name = ?3 AND source_file_size = ?4 \
+               AND source_modified_ms = ?5 AND source_directory_identity IS NULL",
+            params![
+                inspection.source_directory_identity,
+                inspection.payload_hash,
+                inspection.source_file_name,
+                to_sql_integer(inspection.source_file_size)?,
+                inspection.source_modified_ms,
             ],
         )?;
 
@@ -144,6 +144,30 @@ impl ObservatoryStorage {
     pub fn load_dataset(&self, hash: &str) -> Result<ReceiverDataset, ObservatoryError> {
         let connection = self.connect()?;
         self.load_dataset_with_connection(&connection, hash)
+    }
+
+    pub fn has_file_observation(
+        &self,
+        source_directory_identity: &str,
+        source_file_name: &str,
+        source_file_size: u64,
+        source_modified_ms: i64,
+    ) -> Result<bool, ObservatoryError> {
+        let connection = self.connect()?;
+        connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM archive_observations \
+                 WHERE source_directory_identity = ?1 AND source_file_name = ?2 \
+                   AND source_file_size = ?3 AND source_modified_ms = ?4)",
+                params![
+                    source_directory_identity,
+                    source_file_name,
+                    to_sql_integer(source_file_size)?,
+                    source_modified_ms,
+                ],
+                |row| row.get::<_, bool>(0),
+            )
+            .map_err(Into::into)
     }
 
     fn load_dataset_with_connection(
@@ -189,49 +213,26 @@ impl ObservatoryStorage {
             warnings,
         };
 
-        let mut statement = connection.prepare(
-            r#"SELECT er.record_id, er.year, er.day, er.game_day, er.classified_total,
-                      MAX(CASE WHEN mo.metric_id = ?2 THEN mo.value_integer END),
-                      MAX(CASE WHEN mo.metric_id = ?3 THEN mo.value_integer END),
-                      MAX(CASE WHEN mo.metric_id = ?4 THEN mo.value_integer END),
-                      MAX(CASE WHEN mo.metric_id = ?5 THEN mo.value_integer END)
-               FROM embedded_records er
-               JOIN metric_observations mo
-                 ON mo.payload_hash = er.payload_hash AND mo.record_id = er.record_id
-               WHERE er.payload_hash = ?1
-               GROUP BY er.record_id, er.year, er.day, er.game_day, er.classified_total
-               ORDER BY er.record_id"#,
-        )?;
-        let points = statement
-            .query_map(
-                params![
-                    hash,
-                    RECEIVER_METRICS[0].id,
-                    RECEIVER_METRICS[1].id,
-                    RECEIVER_METRICS[2].id,
-                    RECEIVER_METRICS[3].id,
-                ],
-                |row| {
-                    Ok(ReceiverHistoryPoint {
-                        record_id: row.get(0)?,
-                        year: row.get(1)?,
-                        day: row.get(2)?,
-                        game_day: row.get(3)?,
-                        classified_total: from_sql_integer(row.get(4)?)?,
-                        none: from_sql_integer(row.get(5)?)?,
-                        radio: from_sql_integer(row.get(6)?)?,
-                        television: from_sql_integer(row.get(7)?)?,
-                        computer: from_sql_integer(row.get(8)?)?,
-                    })
-                },
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
+        let points = load_history(connection, hash)?
+            .into_iter()
+            .map(|record| ReceiverHistoryPoint {
+                record_id: record.record_id,
+                year: record.year,
+                day: record.day,
+                game_day: record.game_day,
+                classified_total: record.classified_total,
+                none: record.none,
+                radio: record.radio,
+                television: record.television,
+                computer: record.computer,
+            })
+            .collect::<Vec<_>>();
 
-        let latest_record_id = points.last().map(|point| point.record_id);
-        let source_fields = latest_record_id
-            .map(|record_id| self.load_metric_evidence(connection, hash, record_id))
-            .transpose()?
-            .unwrap_or_default();
+        let source_fields = if points.is_empty() {
+            Vec::new()
+        } else {
+            self.load_metric_evidence(connection, hash)?
+        };
 
         Ok(ReceiverDataset {
             payload_hash: hash.to_owned(),
@@ -253,16 +254,15 @@ impl ObservatoryStorage {
         &self,
         connection: &Connection,
         hash: &str,
-        record_id: u32,
     ) -> Result<Vec<MetricEvidence>, ObservatoryError> {
         let mut statement = connection.prepare(
-            r#"SELECT metric_id, source_field, source_line
-               FROM metric_observations
-               WHERE payload_hash = ?1 AND record_id = ?2
+            r#"SELECT metric_id, source_field, latest_source_line
+               FROM observation_metric_evidence
+               WHERE payload_hash = ?1
                ORDER BY metric_id"#,
         )?;
         statement
-            .query_map(params![hash, record_id], |row| {
+            .query_map([hash], |row| {
                 Ok(MetricEvidence {
                     metric_id: row.get(0)?,
                     source_field: row.get(1)?,

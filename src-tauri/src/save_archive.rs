@@ -1,8 +1,10 @@
+use std::fmt::Write;
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
 use crate::error::ObservatoryError;
@@ -77,9 +79,28 @@ pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryEr
         source_file_name,
         source_file_size: after.len(),
         source_modified_ms: system_time_ms(after.modified().unwrap_or(UNIX_EPOCH)),
+        source_directory_identity: directory_identity(
+            path.parent()
+                .ok_or(ObservatoryError::InvalidSaveCandidate)?,
+        )?,
         records: parsed.records,
         coverage: parsed.coverage,
+        snapshots: parsed.snapshots,
     })
+}
+
+pub fn directory_identity(path: &Path) -> Result<String, ObservatoryError> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| ObservatoryError::InvalidDirectory)?;
+    let mut hasher = Sha256::new();
+    hasher.update(canonical.to_string_lossy().as_bytes());
+    let digest = hasher.finalize();
+    let mut identity = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut identity, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(identity)
 }
 
 fn system_time_ms(time: SystemTime) -> i64 {
@@ -155,5 +176,17 @@ mod tests {
             inspection.records.len()
         );
         assert_eq!(inspection.coverage.dropped_records, 0);
+        assert!(
+            inspection
+                .snapshots
+                .iter()
+                .any(|snapshot| snapshot.scope_kind == crate::model::SnapshotScopeKind::Republic)
+        );
+        assert!(
+            inspection
+                .snapshots
+                .iter()
+                .any(|snapshot| snapshot.scope_kind == crate::model::SnapshotScopeKind::City)
+        );
     }
 }

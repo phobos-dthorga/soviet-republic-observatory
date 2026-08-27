@@ -13,13 +13,12 @@ questions:
 3. What probably contributed to it?
 4. What happens if the player intervenes?
 
-> **Project status:** trusted observation and branch-archive foundation. The
-> Tauri desktop program can inspect the newest completed save in a
-> player-selected folder, parse the four receiver classes from `stats.ini`,
-> separate observed files from distinct states in app-local SQLite, resolve
-> supported history prefixes into branches, and replace the Broadcast receiver
-> chart with the selected branch. All other dashboard values remain visibly
-> synthetic.
+> **Project status:** automatic branch-aware observation archive. The Tauri
+> desktop program can wait for newly written saves to stabilise, parse supported
+> history plus current/city snapshots from `stats.ini`, compact shared history
+> prefixes in app-local SQLite, resolve branches, compare two states on one
+> branch, and replace the Broadcast receiver chart with observed evidence. All
+> other dashboard values remain visibly synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -79,11 +78,13 @@ npm run desktop
 ```
 
 Open **Save observer** in the upper-right corner, choose the folder containing
-the game's save ZIP files, optionally choose the game installation folder for
-the future vocabulary catalogue, and select **Observe newest save**. The source
-archive remains untouched. Use **Archive** to inspect ancestry and select a
-timeline branch. Automatic watching is a later slice; observation is manual for
-now.
+the game's save ZIP files, and either select **Observe newest save** or enable
+**Observe new stable saves automatically**. Automatic observation runs while
+the desktop program is open, waits for unchanged file metadata before reading,
+and retries temporary incomplete archives. The source archive remains
+untouched. Use **Archive** to inspect ancestry, select a timeline branch, and
+compare two distinct states on that branch. The game installation folder is
+optional and currently supplies only a future vocabulary-source catalogue.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.

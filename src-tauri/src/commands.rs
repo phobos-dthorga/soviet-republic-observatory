@@ -3,8 +3,8 @@ use tauri::State;
 use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::model::{
-    ArchiveOverview, BranchSelectionResult, DirectoryKind, ObservationImportResult,
-    ReceiverDataset, SetupState,
+    ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
+    DirectoryKind, ObservationImportResult, ReceiverDataset, SetupState,
 };
 
 #[derive(Debug)]
@@ -52,6 +52,27 @@ pub fn observe_latest_save(
 }
 
 #[tauri::command]
+pub fn set_automatic_observation(
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<SetupState, CommandError> {
+    state
+        .application
+        .set_automatic_observation(enabled)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn poll_automatic_observation(
+    state: State<'_, AppState>,
+) -> Result<AutomaticObservationUpdate, CommandError> {
+    state
+        .application
+        .poll_automatic_observation()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn select_timeline_branch(
     branch_id: String,
     state: State<'_, AppState>,
@@ -59,5 +80,17 @@ pub fn select_timeline_branch(
     state
         .application
         .select_branch(&branch_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn compare_archive_observations(
+    from_payload_hash: String,
+    to_payload_hash: String,
+    state: State<'_, AppState>,
+) -> Result<ArchiveComparison, CommandError> {
+    state
+        .application
+        .compare_observations(&from_payload_hash, &to_payload_hash)
         .map_err(Into::into)
 }

@@ -52,18 +52,23 @@ component.
 The Archive separates files observed from distinct statistical states. Its
 branch list changes the analytical context without rewriting history. The state
 ledger exposes game date, exact lineage relationship, shared-prefix evidence,
-coverage, content identity, and repeated-file count. An unrelated or tied
-history remains visibly unassigned. File names are display evidence only and
-never establish ancestry.
+coverage, content identity, repeated-file count, and bounded snapshot coverage.
+The comparison assay accepts two distinct states only from the same resolved
+branch and reports exact receiver-class changes over the actual elapsed game
+days. An unrelated or tied history remains visibly unassigned. File names are
+display evidence only and never establish ancestry.
 
 ### Save observer
 
 The command-bar status opens one focus-managed dialog. In the desktop host it
 shows the selected save and game-folder names, candidate count, observed payload
-count, and game-vocabulary source identities. Directory selection and
-**Observe newest save** are distinct explicit actions. In a normal browser the
-same dialog explains that native observation is unavailable and retains the
-synthetic preview. Closing the dialog returns focus to the command-bar control.
+count, game-vocabulary source identities, and the opt-in automatic-observer
+state. Directory selection, manual **Observe newest save**, and enabling
+automatic observation are distinct actions. Automatic status distinguishes
+watching, waiting for stability, retrying, observed, and terminal failure. In a
+normal browser the same dialog explains that native observation is unavailable
+and retains the synthetic preview. Closing the dialog returns focus to the
+command-bar control.
 
 ### Broadcast composition
 

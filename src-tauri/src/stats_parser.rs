@@ -6,7 +6,8 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ObservatoryError;
 use crate::model::{
-    CoverageReport, CoverageStatus, CoverageWarning, ParsedStats, ReceiverRecord, SourceLineSet,
+    CoverageReport, CoverageStatus, CoverageWarning, ParsedStats, ReceiverRecord, SNAPSHOT_FACTS,
+    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceLineSet,
 };
 
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
@@ -31,6 +32,31 @@ struct RecordDraft {
     malformed: bool,
 }
 
+#[derive(Debug)]
+struct SnapshotDraft {
+    scope_kind: SnapshotScopeKind,
+    scope_id: String,
+    facts: BTreeMap<&'static str, SnapshotFact>,
+}
+
+impl SnapshotDraft {
+    fn republic() -> Self {
+        Self {
+            scope_kind: SnapshotScopeKind::Republic,
+            scope_id: "republic".to_owned(),
+            facts: BTreeMap::new(),
+        }
+    }
+
+    fn city(city_source_id: u32) -> Self {
+        Self {
+            scope_kind: SnapshotScopeKind::City,
+            scope_id: city_source_id.to_string(),
+            facts: BTreeMap::new(),
+        }
+    }
+}
+
 impl RecordDraft {
     fn new(record_id: u32) -> Self {
         Self {
@@ -52,7 +78,10 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
     let mut line_number = 0_u64;
     let mut line_buffer = Vec::new();
     let mut current: Option<RecordDraft> = None;
+    let mut current_snapshot: Option<SnapshotDraft> = None;
     let mut records = Vec::new();
+    let mut snapshots = Vec::new();
+    let mut seen_city_ids = HashSet::new();
     let mut warnings = BTreeMap::<String, u32>::new();
     let mut seen_record_ids = HashSet::new();
     let mut last_record_id = None;
@@ -96,6 +125,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
         }
 
         if line.starts_with("$STAT_RECORD") {
+            finalise_snapshot(current_snapshot.take(), &mut snapshots);
             finalise_record(
                 current.take(),
                 &mut records,
@@ -122,7 +152,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
             continue;
         }
 
-        if line.starts_with("$STAT_CURRENT") || line.starts_with("$STAT_CITY") {
+        if line.starts_with("$STAT_CURRENT") {
             finalise_record(
                 current.take(),
                 &mut records,
@@ -131,6 +161,35 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
                 &mut dropped_records,
                 &mut chartable_records,
             )?;
+            finalise_snapshot(current_snapshot.take(), &mut snapshots);
+            current_snapshot = Some(SnapshotDraft::republic());
+            continue;
+        }
+
+        if line.starts_with("$STAT_CITY") {
+            finalise_record(
+                current.take(),
+                &mut records,
+                &mut warnings,
+                &mut history_records,
+                &mut dropped_records,
+                &mut chartable_records,
+            )?;
+            finalise_snapshot(current_snapshot.take(), &mut snapshots);
+            let city_source_id: u32 = parse_single_value(line).ok_or(
+                ObservatoryError::MalformedSnapshot("invalid city identifier"),
+            )?;
+            if !seen_city_ids.insert(city_source_id) {
+                return Err(ObservatoryError::MalformedSnapshot(
+                    "duplicate city identifier",
+                ));
+            }
+            current_snapshot = Some(SnapshotDraft::city(city_source_id));
+            continue;
+        }
+
+        if let Some(snapshot) = current_snapshot.as_mut() {
+            assign_snapshot_fact(snapshot, line, line_number)?;
             continue;
         }
 
@@ -187,6 +246,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
         &mut dropped_records,
         &mut chartable_records,
     )?;
+    finalise_snapshot(current_snapshot, &mut snapshots);
 
     if records.is_empty() {
         return Err(ObservatoryError::ReceiverHistoryUnavailable);
@@ -218,7 +278,71 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
             dropped_records,
             warnings,
         },
+        snapshots,
     })
+}
+
+fn assign_snapshot_fact(
+    snapshot: &mut SnapshotDraft,
+    line: &str,
+    line_number: u64,
+) -> Result<(), ObservatoryError> {
+    let Some(source_field) = directive_name(line) else {
+        return Ok(());
+    };
+    let Some(definition) = SNAPSHOT_FACTS.iter().find(|definition| {
+        definition.source_field == source_field
+            && match snapshot.scope_kind {
+                SnapshotScopeKind::Republic => definition.republic,
+                SnapshotScopeKind::City => definition.city,
+            }
+    }) else {
+        return Ok(());
+    };
+    if snapshot.facts.contains_key(definition.id) {
+        return Err(ObservatoryError::MalformedSnapshot(
+            "duplicate supported scalar field",
+        ));
+    }
+    let Some(value) = parse_single_value::<u64>(line) else {
+        return Ok(());
+    };
+    snapshot.facts.insert(
+        definition.id,
+        SnapshotFact {
+            fact_id: definition.id,
+            source_field: definition.source_field,
+            value,
+            source_line: line_number,
+        },
+    );
+    Ok(())
+}
+
+fn finalise_snapshot(draft: Option<SnapshotDraft>, snapshots: &mut Vec<SaveSnapshot>) {
+    let Some(draft) = draft else {
+        return;
+    };
+    let expected_fact_count = SNAPSHOT_FACTS
+        .iter()
+        .filter(|definition| match draft.scope_kind {
+            SnapshotScopeKind::Republic => definition.republic,
+            SnapshotScopeKind::City => definition.city,
+        })
+        .count()
+        .min(u32::MAX as usize) as u32;
+    let coverage = if draft.facts.len() == expected_fact_count as usize {
+        CoverageStatus::Complete
+    } else {
+        CoverageStatus::Partial
+    };
+    snapshots.push(SaveSnapshot {
+        scope_kind: draft.scope_kind,
+        scope_id: draft.scope_id,
+        facts: draft.facts.into_values().collect(),
+        expected_fact_count,
+        coverage,
+    });
 }
 
 fn finalise_record(
@@ -331,10 +455,10 @@ mod tests {
 
     use super::parse_stats;
     use crate::error::ObservatoryError;
-    use crate::model::CoverageStatus;
+    use crate::model::{CoverageStatus, SnapshotScopeKind};
 
     #[test]
-    fn parses_complete_receiver_history_and_stops_at_current_block() {
+    fn parses_complete_receiver_history_and_closes_it_at_current_block() {
         let parsed = parse_stats(Cursor::new(include_bytes!(
             "../fixtures/valid.receiver-stats.txt"
         )))
@@ -346,6 +470,10 @@ mod tests {
         assert_eq!(parsed.records[2].day, 5);
         assert_eq!(parsed.records[2].classified_total, 100);
         assert_eq!(parsed.payload_hash.len(), 64);
+        assert_eq!(parsed.snapshots.len(), 1);
+        assert_eq!(parsed.snapshots[0].scope_kind, SnapshotScopeKind::Republic);
+        assert_eq!(parsed.snapshots[0].facts.len(), 4);
+        assert_eq!(parsed.snapshots[0].coverage, CoverageStatus::Partial);
     }
 
     #[test]
@@ -393,5 +521,32 @@ mod tests {
         )))
         .expect_err("unsupported format must fail");
         assert!(matches!(error, ObservatoryError::UnsupportedStatsFormat));
+    }
+
+    #[test]
+    fn captures_supported_current_and_city_snapshot_facts() {
+        let parsed = parse_stats(Cursor::new(include_bytes!(
+            "../fixtures/current-city.receiver-stats.txt"
+        )))
+        .expect("snapshot fixture");
+
+        assert_eq!(parsed.snapshots.len(), 3);
+        let republic = &parsed.snapshots[0];
+        assert_eq!(republic.scope_kind, SnapshotScopeKind::Republic);
+        assert_eq!(republic.scope_id, "republic");
+        assert_eq!(republic.facts.len(), 18);
+        assert_eq!(republic.coverage, CoverageStatus::Complete);
+        let cities = &parsed.snapshots[1..];
+        assert!(
+            cities
+                .iter()
+                .all(|snapshot| snapshot.scope_kind == SnapshotScopeKind::City)
+        );
+        assert!(cities.iter().all(|snapshot| snapshot.facts.len() == 5));
+        assert!(
+            cities
+                .iter()
+                .all(|snapshot| snapshot.coverage == CoverageStatus::Complete)
+        );
     }
 }

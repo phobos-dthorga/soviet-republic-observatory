@@ -1,4 +1,5 @@
 mod application;
+mod automatic_observer;
 mod commands;
 mod error;
 mod game_vocabulary;
@@ -31,7 +32,10 @@ pub fn run() {
             commands::get_archive_overview,
             commands::configure_directory,
             commands::observe_latest_save,
+            commands::set_automatic_observation,
+            commands::poll_automatic_observation,
             commands::select_timeline_branch,
+            commands::compare_archive_observations,
         ])
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");

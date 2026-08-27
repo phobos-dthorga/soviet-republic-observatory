@@ -2,6 +2,8 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   ArchiveOverview,
+  ArchiveComparison,
+  AutomaticObservationUpdate,
   BranchSelectionResult,
   DirectoryKind,
   ObservationImportResult,
@@ -49,6 +51,24 @@ export function selectTimelineBranch(
 
 export function observeLatestSave(): Promise<ObservationImportResult> {
   return invoke<ObservationImportResult>("observe_latest_save");
+}
+
+export function setAutomaticObservation(enabled: boolean): Promise<SetupState> {
+  return invoke<SetupState>("set_automatic_observation", { enabled });
+}
+
+export function pollAutomaticObservation(): Promise<AutomaticObservationUpdate> {
+  return invoke<AutomaticObservationUpdate>("poll_automatic_observation");
+}
+
+export function compareArchiveObservations(
+  fromPayloadHash: string,
+  toPayloadHash: string,
+): Promise<ArchiveComparison> {
+  return invoke<ArchiveComparison>("compare_archive_observations", {
+    fromPayloadHash,
+    toPayloadHash,
+  });
 }
 
 export function observerErrorCode(error: unknown): ObserverErrorCode {

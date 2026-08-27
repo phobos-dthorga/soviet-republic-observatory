@@ -49,14 +49,15 @@ Implemented foundation:
 - Branch selection shared by Archive and observed Broadcast data
 - Historical-record catalogue with coverage and content identity
 - Append-only migration and version-one database backfill
+- Content-addressed shared-prefix receiver history, growth benchmark, and
+  version-one history backfill
+- Opt-in automatic observation with a stable-file window, bounded retry, and a
+  queue for every new candidate noticed while the desktop program is open
+- Same-branch Archive comparison of two distinct observed states
+- Save-sampled current and numeric city snapshot facts with explicit coverage
 
 Remaining in this slice:
 
-- Storage-growth benchmark and shared-prefix compaction decision before the
-  automatic watcher can import saves continuously
-- Automatic observation of stable newly written saves
-- Archive two-save comparison
-- Current and city snapshot capture from every distinct save
 - Authoritative Rust validation and persistence for community language packs
 
 ## Slice 3 — local Analysis Packs

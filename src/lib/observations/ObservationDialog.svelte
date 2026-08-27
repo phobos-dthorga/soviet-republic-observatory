@@ -8,6 +8,7 @@
     getSetupState,
     observeLatestSave,
     observerErrorCode,
+    setAutomaticObservation,
   } from "./desktopClient";
   import type {
     DirectoryKind,
@@ -54,9 +55,13 @@
     stats_line_too_long: "error-observer-line-too-long",
     unsupported_stats_format: "error-observer-unsupported-format",
     malformed_receiver_history: "error-observer-malformed-history",
+    malformed_snapshot: "error-observer-malformed-snapshot",
     receiver_history_unavailable: "error-observer-receiver-unavailable",
     storage_unavailable: "error-observer-storage-unavailable",
     unknown_branch: "error-observer-unknown-branch",
+    incompatible_comparison: "error-observer-incompatible-comparison",
+    same_observation_comparison: "error-observer-same-comparison",
+    unknown_observation: "error-observer-unknown-observation",
     unknown: "error-observer-unknown",
   };
 
@@ -102,6 +107,52 @@
       reportError(error);
     } finally {
       busy = false;
+    }
+  }
+
+  async function toggleAutomaticObservation(enabled: boolean): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    statusMessage = "";
+    try {
+      onsetupchange(await setAutomaticObservation(enabled));
+      statusMessage = $translation(
+        enabled ? "observer-automatic-enabled" : "observer-automatic-disabled",
+      );
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function automaticStatusText(): string {
+    const observer = setup?.automatic_observer;
+    if (!observer) return $translation("observer-automatic-disabled");
+    switch (observer.phase) {
+      case "disabled":
+        return $translation("observer-automatic-disabled");
+      case "not_configured":
+        return $translation("observer-automatic-needs-folder");
+      case "waiting_for_stability":
+        return $translation("observer-automatic-waiting", {
+          file: observer.candidate_file_name ?? "—",
+        });
+      case "retrying":
+        return $translation("observer-automatic-retrying", {
+          file: observer.candidate_file_name ?? "—",
+          attempt: observer.retry_attempt,
+        });
+      case "observed":
+        return $translation("observer-automatic-observed", {
+          file: observer.last_observed_file_name ?? "—",
+        });
+      case "failed":
+        return $translation("observer-automatic-failed", {
+          file: observer.candidate_file_name ?? "—",
+        });
+      default:
+        return $translation("observer-automatic-watching");
     }
   }
 </script>
@@ -220,6 +271,27 @@
             </button>
           </article>
         </div>
+
+        <section class="observer-automatic-card">
+          <div>
+            <span class="eyebrow"
+              >{$translation("observer-automatic-eyebrow")}</span
+            >
+            <strong>{$translation("observer-automatic-title")}</strong>
+            <p>{$translation("observer-automatic-detail")}</p>
+            <small role="status">{automaticStatusText()}</small>
+          </div>
+          <label class="observer-switch">
+            <input
+              type="checkbox"
+              checked={setup?.automatic_observer.enabled ?? false}
+              disabled={busy || !setup?.save_directory}
+              onchange={(event) =>
+                void toggleAutomaticObservation(event.currentTarget.checked)}
+            />
+            <span>{$translation("observer-automatic-toggle")}</span>
+          </label>
+        </section>
 
         <aside class="observer-boundary">
           <strong>{$translation("save-safety-observer-boundary")}</strong>

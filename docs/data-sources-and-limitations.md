@@ -11,25 +11,30 @@ be inspected without extraction by opening `stats.ini` directly from the
 archive. Large binary entries were also present, including building, worker,
 rail, and vehicle payloads.
 
-The implemented manual observer follows this sequence:
+The implemented manual and automatic observers follow this sequence:
 
 1. notice a candidate ZIP;
 2. wait until file size and modification time are stable;
 3. validate the archive without modifying it;
 4. hash the statistical payload and deduplicate it;
 5. parse supported records into application-owned models;
-6. store source identity, embedded records, normalised metrics, parser version,
-   coverage, source fields, source lines, file evidence, and lineage atomically
-   in app-local SQLite;
+6. store source identity, compacted history, bounded snapshot facts, parser
+   version, coverage, source fields, source lines, file evidence, and lineage
+   atomically in app-local SQLite;
 7. resolve exact supported prefixes into a main timeline, successor, fork, or
    visibly unassigned state; and
 8. return a bounded dataset for the selected branch to the presentation.
 
-Automatic watching is not implemented in this slice: the player explicitly
-asks the application to inspect the newest ZIP. Prefix ancestry currently uses
-only the supported receiver-history record identity. It cannot claim ancestry
-from unsupported current-state or binary fields, so tied or unrelated evidence
-remains visibly `unassigned`.
+Automatic observation is opt-in and runs only while the desktop program is
+open. It retains an initial baseline of existing files, considers the newest
+candidate when enabled, queues every later candidate it notices, waits at least
+1.5 seconds of unchanged size and modification metadata, and retries transient
+incomplete archives up to five times. It is not an operating-system service and
+does not backfill every save created while the program was closed.
+
+Prefix ancestry currently uses only the supported receiver-history record
+identity. It cannot claim ancestry from current-state, city, or binary fields,
+so tied or unrelated evidence remains visibly `unassigned`.
 
 The SQLite database is unencrypted and contains no credentials. Full configured
 paths remain inside app-local settings and are never included in presentation or
@@ -85,9 +90,35 @@ marker; a fixture protects this boundary.
 ## Current and city snapshots
 
 `$STAT_CURRENT` and `$STAT_CITY` blocks describe the latest state rather than a
-complete embedded history. Their value comes from observing each newly created
-save. Repeated observations enable save-sampled national and city trends,
-save-to-save comparisons, and intervention studies.
+complete embedded history. The observer now persists bounded scalar facts from
+both block types for every distinct save. Republic coverage includes receiver
+classes and selected citizen counts. City coverage presently includes births,
+deaths, escapes, and the two immigration counts under the numeric city source
+identifier.
+
+The republic snapshot recognises the four receiver spellings above plus:
+
+- `$Citizens_Born`, `$Citizens_Dead`, and `$Citizens_Escaped`;
+- `$Citizens_ImigrantSoviet` and `$Citizens_ImigrantAfrica`;
+- `$Citizens_SmallChilds`, `$Citizens_MediumChilds`,
+  `$Citizens_AdultsParent`, and `$Citizens_Adults`;
+- `$Citizens_Unemployed`;
+- `$Citizens_NoEducation`, `$Citizens_BasicEducationNum`, and
+  `$Citizens_HighEducationNum`; and
+- `$Citizens_CarOwners`.
+
+City snapshots currently recognise only the five birth, death, escape, and
+immigration fields. Repeated `$Citizens_Status` fields and other list-valued
+directives remain unsupported until their ordering and semantics are fixture-
+tested independently.
+
+The zero-valued date fields found inside these blocks are not treated as the
+observation date. Snapshot scopes inherit the latest supported historical game
+date from the same save. Repeated observations can therefore support future
+save-sampled national and city trends, comparisons, and intervention studies.
+The captured `source.stats.*` identifiers remain internal source facts rather
+than published Analysis Pack metrics until their meaning and time window are
+validated.
 
 City identifiers are not assumed to be display names. Until names and
 coordinates are established by a supported source, the interface must use a
@@ -144,7 +175,8 @@ transfer paths. Therefore:
 Global history is already embedded in a save, so saving more frequently does
 not create finer historical records. Frequent observation is still useful for
 current and city snapshots, branch detection, and before/after comparisons.
-The current manual observer does not yet notice new files automatically.
+The automatic observer supplies that cadence only while the desktop program is
+open.
 
 ### Binary payloads
 

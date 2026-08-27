@@ -1,11 +1,11 @@
 # Architecture overview
 
 Republic Observatory is a local-first desktop application assembled through
-narrow vertical slices. The desktop host observes the newest save on explicit
-request, parses the receiver-class global-history subset, stores distinct states
-and file observations separately, resolves supported prefix ancestry, and
-renders the selected branch through the declarative chart contract. Automatic
-watching remains the next observation slice.
+narrow vertical slices. The desktop host observes stable saves manually or
+automatically, parses receiver-class history plus bounded current/city facts,
+stores distinct states and file observations separately, resolves supported
+prefix ancestry, and renders the selected branch through the declarative chart
+contract.
 
 ## Proposed components
 
@@ -37,11 +37,13 @@ Configured save directory
 
 ### Observer
 
-Inspects only a player-configured directory after an explicit request, selects
-the newest ZIP candidate, validates bounded archive and entry sizes, compares
-file metadata before and after reading, and streams `stats.ini` read-only. It
-never extracts beside the save, mutates timestamps, or manages save retention.
-The automatic watcher is not yet implemented.
+Inspects only a player-configured directory, validates bounded archive and entry
+sizes, compares file metadata before and after reading, and streams `stats.ini`
+read-only. Manual observation selects the newest candidate. The opt-in automatic
+observer runs while the desktop application is open, uses a Rust-owned
+stable-file and retry state machine, and queues every newly noticed candidate.
+It never extracts beside the save, mutates timestamps, or manages save
+retention.
 
 ### Parser
 
@@ -67,8 +69,11 @@ evidence, compact cumulative history signatures, and branch selection. Prefix
 resolution scans one signature per state and loads full records only for branch
 tips when divergence evidence requires them. Connection, migration,
 observation, branch, and settings responsibilities are separate modules behind
-one application-owned storage API. Configured paths remain private settings and
-never enter the presentation model. Later migrations add snapshots,
+one application-owned storage API. The third migration adds content-addressed
+receiver-history nodes, latest-line evidence, save-sampled republic/city scopes,
+and privacy-preserving directory identities. New successors share exact prefix
+nodes rather than duplicating full histories. Configured paths remain private
+settings and never enter the presentation model. Later migrations add
 annotations, targets, and analytical results. Raw archives remain outside the
 database.
 
@@ -142,7 +147,7 @@ display catalogue; display text is not the database key.
 ## Failure behaviour
 
 - A save that changes during inspection is rejected without affecting
-  previously stored data; automatic wait/retry belongs to the watcher slice.
+  previously stored data; the automatic observer waits and retries boundedly.
 - A corrupt archive is recorded as a bounded observation failure, not repaired.
 - An unsupported field is reported in coverage and does not abort unrelated
   supported metrics.

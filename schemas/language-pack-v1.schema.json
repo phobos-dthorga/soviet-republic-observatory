@@ -37,7 +37,7 @@
     "source_catalog_revision": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 4
+      "maximum": 5
     },
     "direction": { "enum": ["left_to_right", "right_to_left"] },
     "messages": {

@@ -31,12 +31,20 @@ pub enum ObservatoryError {
     UnsupportedStatsFormat,
     #[error("The receiver history is malformed: {0}")]
     MalformedReceiverHistory(&'static str),
+    #[error("A current or city snapshot is malformed: {0}")]
+    MalformedSnapshot(&'static str),
     #[error("The save contains no receiver history that this parser can use.")]
     ReceiverHistoryUnavailable,
     #[error("Local observation storage is unavailable.")]
     StorageUnavailable,
     #[error("The selected timeline branch does not exist.")]
     UnknownBranch,
+    #[error("The selected observations cannot be compared on one resolved branch.")]
+    IncompatibleComparison,
+    #[error("Choose two different observations to compare.")]
+    SameObservationComparison,
+    #[error("One of the selected observations no longer exists.")]
+    UnknownObservation,
 }
 
 impl ObservatoryError {
@@ -56,9 +64,13 @@ impl ObservatoryError {
             Self::StatsLineTooLong => "stats_line_too_long",
             Self::UnsupportedStatsFormat => "unsupported_stats_format",
             Self::MalformedReceiverHistory(_) => "malformed_receiver_history",
+            Self::MalformedSnapshot(_) => "malformed_snapshot",
             Self::ReceiverHistoryUnavailable => "receiver_history_unavailable",
             Self::StorageUnavailable => "storage_unavailable",
             Self::UnknownBranch => "unknown_branch",
+            Self::IncompatibleComparison => "incompatible_comparison",
+            Self::SameObservationComparison => "same_observation_comparison",
+            Self::UnknownObservation => "unknown_observation",
         }
     }
 }

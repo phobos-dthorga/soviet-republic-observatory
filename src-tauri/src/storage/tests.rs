@@ -2,7 +2,10 @@ use rusqlite::{Connection, params};
 use tempfile::tempdir;
 
 use super::ObservatoryStorage;
-use crate::model::{CoverageReport, CoverageStatus, ReceiverRecord, SaveInspection, SourceLineSet};
+use crate::model::{
+    CoverageReport, CoverageStatus, ReceiverRecord, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot,
+    SnapshotFact, SnapshotScopeKind, SourceLineSet,
+};
 
 #[test]
 fn stores_normalised_metrics_and_separates_files_from_distinct_states() {
@@ -47,6 +50,173 @@ fn strict_prefix_successors_remain_on_main() {
     assert_eq!(archive.branches[0].observation_count, 2);
     assert_eq!(archive.observations[0].relationship, "successor");
     assert_eq!(archive.observations[0].shared_record_count, 2);
+}
+
+#[test]
+fn strict_prefixes_share_compacted_history_nodes() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+
+    storage
+        .save_inspection(&inspection("first-state", "first.zip", &[1, 2]))
+        .expect("first state");
+    storage
+        .save_inspection(&inspection("second-state", "second.zip", &[1, 2, 3]))
+        .expect("second state");
+
+    let connection = storage.connect().expect("connection");
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM receiver_history_nodes", [], |row| row
+                .get::<_, u32>(0))
+            .expect("node count"),
+        3
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM observation_history_tips", [], |row| {
+                row.get::<_, u32>(0)
+            })
+            .expect("tip count"),
+        2
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM embedded_records", [], |row| row
+                .get::<_, u32>(0))
+            .expect("legacy row count"),
+        0
+    );
+}
+
+#[test]
+fn stores_save_sampled_republic_and_city_facts() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+    let mut save = inspection("snapshot-state", "snapshot.zip", &[1, 2]);
+    save.snapshots = vec![
+        SaveSnapshot {
+            scope_kind: SnapshotScopeKind::Republic,
+            scope_id: "republic".to_owned(),
+            facts: vec![snapshot_fact(
+                "core.citizens.electronics.radio",
+                "$Citizens_EletrinicRadio",
+                22,
+            )],
+            expected_fact_count: 18,
+            coverage: CoverageStatus::Partial,
+        },
+        SaveSnapshot {
+            scope_kind: SnapshotScopeKind::City,
+            scope_id: "7".to_owned(),
+            facts: vec![snapshot_fact(
+                "source.stats.citizens.born",
+                "$Citizens_Born",
+                3,
+            )],
+            expected_fact_count: 5,
+            coverage: CoverageStatus::Partial,
+        },
+    ];
+
+    storage.save_inspection(&save).expect("snapshot import");
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.observations[0].republic_snapshot_fields, 1);
+    assert_eq!(archive.observations[0].city_snapshot_count, 1);
+    assert_eq!(archive.observations[0].city_snapshot_fields, 1);
+    let connection = storage.connect().expect("connection");
+    assert_eq!(
+        connection
+            .query_row("SELECT COUNT(*) FROM snapshot_scalar_facts", [], |row| row
+                .get::<_, u32>(
+                0
+            ))
+            .expect("fact count"),
+        2
+    );
+}
+
+#[test]
+fn reobserving_a_legacy_state_backfills_its_snapshots_without_a_new_state() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+    let original = inspection("legacy-snapshot-state", "legacy.zip", &[1, 2]);
+    storage.save_inspection(&original).expect("legacy import");
+    let mut reobserved = original;
+    reobserved.source_file_name = "legacy-copy.zip".to_owned();
+    reobserved.snapshots = vec![SaveSnapshot {
+        scope_kind: SnapshotScopeKind::Republic,
+        scope_id: "republic".to_owned(),
+        facts: vec![snapshot_fact(
+            "core.citizens.electronics.radio",
+            "$Citizens_EletrinicRadio",
+            22,
+        )],
+        expected_fact_count: 18,
+        coverage: CoverageStatus::Partial,
+    }];
+
+    assert!(
+        !storage
+            .save_inspection(&reobserved)
+            .expect("snapshot backfill")
+    );
+    assert_eq!(storage.distinct_state_count().expect("state count"), 1);
+    assert_eq!(
+        storage
+            .load_archive_overview()
+            .expect("archive")
+            .observations[0]
+            .republic_snapshot_fields,
+        1
+    );
+}
+
+#[test]
+fn compares_two_distinct_states_only_within_one_resolved_branch() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("test.sqlite3")).expect("storage");
+    storage
+        .save_inspection(&inspection("from-state", "from.zip", &[1, 2]))
+        .expect("from state");
+    storage
+        .save_inspection(&inspection("to-state", "to.zip", &[1, 2, 3]))
+        .expect("to state");
+
+    let comparison = storage
+        .compare_observations("from-state", "to-state")
+        .expect("comparison");
+    assert_eq!(comparison.branch_id, "main");
+    assert_eq!(comparison.elapsed_game_days, 1);
+    assert!(
+        comparison
+            .receiver_changes
+            .iter()
+            .all(|change| change.delta == 1)
+    );
+    assert_eq!(comparison.classified_total_change.delta, 4);
+    assert_eq!(
+        storage
+            .compare_observations("from-state", "from-state")
+            .expect_err("same state must fail")
+            .code(),
+        "same_observation_comparison"
+    );
+
+    storage
+        .save_inspection(&inspection("unrelated", "unrelated.zip", &[9, 10]))
+        .expect("unrelated state");
+    assert_eq!(
+        storage
+            .compare_observations("from-state", "unrelated")
+            .expect_err("cross-branch comparison must fail")
+            .code(),
+        "incompatible_comparison"
+    );
 }
 
 #[test]
@@ -262,8 +432,8 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
             let base_line = (index as u64 * 5) + 1;
             ReceiverRecord {
                 record_id: index as u32,
-                year: 2000,
-                day: index as u16 + 1,
+                year: 2000 + (index / 365) as i32,
+                day: (index % 365) as u16,
                 game_day: index as i64,
                 none: value + 10,
                 radio: value + 20,
@@ -284,6 +454,7 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         source_file_name: file_name.to_owned(),
         source_file_size: 100,
         source_modified_ms: 1,
+        source_directory_identity: "fixture-directory".to_owned(),
         coverage: CoverageReport {
             status: CoverageStatus::Complete,
             history_records: records.len() as u32,
@@ -292,5 +463,101 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
             warnings: Vec::new(),
         },
         records,
+        snapshots: Vec::new(),
     }
+}
+
+fn snapshot_fact(fact_id: &'static str, source_field: &'static str, value: u64) -> SnapshotFact {
+    SnapshotFact {
+        fact_id,
+        source_field,
+        value,
+        source_line: 100,
+    }
+}
+
+#[test]
+#[ignore = "manual storage-growth benchmark"]
+fn benchmark_compacted_archive_growth() {
+    use std::time::Instant;
+
+    let directory = tempdir().expect("temporary directory");
+    let database_path = directory.path().join("growth.sqlite3");
+    let storage = ObservatoryStorage::initialise(database_path.clone()).expect("storage");
+    let started = Instant::now();
+    let baseline_records = 1_900_u64;
+    let save_count = 128_u64;
+    for save_index in 0..save_count {
+        let values = (0..baseline_records + save_index)
+            .map(|record| record + 1)
+            .collect::<Vec<_>>();
+        let mut save = inspection(
+            &format!("benchmark-{save_index:03}"),
+            &format!("benchmark-{save_index:03}.zip"),
+            &values,
+        );
+        save.snapshots = benchmark_snapshots(save_index);
+        storage
+            .save_inspection(&save)
+            .unwrap_or_else(|error| panic!("benchmark import {save_index}: {error:?}"));
+    }
+    let connection = storage.connect().expect("connection");
+    connection
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .expect("checkpoint");
+    let nodes = connection
+        .query_row("SELECT COUNT(*) FROM receiver_history_nodes", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .expect("node count") as u64;
+    let bytes = std::fs::metadata(database_path)
+        .expect("database metadata")
+        .len();
+    eprintln!(
+        "archive benchmark: {save_count} states, {nodes} shared nodes, {bytes} bytes, {:?}",
+        started.elapsed()
+    );
+    assert_eq!(nodes, baseline_records + save_count - 1);
+    assert!(bytes < 32 * 1024 * 1024);
+}
+
+fn benchmark_snapshots(save_index: u64) -> Vec<SaveSnapshot> {
+    let mut snapshots = Vec::with_capacity(140);
+    snapshots.push(SaveSnapshot {
+        scope_kind: SnapshotScopeKind::Republic,
+        scope_id: "republic".to_owned(),
+        facts: SNAPSHOT_FACTS
+            .iter()
+            .filter(|definition| definition.republic)
+            .enumerate()
+            .map(|(index, definition)| SnapshotFact {
+                fact_id: definition.id,
+                source_field: definition.source_field,
+                value: save_index + index as u64,
+                source_line: index as u64 + 1,
+            })
+            .collect(),
+        expected_fact_count: 18,
+        coverage: CoverageStatus::Complete,
+    });
+    for city_id in 0..139_u32 {
+        snapshots.push(SaveSnapshot {
+            scope_kind: SnapshotScopeKind::City,
+            scope_id: city_id.to_string(),
+            facts: SNAPSHOT_FACTS
+                .iter()
+                .filter(|definition| definition.city)
+                .enumerate()
+                .map(|(index, definition)| SnapshotFact {
+                    fact_id: definition.id,
+                    source_field: definition.source_field,
+                    value: save_index + city_id as u64 + index as u64,
+                    source_line: 100 + index as u64,
+                })
+                .collect(),
+            expected_fact_count: 5,
+            coverage: CoverageStatus::Complete,
+        });
+    }
+    snapshots
 }

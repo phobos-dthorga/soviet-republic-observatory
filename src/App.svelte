@@ -9,10 +9,12 @@
   import type { TranslationKey } from "./lib/i18n/catalog";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import {
+    compareArchiveObservations,
     desktopHostAvailable,
     getArchiveOverview,
     getLatestReceiverDataset,
     getSetupState,
+    pollAutomaticObservation,
     selectTimelineBranch,
   } from "./lib/observations/desktopClient";
   import type {
@@ -50,6 +52,7 @@
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
   let archiveOverview = $state<ArchiveOverview | null>(null);
+  let automaticPollBusy = false;
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
 
   function activeBranchLabel(): string {
@@ -74,6 +77,66 @@
     void getArchiveOverview().then((archive) => (archiveOverview = archive));
   }
 
+  async function pollObserver(): Promise<void> {
+    if (automaticPollBusy) return;
+    automaticPollBusy = true;
+    try {
+      const update = await pollAutomaticObservation();
+      if (setupState) {
+        setupState = {
+          ...setupState,
+          automatic_observer: update.status,
+        };
+      }
+      if (update.import_result) {
+        receiverDataset = update.import_result.dataset;
+        const [setup, archive] = await Promise.all([
+          getSetupState(),
+          getArchiveOverview(),
+        ]);
+        setupState = setup;
+        archiveOverview = archive;
+      }
+    } catch {
+      // The dialog exposes command errors; the heartbeat must not disturb the shell.
+    } finally {
+      automaticPollBusy = false;
+    }
+  }
+
+  function scannerHeading(): string {
+    const phase = setupState?.automatic_observer.phase;
+    if (phase === "waiting_for_stability")
+      return $translation("scanner-waiting");
+    if (phase === "retrying") return $translation("scanner-retrying");
+    if (phase === "failed") return $translation("scanner-attention");
+    if (setupState?.automatic_observer.enabled)
+      return $translation("scanner-watching");
+    return receiverDataset
+      ? $translation("scanner-observed")
+      : $translation("scanner-ready");
+  }
+
+  function scannerDetail(): string {
+    const observer = setupState?.automatic_observer;
+    if (
+      observer?.phase === "waiting_for_stability" ||
+      observer?.phase === "retrying" ||
+      observer?.phase === "failed"
+    ) {
+      return (
+        observer.candidate_file_name ?? $translation("scanner-no-candidate")
+      );
+    }
+    if (receiverDataset)
+      return $translation("scanner-observed-file", {
+        file: receiverDataset.source_file_name,
+      });
+    return $translation("observer-save-candidates", {
+      count: setupState?.save_candidates ?? 0,
+    });
+  }
+
   onMount(() => {
     if (!desktopAvailable) return;
     void Promise.all([
@@ -85,6 +148,10 @@
       receiverDataset = dataset;
       archiveOverview = archive;
     });
+    const observerHeartbeat = window.setInterval(() => {
+      void pollObserver();
+    }, 1_500);
+    return () => window.clearInterval(observerHeartbeat);
   });
 </script>
 
@@ -137,19 +204,11 @@
         <span class="state-dot" aria-hidden="true"></span>
         <div>
           {#if receiverDataset}
-            <strong>{$translation("scanner-observed")}</strong>
-            <small
-              >{$translation("scanner-observed-file", {
-                file: receiverDataset.source_file_name,
-              })}</small
-            >
+            <strong>{scannerHeading()}</strong>
+            <small>{scannerDetail()}</small>
           {:else if desktopAvailable && setupState?.save_directory}
-            <strong>{$translation("scanner-ready")}</strong>
-            <small
-              >{$translation("observer-save-candidates", {
-                count: setupState.save_candidates,
-              })}</small
-            >
+            <strong>{scannerHeading()}</strong>
+            <small>{scannerDetail()}</small>
           {:else if desktopAvailable}
             <strong>{$translation("scanner-setup-required")}</strong>
             <small>{$translation("synthetic-no-save-connected")}</small>
@@ -206,6 +265,7 @@
       archive={archiveOverview}
       {desktopAvailable}
       onselect={selectBranch}
+      oncompare={compareArchiveObservations}
     />
   {/if}
 
