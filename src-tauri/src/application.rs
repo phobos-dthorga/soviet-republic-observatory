@@ -8,7 +8,7 @@ use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_dire
 use crate::model::{
     ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
     ConfiguredDirectorySummary, DirectoryKind, ImportOutcome, ObservationImportResult,
-    ReceiverDataset, SetupState,
+    ReceiverDataset, RecorderDiscoverySource, RecorderHealth, RecorderUpdate, SetupState,
 };
 use crate::save_archive::inspect_save_archive;
 use crate::storage::{ObservatoryStorage, now_ms};
@@ -163,14 +163,50 @@ impl ObservatoryApplication {
         self.setup_state()
     }
 
-    pub fn poll_automatic_observation(
+    pub(crate) fn poll_automatic_observation_from(
         &self,
+        discovery_source: RecorderDiscoverySource,
     ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
         let directory = self.storage.get_setting(SAVE_DIRECTORY_KEY)?;
         self.automatic_observer
             .lock()
             .map_err(|_| ObservatoryError::StorageUnavailable)?
-            .poll(&self.storage, directory.as_deref(), now_ms())
+            .poll(
+                &self.storage,
+                directory.as_deref(),
+                now_ms(),
+                discovery_source,
+            )
+    }
+
+    pub fn recorder_health(&self) -> Result<RecorderHealth, ObservatoryError> {
+        self.storage.load_recorder_health(self.observer_status()?)
+    }
+
+    pub(crate) fn recorder_update(
+        &self,
+        import_result: Option<ObservationImportResult>,
+    ) -> Result<RecorderUpdate, ObservatoryError> {
+        Ok(RecorderUpdate {
+            health: self.recorder_health()?,
+            import_result,
+        })
+    }
+
+    pub(crate) fn recorder_configuration(
+        &self,
+    ) -> Result<(bool, Option<PathBuf>), ObservatoryError> {
+        Ok((
+            self.observer_status()?.enabled,
+            self.storage.get_setting(SAVE_DIRECTORY_KEY)?,
+        ))
+    }
+
+    pub(crate) fn note_recorder_filesystem_event(
+        &self,
+        event_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        self.storage.note_recorder_filesystem_event(event_at_ms)
     }
 
     pub fn compare_observations(

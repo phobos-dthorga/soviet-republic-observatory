@@ -15,12 +15,15 @@ and decide whether the proposed intervention belongs in their republic.
 ## Current delivery
 
 The native foundation observes stable saves manually or automatically while the
-desktop program is open. It reads receiver-class history and bounded
-current/city facts directly from `stats.ini`, compacts shared history prefixes,
-separates files from distinct states, resolves supported ancestry, compares two
-states within one branch, and renders an observed Receiver Ladder. The rest of
-the Briefing and Broadcast concepts remain visibly synthetic. Binary station
-telemetry and extension loading are not yet implemented.
+desktop program is open. Native folder events and periodic reconciliation feed a
+crash-recoverable candidate ledger rather than relying on the displayed
+workspace. The host reads receiver-class history and bounded current/city facts
+directly from `stats.ini`, compacts shared history prefixes, separates files from
+distinct states, resolves supported ancestry, compares two states within one
+branch, and renders Observer Health, Republic Pulse, and an observed Receiver
+Ladder. The rest of the Briefing and Broadcast concepts remain visibly
+synthetic. Binary station telemetry and extension loading are not yet
+implemented.
 
 ## Player loop
 
@@ -57,6 +60,15 @@ The first view reports the latest distinct observation, the most consequential
 save-to-save changes, emerging statistical signals, plan variance, and a short
 Ministry Dispatch. It answers the player's most urgent questions before any
 filter is touched.
+
+### Republic Monitor
+
+Observer Health answers whether the desktop recorder is noticing and safely
+retaining completed saves. It separates queue state, retries, terminal failures,
+duplicate payloads, and normal absence of a new game save. Republic Pulse then
+shows actual observation spacing, latest same-branch receiver movement, snapshot
+coverage, and branch warnings. “Near-live” means after a stable save—not process
+memory, injection, or frame-live telemetry.
 
 ### Five-Year Plan
 

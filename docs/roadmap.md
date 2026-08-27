@@ -55,6 +55,9 @@ Implemented foundation:
   queue for every new candidate noticed while the desktop program is open
 - Same-branch Archive comparison of two distinct observed states
 - Save-sampled current and numeric city snapshot facts with explicit coverage
+- Native event-driven recorder with periodic reconciliation fallback
+- Crash-recoverable SQLite candidate lifecycle ledger
+- Event-driven Observer Health and save-to-save Republic Pulse workspace
 
 Remaining in this slice:
 

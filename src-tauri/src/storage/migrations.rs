@@ -19,6 +19,16 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "compacted history and save-sampled snapshots",
         include_str!("../../migrations/0003_compacted_history_and_snapshots.sql"),
     ),
+    (
+        4,
+        "native recorder candidate ledger",
+        include_str!("../../migrations/0004_recorder_ledger.sql"),
+    ),
+    (
+        5,
+        "recorder directory baseline state",
+        include_str!("../../migrations/0005_recorder_directories.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

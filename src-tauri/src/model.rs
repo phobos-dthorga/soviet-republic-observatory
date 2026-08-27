@@ -331,7 +331,7 @@ pub struct ArchiveComparison {
     pub classified_total_change: ReceiverClassChange,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ImportOutcome {
     Imported,
@@ -370,6 +370,127 @@ pub struct AutomaticObserverStatus {
 #[derive(Clone, Debug, Serialize)]
 pub struct AutomaticObservationUpdate {
     pub status: AutomaticObserverStatus,
+    pub import_result: Option<ObservationImportResult>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderCandidateStatus {
+    Discovered,
+    Stabilising,
+    Ready,
+    Reading,
+    Imported,
+    Duplicate,
+    RetryableFailure,
+    TerminalFailure,
+    Superseded,
+}
+
+impl RecorderCandidateStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Discovered => "discovered",
+            Self::Stabilising => "stabilising",
+            Self::Ready => "ready",
+            Self::Reading => "reading",
+            Self::Imported => "imported",
+            Self::Duplicate => "duplicate",
+            Self::RetryableFailure => "retryable_failure",
+            Self::TerminalFailure => "terminal_failure",
+            Self::Superseded => "superseded",
+        }
+    }
+
+    pub fn from_storage(value: &str) -> Option<Self> {
+        match value {
+            "discovered" => Some(Self::Discovered),
+            "stabilising" => Some(Self::Stabilising),
+            "ready" => Some(Self::Ready),
+            "reading" => Some(Self::Reading),
+            "imported" => Some(Self::Imported),
+            "duplicate" => Some(Self::Duplicate),
+            "retryable_failure" => Some(Self::RetryableFailure),
+            "terminal_failure" => Some(Self::TerminalFailure),
+            "superseded" => Some(Self::Superseded),
+            _ => None,
+        }
+    }
+
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Imported | Self::Duplicate | Self::TerminalFailure | Self::Superseded
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RecorderDiscoverySource {
+    Migration,
+    InitialScan,
+    FilesystemEvent,
+    Reconciliation,
+}
+
+impl RecorderDiscoverySource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Migration => "migration",
+            Self::InitialScan => "initial_scan",
+            Self::FilesystemEvent => "filesystem_event",
+            Self::Reconciliation => "reconciliation",
+        }
+    }
+
+    pub fn from_storage(value: &str) -> Option<Self> {
+        match value {
+            "migration" => Some(Self::Migration),
+            "initial_scan" => Some(Self::InitialScan),
+            "filesystem_event" => Some(Self::FilesystemEvent),
+            "reconciliation" => Some(Self::Reconciliation),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RecorderLedgerEntry {
+    pub candidate_id: i64,
+    pub file_name: String,
+    pub file_size: u64,
+    pub source_modified_ms: i64,
+    pub status: RecorderCandidateStatus,
+    pub discovery_source: RecorderDiscoverySource,
+    pub discovered_at_ms: i64,
+    pub first_stable_at_ms: Option<i64>,
+    pub last_attempt_at_ms: Option<i64>,
+    pub completed_at_ms: Option<i64>,
+    pub attempt_count: u32,
+    pub error_code: Option<String>,
+    pub import_outcome: Option<ImportOutcome>,
+    pub payload_hash: Option<String>,
+    pub processing_latency_ms: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RecorderHealth {
+    pub observer: AutomaticObserverStatus,
+    pub last_scan_ms: Option<i64>,
+    pub last_filesystem_event_ms: Option<i64>,
+    pub last_completed_at_ms: Option<i64>,
+    pub last_completed_file_name: Option<String>,
+    pub last_processing_latency_ms: Option<i64>,
+    pub queue_depth: u32,
+    pub attention_count: u32,
+    pub completed_count: u32,
+    pub latest_entries: Vec<RecorderLedgerEntry>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RecorderUpdate {
+    pub health: RecorderHealth,
     pub import_result: Option<ObservationImportResult>,
 }
 

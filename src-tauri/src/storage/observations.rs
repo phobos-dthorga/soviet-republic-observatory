@@ -146,27 +146,29 @@ impl ObservatoryStorage {
         self.load_dataset_with_connection(&connection, hash)
     }
 
-    pub fn has_file_observation(
+    pub(crate) fn file_observation_payload_hash(
         &self,
         source_directory_identity: &str,
         source_file_name: &str,
         source_file_size: u64,
         source_modified_ms: i64,
-    ) -> Result<bool, ObservatoryError> {
+    ) -> Result<Option<String>, ObservatoryError> {
         let connection = self.connect()?;
         connection
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM archive_observations \
+                "SELECT payload_hash FROM archive_observations \
                  WHERE source_directory_identity = ?1 AND source_file_name = ?2 \
-                   AND source_file_size = ?3 AND source_modified_ms = ?4)",
+                   AND source_file_size = ?3 AND source_modified_ms = ?4 \
+                 ORDER BY observed_at_ms DESC LIMIT 1",
                 params![
                     source_directory_identity,
                     source_file_name,
                     to_sql_integer(source_file_size)?,
                     source_modified_ms,
                 ],
-                |row| row.get::<_, bool>(0),
+                |row| row.get(0),
             )
+            .optional()
             .map_err(Into::into)
     }
 

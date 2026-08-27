@@ -2,6 +2,7 @@
 
 - Status: accepted
 - Date: 2026-08-27
+- Observer wake-up mechanism superseded by ADR-0010
 
 ## Context
 
@@ -49,6 +50,11 @@ archive states up to five times, records only sanitised status codes and file
 names in the presentation model, and queues every additional candidate noticed
 during the desktop session. Existing older files form the initial baseline;
 the newest file is considered when observation begins.
+
+ADR-0010 later moved wake-up ownership from that proof-of-concept webview
+heartbeat to a native service with filesystem events, periodic reconciliation,
+and a durable candidate ledger. The stable window, bounded retry, deterministic
+queue, and initial-baseline rules remain authoritative.
 
 ## Benchmark evidence
 

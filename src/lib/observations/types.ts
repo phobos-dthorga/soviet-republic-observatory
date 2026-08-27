@@ -172,8 +172,53 @@ export type AutomaticObserverStatus = {
   last_observed_at_ms: number | null;
 };
 
-export type AutomaticObservationUpdate = {
-  status: AutomaticObserverStatus;
+export type RecorderCandidateStatus =
+  | "discovered"
+  | "stabilising"
+  | "ready"
+  | "reading"
+  | "imported"
+  | "duplicate"
+  | "retryable_failure"
+  | "terminal_failure"
+  | "superseded";
+
+export type RecorderDiscoverySource =
+  "migration" | "initial_scan" | "filesystem_event" | "reconciliation";
+
+export type RecorderLedgerEntry = {
+  candidate_id: number;
+  file_name: string;
+  file_size: number;
+  source_modified_ms: number;
+  status: RecorderCandidateStatus;
+  discovery_source: RecorderDiscoverySource;
+  discovered_at_ms: number;
+  first_stable_at_ms: number | null;
+  last_attempt_at_ms: number | null;
+  completed_at_ms: number | null;
+  attempt_count: number;
+  error_code: string | null;
+  import_outcome: ImportOutcome | null;
+  payload_hash: string | null;
+  processing_latency_ms: number | null;
+};
+
+export type RecorderHealth = {
+  observer: AutomaticObserverStatus;
+  last_scan_ms: number | null;
+  last_filesystem_event_ms: number | null;
+  last_completed_at_ms: number | null;
+  last_completed_file_name: string | null;
+  last_processing_latency_ms: number | null;
+  queue_depth: number;
+  attention_count: number;
+  completed_count: number;
+  latest_entries: RecorderLedgerEntry[];
+};
+
+export type RecorderUpdate = {
+  health: RecorderHealth;
   import_result: ObservationImportResult | null;
 };
 

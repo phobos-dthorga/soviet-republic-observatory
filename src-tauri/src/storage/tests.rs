@@ -2,9 +2,11 @@ use rusqlite::{Connection, params};
 use tempfile::tempdir;
 
 use super::ObservatoryStorage;
+use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
-    CoverageReport, CoverageStatus, ReceiverRecord, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot,
-    SnapshotFact, SnapshotScopeKind, SourceLineSet,
+    CoverageReport, CoverageStatus, ReceiverRecord, RecorderCandidateStatus,
+    RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
+    SnapshotScopeKind, SourceLineSet,
 };
 
 #[test]
@@ -477,6 +479,111 @@ fn snapshot_fact(fact_id: &'static str, source_field: &'static str, value: u64) 
 }
 
 #[test]
+fn recorder_ledger_recovers_an_interrupted_read_after_restart() {
+    let directory = tempdir().expect("temporary directory");
+    let database_path = directory.path().join("recorder.sqlite3");
+    let storage = ObservatoryStorage::initialise(database_path.clone()).expect("storage");
+    let identity = "a".repeat(64);
+    let candidate = storage
+        .discover_recorder_candidate(
+            &identity,
+            "recover.zip",
+            42,
+            10,
+            20,
+            RecorderDiscoverySource::FilesystemEvent,
+        )
+        .expect("discover candidate");
+    storage
+        .mark_recorder_candidate_stabilising(candidate.candidate_id)
+        .expect("stabilising");
+    storage
+        .mark_recorder_candidate_ready(candidate.candidate_id, 1_520)
+        .expect("ready");
+    assert_eq!(
+        storage
+            .mark_recorder_candidate_reading(candidate.candidate_id, 1_521)
+            .expect("reading"),
+        1
+    );
+    assert_eq!(storage.recorder_candidate_count().expect("count"), 1);
+    drop(storage);
+
+    let reopened = ObservatoryStorage::initialise(database_path).expect("reopened storage");
+    let health = reopened
+        .load_recorder_health(AutomaticObserver::new(true).status())
+        .expect("health");
+    assert_eq!(health.queue_depth, 1);
+    assert_eq!(
+        health.latest_entries[0].status,
+        RecorderCandidateStatus::Discovered
+    );
+    assert_eq!(health.latest_entries[0].attempt_count, 1);
+    assert_eq!(
+        health.latest_entries[0].error_code.as_deref(),
+        Some("interrupted")
+    );
+    assert_eq!(
+        health.latest_entries[0].discovery_source,
+        RecorderDiscoverySource::FilesystemEvent
+    );
+}
+
+#[test]
+fn terminal_recorder_failure_moves_from_queue_to_attention_without_losing_evidence() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("recorder.sqlite3")).expect("storage");
+    let identity = "b".repeat(64);
+    let candidate = storage
+        .discover_recorder_candidate(
+            &identity,
+            "broken.zip",
+            12,
+            30,
+            40,
+            RecorderDiscoverySource::Reconciliation,
+        )
+        .expect("discover candidate");
+    storage
+        .fail_recorder_candidate(candidate.candidate_id, false, "invalid_archive", 50)
+        .expect("terminal failure");
+
+    let health = storage
+        .load_recorder_health(AutomaticObserver::new(true).status())
+        .expect("health");
+    assert_eq!(health.queue_depth, 0);
+    assert_eq!(health.attention_count, 1);
+    assert_eq!(
+        health.latest_entries[0].status,
+        RecorderCandidateStatus::TerminalFailure
+    );
+    assert_eq!(health.latest_entries[0].completed_at_ms, Some(50));
+
+    storage
+        .discover_recorder_candidate(
+            &identity,
+            "broken.zip",
+            13,
+            31,
+            60,
+            RecorderDiscoverySource::FilesystemEvent,
+        )
+        .expect("replacement candidate");
+    let recovered = storage
+        .load_recorder_health(AutomaticObserver::new(true).status())
+        .expect("recovered health");
+    assert_eq!(recovered.attention_count, 0);
+    assert_eq!(recovered.queue_depth, 1);
+    assert!(
+        recovered
+            .latest_entries
+            .iter()
+            .any(|entry| entry.status == RecorderCandidateStatus::Superseded)
+    );
+}
+
+#[test]
 #[ignore = "manual storage-growth benchmark"]
 fn benchmark_compacted_archive_growth() {
     use std::time::Instant;
@@ -519,6 +626,53 @@ fn benchmark_compacted_archive_growth() {
     );
     assert_eq!(nodes, baseline_records + save_count - 1);
     assert!(bytes < 32 * 1024 * 1024);
+}
+
+#[test]
+#[ignore = "manual recorder-ledger growth benchmark"]
+fn benchmark_recorder_ledger_growth() {
+    use std::time::Instant;
+
+    let directory = tempdir().expect("temporary directory");
+    let database_path = directory.path().join("recorder-growth.sqlite3");
+    let storage = ObservatoryStorage::initialise(database_path.clone()).expect("storage");
+    let identity = "c".repeat(64);
+    storage
+        .mark_recorder_directory_initialised(&identity, 1)
+        .expect("initialised directory");
+    let started = Instant::now();
+    let candidate_count = 1_000_u32;
+    for index in 0..candidate_count {
+        let candidate = storage
+            .discover_recorder_candidate(
+                &identity,
+                &format!("save-{index:04}.zip"),
+                1_000 + index as u64,
+                index as i64,
+                index as i64,
+                RecorderDiscoverySource::FilesystemEvent,
+            )
+            .expect("discover candidate");
+        storage
+            .supersede_recorder_candidate(candidate.candidate_id, index as i64 + 1)
+            .expect("complete lifecycle");
+    }
+    let connection = storage.connect().expect("connection");
+    connection
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .expect("checkpoint");
+    let bytes = std::fs::metadata(database_path)
+        .expect("database metadata")
+        .len();
+    eprintln!(
+        "recorder benchmark: {candidate_count} candidates, {bytes} bytes, {:?}",
+        started.elapsed()
+    );
+    assert_eq!(
+        storage.recorder_candidate_count().expect("candidate count"),
+        candidate_count
+    );
+    assert!(bytes < 8 * 1024 * 1024);
 }
 
 fn benchmark_snapshots(save_index: u64) -> Vec<SaveSnapshot> {

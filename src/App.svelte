@@ -4,6 +4,7 @@
   import BroadcastWorkspace from "./lib/workspaces/BroadcastWorkspace.svelte";
   import ExtensionsWorkspace from "./lib/workspaces/ExtensionsWorkspace.svelte";
   import ArchiveWorkspace from "./lib/workspaces/ArchiveWorkspace.svelte";
+  import MonitorWorkspace from "./lib/workspaces/MonitorWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
@@ -13,17 +14,21 @@
     desktopHostAvailable,
     getArchiveOverview,
     getLatestReceiverDataset,
+    getRecorderHealth,
     getSetupState,
-    pollAutomaticObservation,
+    listenForRecorderUpdates,
     selectTimelineBranch,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
     ReceiverDataset,
+    RecorderHealth,
+    RecorderUpdate,
     SetupState,
   } from "./lib/observations/types";
 
-  type WorkspaceName = "briefing" | "broadcast" | "extensions" | "archive";
+  type WorkspaceName =
+    "briefing" | "monitor" | "broadcast" | "extensions" | "archive";
   const workspaces: Array<{
     id:
       | WorkspaceName
@@ -36,6 +41,7 @@
     enabled: boolean;
   }> = [
     { id: "briefing", label: "nav-briefing", enabled: true },
+    { id: "monitor", label: "nav-monitor", enabled: true },
     { id: "broadcast", label: "nav-broadcast", enabled: true },
     { id: "extensions", label: "nav-extensions", enabled: true },
     { id: "plan", label: "nav-plan", enabled: false },
@@ -52,7 +58,7 @@
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
   let archiveOverview = $state<ArchiveOverview | null>(null);
-  let automaticPollBusy = false;
+  let recorderHealth = $state<RecorderHealth | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
 
   function activeBranchLabel(): string {
@@ -74,35 +80,71 @@
 
   function acceptObservation(dataset: ReceiverDataset): void {
     receiverDataset = dataset;
-    void getArchiveOverview().then((archive) => (archiveOverview = archive));
+    void Promise.all([
+      getArchiveOverview(),
+      getRecorderHealth(),
+      getSetupState(),
+    ]).then(([archive, health, setup]) => {
+      archiveOverview = archive;
+      recorderHealth = health;
+      setupState = setup;
+    });
   }
 
-  async function pollObserver(): Promise<void> {
-    if (automaticPollBusy) return;
-    automaticPollBusy = true;
-    try {
-      const update = await pollAutomaticObservation();
-      if (setupState) {
-        setupState = {
-          ...setupState,
-          automatic_observer: update.status,
-        };
-      }
-      if (update.import_result) {
-        receiverDataset = update.import_result.dataset;
-        const [setup, archive] = await Promise.all([
-          getSetupState(),
-          getArchiveOverview(),
-        ]);
-        setupState = setup;
-        archiveOverview = archive;
-      }
-    } catch {
-      // The dialog exposes command errors; the heartbeat must not disturb the shell.
-    } finally {
-      automaticPollBusy = false;
+  function acceptRecorderUpdate(update: RecorderUpdate): void {
+    recorderHealth = update.health;
+    if (setupState) {
+      setupState = {
+        ...setupState,
+        automatic_observer: update.health.observer,
+      };
+    }
+    if (update.import_result) {
+      receiverDataset = update.import_result.dataset;
+      void Promise.all([getSetupState(), getArchiveOverview()]).then(
+        ([setup, archive]) => {
+          setupState = setup;
+          archiveOverview = archive;
+        },
+      );
     }
   }
+
+  function acceptSetupChange(setup: SetupState): void {
+    setupState = setup;
+    if (recorderHealth) {
+      recorderHealth = {
+        ...recorderHealth,
+        observer: setup.automatic_observer,
+      };
+    }
+  }
+
+  onMount(() => {
+    if (!desktopAvailable) return;
+    let disposed = false;
+    let stopListening: (() => void) | undefined;
+    void Promise.all([
+      getSetupState(),
+      getLatestReceiverDataset(),
+      getArchiveOverview(),
+      getRecorderHealth(),
+    ]).then(([setup, dataset, archive, health]) => {
+      if (disposed) return;
+      setupState = setup;
+      receiverDataset = dataset;
+      archiveOverview = archive;
+      recorderHealth = health;
+    });
+    void listenForRecorderUpdates(acceptRecorderUpdate).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopListening = unlisten;
+    });
+    return () => {
+      disposed = true;
+      stopListening?.();
+    };
+  });
 
   function scannerHeading(): string {
     const phase = setupState?.automatic_observer.phase;
@@ -136,23 +178,6 @@
       count: setupState?.save_candidates ?? 0,
     });
   }
-
-  onMount(() => {
-    if (!desktopAvailable) return;
-    void Promise.all([
-      getSetupState(),
-      getLatestReceiverDataset(),
-      getArchiveOverview(),
-    ]).then(([setup, dataset, archive]) => {
-      setupState = setup;
-      receiverDataset = dataset;
-      archiveOverview = archive;
-    });
-    const observerHeartbeat = window.setInterval(() => {
-      void pollObserver();
-    }, 1_500);
-    return () => window.clearInterval(observerHeartbeat);
-  });
 </script>
 
 <svelte:head>
@@ -256,6 +281,14 @@
 
   {#if activeWorkspace === "briefing"}
     <BriefingWorkspace />
+  {:else if activeWorkspace === "monitor"}
+    <MonitorWorkspace
+      health={recorderHealth}
+      archive={archiveOverview}
+      {receiverDataset}
+      {desktopAvailable}
+      oncompare={compareArchiveObservations}
+    />
   {:else if activeWorkspace === "broadcast"}
     <BroadcastWorkspace {receiverDataset} />
   {:else if activeWorkspace === "extensions"}
@@ -287,6 +320,6 @@
   setup={setupState}
   dataset={receiverDataset}
   onclose={() => (observationDialogOpen = false)}
-  onsetupchange={(setup) => (setupState = setup)}
+  onsetupchange={acceptSetupChange}
   onobservation={acceptObservation}
 />

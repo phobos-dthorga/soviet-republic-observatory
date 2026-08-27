@@ -1,14 +1,16 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   ArchiveOverview,
   ArchiveComparison,
-  AutomaticObservationUpdate,
   BranchSelectionResult,
   DirectoryKind,
   ObservationImportResult,
   ObserverErrorCode,
   ReceiverDataset,
+  RecorderHealth,
+  RecorderUpdate,
   SetupState,
 } from "./types";
 
@@ -41,6 +43,18 @@ export function getArchiveOverview(): Promise<ArchiveOverview> {
   return invoke<ArchiveOverview>("get_archive_overview");
 }
 
+export function getRecorderHealth(): Promise<RecorderHealth> {
+  return invoke<RecorderHealth>("get_recorder_health");
+}
+
+export function listenForRecorderUpdates(
+  accept: (update: RecorderUpdate) => void,
+): Promise<UnlistenFn> {
+  return listen<RecorderUpdate>("recorder-update", (event) =>
+    accept(event.payload),
+  );
+}
+
 export function selectTimelineBranch(
   branchId: string,
 ): Promise<BranchSelectionResult> {
@@ -55,10 +69,6 @@ export function observeLatestSave(): Promise<ObservationImportResult> {
 
 export function setAutomaticObservation(enabled: boolean): Promise<SetupState> {
   return invoke<SetupState>("set_automatic_observation", { enabled });
-}
-
-export function pollAutomaticObservation(): Promise<AutomaticObservationUpdate> {
-  return invoke<AutomaticObservationUpdate>("poll_automatic_observation");
 }
 
 export function compareArchiveObservations(

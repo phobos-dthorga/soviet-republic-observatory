@@ -11,6 +11,9 @@ contract.
 
 ```text
 Configured save directory
+          │ native event + periodic reconciliation
+          ▼
+  Native recorder ─────► durable candidate ledger
           │
           ▼
   Read-only observer ──► archive validation and stable-file gate
@@ -28,7 +31,7 @@ Configured save directory
   analytics services ──► built-in + Analysis Pack calculations
           │
           ▼
-  thin Tauri commands ─► Svelte presentation ─► ObservatoryChart ─► ECharts
+  Tauri events/commands ► Svelte presentation ─► ObservatoryChart ─► ECharts
                                 ▲
              UI catalogue + game-vocabulary resolver
 ```
@@ -40,10 +43,22 @@ Configured save directory
 Inspects only a player-configured directory, validates bounded archive and entry
 sizes, compares file metadata before and after reading, and streams `stats.ini`
 read-only. Manual observation selects the newest candidate. The opt-in automatic
-observer runs while the desktop application is open, uses a Rust-owned
-stable-file and retry state machine, and queues every newly noticed candidate.
+observer runs while the desktop application is open. A native Rust service uses
+folder events as wake-up hints, performs a full reconciliation at least every 15
+seconds, and feeds a stable-file and bounded-retry state machine. It queues every
+newly noticed candidate without relying on the Svelte event loop.
 It never extracts beside the save, mutates timestamps, or manages save
 retention.
+
+### Recording ledger
+
+The fourth SQLite migration records candidate discovery, stabilisation, read
+attempts, imported or duplicate outcomes, retryable or terminal failures, and
+superseded file identities. Interrupted work returns to `discovered` on restart.
+The ledger stores a privacy-preserving directory identity and bounded file
+evidence, never a configured full path or archive payload. First observation of
+a directory baselines older files and considers the newest candidate; later
+candidates are processed in deterministic modification-time and filename order.
 
 ### Parser
 
@@ -71,7 +86,9 @@ tips when divergence evidence requires them. Connection, migration,
 observation, branch, and settings responsibilities are separate modules behind
 one application-owned storage API. The third migration adds content-addressed
 receiver-history nodes, latest-line evidence, save-sampled republic/city scopes,
-and privacy-preserving directory identities. New successors share exact prefix
+and privacy-preserving directory identities. The fourth adds the durable
+recorder ledger and runtime scan/event timestamps; the fifth records which save
+directories have completed their initial baseline. New successors share exact prefix
 nodes rather than duplicating full histories. Configured paths remain private
 settings and never enter the presentation model. Later migrations add
 annotations, targets, and analytical results. Raw archives remain outside the
@@ -124,6 +141,7 @@ replacement boundary.
 ## Initial domain concepts
 
 - `SaveObservation`
+- `RecorderCandidate` and `RecorderHealth`
 - `StatisticalPayloadIdentity`
 - `TimelineBranch`
 - `GlobalHistoryRecord`

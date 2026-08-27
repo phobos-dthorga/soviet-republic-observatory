@@ -1,15 +1,17 @@
+use std::sync::Arc;
+
 use tauri::State;
 
 use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::model::{
-    ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
-    DirectoryKind, ObservationImportResult, ReceiverDataset, SetupState,
+    ArchiveComparison, ArchiveOverview, BranchSelectionResult, DirectoryKind,
+    ObservationImportResult, ReceiverDataset, RecorderHealth, SetupState,
 };
 
 #[derive(Debug)]
 pub struct AppState {
-    pub application: ObservatoryApplication,
+    pub application: Arc<ObservatoryApplication>,
 }
 
 #[tauri::command]
@@ -30,6 +32,11 @@ pub fn get_latest_receiver_dataset(
 #[tauri::command]
 pub fn get_archive_overview(state: State<'_, AppState>) -> Result<ArchiveOverview, CommandError> {
     state.application.archive_overview().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_recorder_health(state: State<'_, AppState>) -> Result<RecorderHealth, CommandError> {
+    state.application.recorder_health().map_err(Into::into)
 }
 
 #[tauri::command]
@@ -59,16 +66,6 @@ pub fn set_automatic_observation(
     state
         .application
         .set_automatic_observation(enabled)
-        .map_err(Into::into)
-}
-
-#[tauri::command]
-pub fn poll_automatic_observation(
-    state: State<'_, AppState>,
-) -> Result<AutomaticObservationUpdate, CommandError> {
-    state
-        .application
-        .poll_automatic_observation()
         .map_err(Into::into)
 }
 

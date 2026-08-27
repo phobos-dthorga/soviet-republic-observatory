@@ -28,6 +28,8 @@ changing their semantic order.
 
 - **Briefing** — three headline outcomes, guardrails, change summary, and
   Ministry Dispatch.
+- **Monitor** — native recorder health, candidate lifecycle, observation
+  cadence, branch warnings, and latest same-branch movement.
 - **Broadcast** — receiver ladder, audience research, programme formulation,
   influence assay, outcomes, Notebook, Bulletin, and station inspector.
 - **Extensions** — synthetic Analysis Pack inspection, public inputs, derived
@@ -41,7 +43,7 @@ changing their semantic order.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
 
-The current foundation enables Briefing, Broadcast, Extensions, and Archive in
+The current foundation enables Briefing, Monitor, Broadcast, Extensions, and Archive in
 primary navigation. The other buttons remain visibly disabled until their
 analytical vertical slices exist. The shell owns only global navigation and
 observation context; each enabled destination is a presentational workspace
@@ -69,6 +71,23 @@ watching, waiting for stability, retrying, observed, and terminal failure. In a
 normal browser the same dialog explains that native observation is unavailable
 and retains the synthetic preview. Closing the dialog returns focus to the
 command-bar control.
+
+### Observer Health and Republic Pulse
+
+Monitor is source-backed and contains no synthetic fallback values. Observer
+Health leads with recorder phase, queue depth, retained terminal failures, latest
+processing latency, last folder scan, and last native file event. The lifecycle
+ledger exposes recent candidates without full paths and separates discovery,
+stabilisation, read attempts, imported/duplicate outcomes, retryable failure,
+terminal failure, and supersession.
+
+Republic Pulse follows with exact elapsed in-game days between retained
+same-branch states, signed receiver-class movement between the latest two
+distinct states, current classified receiver population, bounded republic/city
+snapshot coverage, and branch/unassigned warnings. A long observation interval
+is not automatically called a recorder outage: it may mean the game did not
+save. Captured demographic scalars remain withheld from rate charts until their
+window and denominator are validated.
 
 ### Broadcast composition
 
@@ -189,6 +208,8 @@ points and provenance. Schema version 1 supports line, area, and bar families.
 | ----------- | ------------------------------------- | ----------------------------------------------- | -------------------------- |
 | Briefing    | Are we on schedule?                   | actual-versus-plan line                         | KPI and period bars        |
 | Briefing    | What changed?                         | waterfall when additive; otherwise ranked bars  | exact change list          |
+| Monitor     | Is recording healthy?                 | lifecycle ledger and recorder-health cards      | explicit unavailable state |
+| Monitor     | How far apart are observed saves?     | elapsed-game-day interval bars                  | exact interval text        |
 | Plan        | How uncertain is completion?          | fan chart                                       | milestone interval table   |
 | Materials   | Which resources are exposed?          | periodic-table cells and ranked bars            | sortable resource table    |
 | Materials   | Where are resources used?             | heatmap                                         | grouped horizontal bars    |

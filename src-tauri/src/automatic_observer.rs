@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -6,21 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::error::ObservatoryError;
 use crate::model::{
     AutomaticObservationUpdate, AutomaticObserverPhase, AutomaticObserverStatus, ImportOutcome,
-    ObservationImportResult,
+    ObservationImportResult, RecorderCandidateStatus, RecorderDiscoverySource,
 };
 use crate::save_archive::{directory_identity, inspect_save_archive};
 use crate::storage::ObservatoryStorage;
 
 const STABLE_WINDOW_MS: i64 = 1_500;
 const MAX_RETRY_ATTEMPTS: u8 = 5;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-struct CandidateKey {
-    directory_identity: String,
-    file_name: String,
-    file_size: u64,
-    modified_ms: i64,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct CandidateIdentity {
@@ -31,19 +22,9 @@ struct CandidateIdentity {
     modified_ms: i64,
 }
 
-impl CandidateIdentity {
-    fn key(&self) -> CandidateKey {
-        CandidateKey {
-            directory_identity: self.directory_identity.clone(),
-            file_name: self.file_name.clone(),
-            file_size: self.file_size,
-            modified_ms: self.modified_ms,
-        }
-    }
-}
-
 #[derive(Debug)]
 struct PendingCandidate {
+    candidate_id: i64,
     identity: CandidateIdentity,
     stable_since_ms: i64,
     retry_attempt: u8,
@@ -55,7 +36,6 @@ pub struct AutomaticObserver {
     enabled: bool,
     pending: Option<PendingCandidate>,
     observed_directory_identity: Option<String>,
-    seen_candidates: HashSet<CandidateKey>,
     status: AutomaticObserverStatus,
 }
 
@@ -65,7 +45,6 @@ impl AutomaticObserver {
             enabled,
             pending: None,
             observed_directory_identity: None,
-            seen_candidates: HashSet::new(),
             status: status_for(
                 enabled,
                 if enabled {
@@ -90,7 +69,6 @@ impl AutomaticObserver {
         self.enabled = enabled;
         self.pending = None;
         self.observed_directory_identity = None;
-        self.seen_candidates.clear();
         self.status = self.next_status(
             if !enabled {
                 AutomaticObserverPhase::Disabled
@@ -123,6 +101,7 @@ impl AutomaticObserver {
         storage: &ObservatoryStorage,
         directory: Option<&Path>,
         observed_at_ms: i64,
+        discovery_source: RecorderDiscoverySource,
     ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
         if !self.enabled {
             self.set_enabled(false, directory.is_some());
@@ -133,7 +112,8 @@ impl AutomaticObserver {
             self.status = self.next_status(AutomaticObserverPhase::NotConfigured, None, 0, None);
             return Ok(self.update(None));
         };
-        let mut candidates = save_candidates(directory)?;
+        storage.note_recorder_scan(observed_at_ms)?;
+        let candidates = save_candidates(directory)?;
         if candidates.is_empty() {
             self.pending = None;
             self.status = self.next_status(AutomaticObserverPhase::Watching, None, 0, None);
@@ -141,56 +121,96 @@ impl AutomaticObserver {
         }
 
         let directory_identity = candidates[0].directory_identity.clone();
-        if self.observed_directory_identity.as_deref() != Some(&directory_identity) {
+        let directory_changed =
+            self.observed_directory_identity.as_deref() != Some(&directory_identity);
+        let initial_scan =
+            directory_changed && !storage.recorder_directory_is_initialised(&directory_identity)?;
+        if directory_changed {
             self.pending = None;
-            self.seen_candidates.clear();
-            self.observed_directory_identity = Some(directory_identity);
-            for candidate in candidates.iter().take(candidates.len().saturating_sub(1)) {
-                self.seen_candidates.insert(candidate.key());
-            }
+            self.observed_directory_identity = Some(directory_identity.clone());
         }
 
-        if let Some(pending) = self.pending.as_ref() {
-            let still_present = candidates
-                .iter()
-                .any(|candidate| candidate == &pending.identity);
-            let newer_candidate_waits = candidates.iter().any(|candidate| {
-                !self.seen_candidates.contains(&candidate.key()) && candidate != &pending.identity
-            });
-            if !still_present || (pending.terminal_failure && newer_candidate_waits) {
-                self.seen_candidates.insert(pending.identity.key());
-                self.pending = None;
+        let mut registered = Vec::with_capacity(candidates.len());
+        let baseline_limit = candidates.len().saturating_sub(1);
+        for (index, candidate) in candidates.iter().cloned().enumerate() {
+            let source = if initial_scan {
+                RecorderDiscoverySource::InitialScan
+            } else {
+                discovery_source
+            };
+            let mut ledger = storage.discover_recorder_candidate(
+                &candidate.directory_identity,
+                &candidate.file_name,
+                candidate.file_size,
+                candidate.modified_ms,
+                observed_at_ms,
+                source,
+            )?;
+            if initial_scan && index < baseline_limit && !ledger.status.is_terminal() {
+                storage.supersede_recorder_candidate(ledger.candidate_id, observed_at_ms)?;
+                ledger.status = RecorderCandidateStatus::Superseded;
             }
-        }
-
-        let candidate = if let Some(pending) = self.pending.as_ref() {
-            pending.identity.clone()
-        } else {
-            loop {
-                let Some(candidate) = candidates
-                    .iter()
-                    .find(|candidate| !self.seen_candidates.contains(&candidate.key()))
-                    .cloned()
-                else {
-                    self.status = self.next_status(
-                        AutomaticObserverPhase::Watching,
-                        candidates.pop().map(|candidate| candidate.file_name),
-                        0,
-                        None,
-                    );
-                    return Ok(self.update(None));
-                };
-                if storage.has_file_observation(
+            if !ledger.status.is_terminal()
+                && let Some(payload_hash) = storage.file_observation_payload_hash(
                     &candidate.directory_identity,
                     &candidate.file_name,
                     candidate.file_size,
                     candidate.modified_ms,
-                )? {
-                    self.seen_candidates.insert(candidate.key());
-                    continue;
-                }
-                break candidate;
+                )?
+            {
+                storage.complete_recorder_candidate(
+                    ledger.candidate_id,
+                    ImportOutcome::Duplicate,
+                    &payload_hash,
+                    observed_at_ms,
+                )?;
+                ledger.status = RecorderCandidateStatus::Duplicate;
             }
+            registered.push((candidate, ledger));
+        }
+        storage.supersede_unseen_recorder_candidates(&directory_identity, observed_at_ms)?;
+        if initial_scan {
+            storage.mark_recorder_directory_initialised(&directory_identity, observed_at_ms)?;
+        }
+
+        if let Some(pending) = self.pending.as_ref() {
+            let still_present = registered
+                .iter()
+                .any(|(candidate, _)| candidate == &pending.identity);
+            let newer_candidate_waits = registered.iter().any(|(candidate, ledger)| {
+                !ledger.status.is_terminal() && candidate != &pending.identity
+            });
+            if !still_present || (pending.terminal_failure && newer_candidate_waits) {
+                if !still_present {
+                    storage.supersede_recorder_candidate(pending.candidate_id, observed_at_ms)?;
+                }
+                self.pending = None;
+            }
+        }
+
+        let (candidate, ledger) = if let Some(pending) = self.pending.as_ref() {
+            registered
+                .iter()
+                .find(|(candidate, _)| candidate == &pending.identity)
+                .cloned()
+                .expect("a present pending candidate has a ledger record")
+        } else {
+            let Some(candidate) = registered
+                .iter()
+                .find(|(_, ledger)| !ledger.status.is_terminal())
+                .cloned()
+            else {
+                self.status = self.next_status(
+                    AutomaticObserverPhase::Watching,
+                    candidates
+                        .last()
+                        .map(|candidate| candidate.file_name.clone()),
+                    0,
+                    None,
+                );
+                return Ok(self.update(None));
+            };
+            candidate
         };
 
         let candidate_changed = self
@@ -198,16 +218,18 @@ impl AutomaticObserver {
             .as_ref()
             .is_none_or(|pending| pending.identity != candidate);
         if candidate_changed {
+            storage.mark_recorder_candidate_stabilising(ledger.candidate_id)?;
             self.pending = Some(PendingCandidate {
+                candidate_id: ledger.candidate_id,
                 identity: candidate.clone(),
                 stable_since_ms: observed_at_ms,
-                retry_attempt: 0,
+                retry_attempt: ledger.attempt_count.min(u8::MAX as u32) as u8,
                 terminal_failure: false,
             });
             self.status = self.next_status(
                 AutomaticObserverPhase::WaitingForStability,
                 Some(candidate.file_name),
-                0,
+                ledger.attempt_count.min(u8::MAX as u32) as u8,
                 None,
             );
             return Ok(self.update(None));
@@ -230,19 +252,26 @@ impl AutomaticObserver {
             return Ok(self.update(None));
         }
 
+        storage.mark_recorder_candidate_ready(ledger.candidate_id, observed_at_ms)?;
+        let attempt = storage
+            .mark_recorder_candidate_reading(ledger.candidate_id, observed_at_ms)?
+            .min(u8::MAX as u32) as u8;
         match inspect_save_archive(&candidate.path) {
             Ok(inspection) => {
                 let inserted = storage.save_inspection(&inspection)?;
                 let dataset = storage.load_dataset(&inspection.payload_hash)?;
-                let import_result = ObservationImportResult {
-                    outcome: if inserted {
-                        ImportOutcome::Imported
-                    } else {
-                        ImportOutcome::Duplicate
-                    },
-                    dataset,
+                let outcome = if inserted {
+                    ImportOutcome::Imported
+                } else {
+                    ImportOutcome::Duplicate
                 };
-                self.seen_candidates.insert(candidate.key());
+                storage.complete_recorder_candidate(
+                    ledger.candidate_id,
+                    outcome,
+                    &inspection.payload_hash,
+                    observed_at_ms,
+                )?;
+                let import_result = ObservationImportResult { outcome, dataset };
                 self.record_observation(&candidate.file_name, observed_at_ms);
                 Ok(self.update(Some(import_result)))
             }
@@ -252,11 +281,16 @@ impl AutomaticObserver {
                     .pending
                     .as_mut()
                     .expect("the matching candidate was established above");
-                pending.retry_attempt = pending.retry_attempt.saturating_add(1);
-                let retry = retryable(&error) && pending.retry_attempt < MAX_RETRY_ATTEMPTS;
+                pending.retry_attempt = attempt;
+                let retry = retryable(&error) && attempt < MAX_RETRY_ATTEMPTS;
                 pending.terminal_failure = !retry;
                 pending.stable_since_ms = observed_at_ms;
-                let attempt = pending.retry_attempt;
+                storage.fail_recorder_candidate(
+                    ledger.candidate_id,
+                    retry,
+                    &error_code,
+                    observed_at_ms,
+                )?;
                 self.status = self.next_status(
                     if retry {
                         AutomaticObserverPhase::Retrying
@@ -382,6 +416,7 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::{AutomaticObserver, AutomaticObserverPhase};
+    use crate::model::{RecorderCandidateStatus, RecorderDiscoverySource};
     use crate::storage::ObservatoryStorage;
 
     #[test]
@@ -405,7 +440,12 @@ mod tests {
         let mut observer = AutomaticObserver::new(true);
 
         let first = observer
-            .poll(&storage, Some(directory.path()), 10_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                10_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("first poll");
         assert_eq!(
             first.status.phase,
@@ -413,14 +453,24 @@ mod tests {
         );
         assert!(first.import_result.is_none());
         let too_soon = observer
-            .poll(&storage, Some(directory.path()), 11_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                11_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("second poll");
         assert_eq!(
             too_soon.status.phase,
             AutomaticObserverPhase::WaitingForStability
         );
         let observed = observer
-            .poll(&storage, Some(directory.path()), 11_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                11_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("stable poll");
         assert_eq!(observed.status.phase, AutomaticObserverPhase::Observed);
         assert!(observed.import_result.is_some());
@@ -428,10 +478,67 @@ mod tests {
         assert_eq!(storage.file_observation_count().expect("file count"), 1);
 
         let known = observer
-            .poll(&storage, Some(directory.path()), 13_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                13_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("known candidate");
         assert_eq!(known.status.phase, AutomaticObserverPhase::Watching);
         assert!(known.import_result.is_none());
+        assert_eq!(storage.file_observation_count().expect("file count"), 1);
+    }
+
+    #[test]
+    fn first_scan_baselines_older_files_and_observes_only_the_newest() {
+        let directory = tempdir().expect("temporary directory");
+        let storage = ObservatoryStorage::initialise(directory.path().join("observer.sqlite3"))
+            .expect("storage");
+        write_save(&directory.path().join("001-old.zip"));
+        write_save(&directory.path().join("002-middle.zip"));
+        write_save(&directory.path().join("003-newest.zip"));
+        let mut observer = AutomaticObserver::new(true);
+
+        let first = observer
+            .poll(
+                &storage,
+                Some(directory.path()),
+                15_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
+            .expect("initial scan");
+        assert_eq!(
+            first.status.candidate_file_name.as_deref(),
+            Some("003-newest.zip")
+        );
+        observer
+            .poll(
+                &storage,
+                Some(directory.path()),
+                16_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
+            .expect("newest observed");
+
+        let health = storage
+            .load_recorder_health(observer.status())
+            .expect("health");
+        assert_eq!(health.completed_count, 1);
+        assert_eq!(
+            health.last_completed_file_name.as_deref(),
+            Some("003-newest.zip")
+        );
+        assert_eq!(health.last_completed_at_ms, Some(16_500));
+        assert_eq!(health.last_processing_latency_ms, Some(1_500));
+        assert_eq!(
+            health
+                .latest_entries
+                .iter()
+                .filter(|entry| entry.status == RecorderCandidateStatus::Superseded)
+                .count(),
+            2
+        );
         assert_eq!(storage.file_observation_count().expect("file count"), 1);
     }
 
@@ -445,24 +552,44 @@ mod tests {
         let mut observer = AutomaticObserver::new(true);
 
         observer
-            .poll(&storage, Some(directory.path()), 20_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                20_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("waiting poll");
         let retry = observer
-            .poll(&storage, Some(directory.path()), 21_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                21_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("retry poll");
         assert_eq!(retry.status.phase, AutomaticObserverPhase::Retrying);
         assert_eq!(retry.status.retry_attempt, 1);
 
         write_save(&path);
         let changed = observer
-            .poll(&storage, Some(directory.path()), 22_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                22_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("changed candidate");
         assert_eq!(
             changed.status.phase,
             AutomaticObserverPhase::WaitingForStability
         );
         let observed = observer
-            .poll(&storage, Some(directory.path()), 23_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                23_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("recovered candidate");
         assert_eq!(observed.status.phase, AutomaticObserverPhase::Observed);
         assert!(observed.import_result.is_some());
@@ -476,33 +603,63 @@ mod tests {
         write_save(&directory.path().join("baseline.zip"));
         let mut observer = AutomaticObserver::new(true);
         observer
-            .poll(&storage, Some(directory.path()), 30_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                30_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("baseline waiting");
         observer
-            .poll(&storage, Some(directory.path()), 31_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                31_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("baseline observed");
 
         write_save(&directory.path().join("second.zip"));
         write_save(&directory.path().join("third.zip"));
         let second_wait = observer
-            .poll(&storage, Some(directory.path()), 32_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                32_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("second waiting");
         assert_eq!(
             second_wait.status.candidate_file_name.as_deref(),
             Some("second.zip")
         );
         observer
-            .poll(&storage, Some(directory.path()), 33_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                33_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("second observed");
         let third_wait = observer
-            .poll(&storage, Some(directory.path()), 34_000)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                34_000,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("third waiting");
         assert_eq!(
             third_wait.status.candidate_file_name.as_deref(),
             Some("third.zip")
         );
         observer
-            .poll(&storage, Some(directory.path()), 35_500)
+            .poll(
+                &storage,
+                Some(directory.path()),
+                35_500,
+                RecorderDiscoverySource::Reconciliation,
+            )
             .expect("third observed");
 
         assert_eq!(storage.file_observation_count().expect("file count"), 3);

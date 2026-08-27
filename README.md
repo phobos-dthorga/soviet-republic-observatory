@@ -13,12 +13,14 @@ questions:
 3. What probably contributed to it?
 4. What happens if the player intervenes?
 
-> **Project status:** automatic branch-aware observation archive. The Tauri
-> desktop program can wait for newly written saves to stabilise, parse supported
+> **Project status:** native near-live observation and branch-aware archive. The
+> Tauri desktop program reacts to new save-file events, reconciles the folder as
+> a fallback, waits for newly written saves to stabilise, parses supported
 > history plus current/city snapshots from `stats.ini`, compact shared history
-> prefixes in app-local SQLite, resolve branches, compare two states on one
-> branch, and replace the Broadcast receiver chart with observed evidence. All
-> other dashboard values remain visibly synthetic.
+> prefixes in app-local SQLite, records a crash-recoverable candidate ledger,
+> resolves branches, compares two states on one branch, and presents Observer
+> Health and Republic Pulse. All unrelated dashboard values remain visibly
+> synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -26,6 +28,8 @@ questions:
 
 - **Republic Briefing** — plan attainment, external dependency, demographic
   resilience, guardrails, and a concise save-to-save dispatch.
+- **Republic Monitor** — native recorder health, candidate lifecycle, recording
+  cadence, branch warnings, and latest same-branch receiver movement.
 - **Five-Year Plan** — targets, actual-versus-plan progress, variance bridges,
   confidence ranges, milestones, and scenario testing.
 - **Material Periodic Table** — every resource presented as a compact cell with
@@ -80,9 +84,11 @@ npm run desktop
 Open **Save observer** in the upper-right corner, choose the folder containing
 the game's save ZIP files, and either select **Observe newest save** or enable
 **Observe new stable saves automatically**. Automatic observation runs while
-the desktop program is open, waits for unchanged file metadata before reading,
-and retries temporary incomplete archives. The source archive remains
-untouched. Use **Archive** to inspect ancestry, select a timeline branch, and
+the desktop program is open, responds to native file events, reconciles every 15
+seconds as a fallback, waits for unchanged file metadata before reading, and
+retries temporary incomplete archives. The source archive remains untouched.
+Use **Monitor** to inspect recorder health and Republic Pulse, and **Archive** to
+inspect ancestry, select a timeline branch, and
 compare two distinct states on that branch. The game installation folder is
 optional and currently supplies only a future vocabulary-source catalogue.
 
@@ -102,15 +108,15 @@ npm run rust:test
 
 ## Proposed technical foundation
 
-| Area                          | Direction                                                |
-| ----------------------------- | -------------------------------------------------------- |
-| Desktop shell                 | Tauri 2                                                  |
-| Save observation and services | Rust, with bounded read-only ZIP access                  |
-| Interface                     | Svelte 5 and TypeScript                                  |
-| Charts                        | Apache ECharts behind `ObservatoryChart`                 |
-| Local storage                 | App-local unencrypted SQLite with append-only migrations |
-| Input                         | ZIP saves read non-destructively; `stats.ini` first      |
-| Statistical models            | Application-owned, versioned and provenance-labelled     |
+| Area                          | Direction                                                    |
+| ----------------------------- | ------------------------------------------------------------ |
+| Desktop shell                 | Tauri 2                                                      |
+| Save observation and services | Rust, native folder events, and bounded read-only ZIP access |
+| Interface                     | Svelte 5 and TypeScript                                      |
+| Charts                        | Apache ECharts behind `ObservatoryChart`                     |
+| Local storage                 | App-local unencrypted SQLite with append-only migrations     |
+| Input                         | ZIP saves read non-destructively; `stats.ini` first          |
+| Statistical models            | Application-owned, versioned and provenance-labelled         |
 
 The browser preview and desktop program share one presentation layer. Native
 folder access, archive parsing, provenance, and persistence stay behind the

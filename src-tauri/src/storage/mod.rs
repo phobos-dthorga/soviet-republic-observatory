@@ -4,6 +4,7 @@ mod connection;
 mod history;
 mod migrations;
 mod observations;
+mod recorder;
 mod settings;
 mod snapshots;
 
@@ -32,6 +33,7 @@ impl ObservatoryStorage {
         archive::backfill_missing_history_signatures(&mut connection)?;
         history::backfill_compacted_histories(&mut connection)?;
         archive::reconcile_unassigned_observations(&mut connection)?;
+        recorder::recover_interrupted_candidates(&connection)?;
         Ok(storage)
     }
 }

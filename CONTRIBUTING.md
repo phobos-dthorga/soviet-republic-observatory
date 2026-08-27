@@ -33,6 +33,14 @@ Pull requests should explain the player question being improved, the provenance
 of any new field, the behaviour when that field is unavailable, and the tests
 or visual checks performed.
 
+Recorder changes must keep folder events advisory and periodic reconciliation
+authoritative. The native service owns liveness; a Svelte timer, open dialog, or
+selected workspace must never be required to notice a save. Candidate lifecycle
+changes require restart recovery, duplicate identity, temporary-write, rename,
+retry, and terminal-failure tests. Do not expose configured full paths through
+events, health projections, charts, logs intended for sharing, or extension
+contracts.
+
 All new interface text must enter the canonical `en-AU` catalogue. Use the
 central locale-formatting helpers and explicit typed translation-key mappings;
 do not construct keys dynamically. Language-pack contributions should follow

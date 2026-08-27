@@ -178,6 +178,20 @@ current and city snapshots, branch detection, and before/after comparisons.
 The automatic observer supplies that cadence only while the desktop program is
 open.
 
+The Monitor uses **near-live** narrowly: the native recorder reacts after W&R
+finishes writing a stable save. Operating-system folder events reduce discovery
+latency, while a full scan every 15 seconds catches missed or coalesced events.
+Neither mechanism can observe a change the game has not written to a save. A
+long game-date interval therefore does not prove recorder failure; the game may
+simply not have produced another save during that interval.
+
+Candidate lifecycle evidence is retained in SQLite independently of completed
+observations. It includes bounded file identity, discovery source, transition
+timestamps, attempt count, outcome, diagnostic code, and payload identity. It
+does not contain the archive, a full configured path, game memory, or credentials.
+Interrupted reads resume from discovery after restart, and terminal failures do
+not remove or block earlier observations.
+
 ### Binary payloads
 
 Individual factories, routes, vehicles, worker histories, inventories, network

@@ -44,6 +44,7 @@ an engineering requirement.
 - [ADR-0007: stream receiver history read-only before adding a watcher](architecture/decisions/0007-streaming-receiver-observation.md)
 - [ADR-0008: application-owned SQLite persistence boundary](architecture/decisions/0008-sqlite-persistence-boundary.md)
 - [ADR-0009: compact history before automatic observation](architecture/decisions/0009-compact-history-before-automatic-observation.md)
+- [ADR-0010: native recorder and durable candidate ledger](architecture/decisions/0010-native-recorder-and-durable-candidate-ledger.md)
 
 ## Evidence status vocabulary
 

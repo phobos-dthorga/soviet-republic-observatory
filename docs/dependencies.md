@@ -15,6 +15,7 @@ keeping the Observatory independent and small.
 | Prettier         | MIT        | Deterministic source formatting                       | Development only                                     |
 | Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Thin bounded commands; no file paths reach Svelte    |
 | Dialog plugin    | MIT/Apache | Player-initiated native directory selection           | Directory selection only                             |
+| `notify`         | CC0-1.0    | Native save-directory event wake-ups                  | Hints only; reconciliation remains authoritative     |
 | `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction           |
 | `rusqlite`       | MIT        | App-local observation and settings database           | Bundled unencrypted SQLite; append-only migrations   |
 | `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation   |
@@ -32,9 +33,11 @@ manifests remain JSON so they can be inspected and validated independently.
 The Tauri/Rust/SQLite group is now the authoritative save-observation boundary.
 Its purpose is narrow: choose directories with explicit player action, inspect
 bounded archives read-only, normalise supported facts, compact shared history,
-and persist provenance locally. The automatic observer uses the Rust standard
-library and the existing desktop heartbeat rather than adding an operating-
-system watcher dependency before platform-specific behaviour is needed. Ajv
+and persist provenance locally. The automatic observer uses `notify` behind a
+small native-service boundary. Filesystem events only reduce latency: the
+service still reconciles the complete directory periodically, so a dropped or
+coalesced platform event cannot become silent data loss. The webview receives
+status events but does not drive recorder liveness. Ajv
 prevents the checked-in Analysis Pack examples and invalid fixtures from
 drifting away from Draft 2020-12 during development; it is not a desktop trust
 boundary. MapLibre, Three.js, hosted services, executable plugin runtimes, and
