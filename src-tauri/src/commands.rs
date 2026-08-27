@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
 
+use crate::analysis_pack::{AnalysisPackContribution, AnalysisPackInspection, AnalysisPackSummary};
 use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::model::{
@@ -231,4 +232,94 @@ pub fn get_warehouse_snapshot(
     state: State<'_, AppState>,
 ) -> Result<WarehouseSnapshot, CommandError> {
     state.application.warehouse_snapshot().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn inspect_analysis_pack(json: String, state: State<'_, AppState>) -> AnalysisPackInspection {
+    state.application.inspect_analysis_pack(&json)
+}
+
+#[tauri::command]
+pub fn import_analysis_pack(
+    json: String,
+    state: State<'_, AppState>,
+) -> Result<AnalysisPackSummary, CommandError> {
+    state
+        .application
+        .import_analysis_pack(&json)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn export_analysis_pack(
+    pack_id: String,
+    revision: u32,
+    state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    state
+        .application
+        .export_analysis_pack(&pack_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn list_analysis_packs(
+    state: State<'_, AppState>,
+) -> Result<Vec<AnalysisPackSummary>, CommandError> {
+    state.application.analysis_packs().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn enable_analysis_pack(
+    pack_id: String,
+    revision: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<AnalysisPackSummary, CommandError> {
+    state
+        .application
+        .enable_analysis_pack(&pack_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn disable_analysis_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<AnalysisPackSummary, CommandError> {
+    state
+        .application
+        .disable_analysis_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn rollback_analysis_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<AnalysisPackSummary, CommandError> {
+    state
+        .application
+        .rollback_analysis_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_analysis_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    state
+        .application
+        .remove_analysis_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_analysis_pack_contributions(
+    state: State<'_, AppState>,
+) -> Result<Vec<AnalysisPackContribution>, CommandError> {
+    state
+        .application
+        .analysis_pack_contributions()
+        .map_err(Into::into)
 }

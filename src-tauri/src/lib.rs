@@ -1,3 +1,4 @@
+mod analysis_pack;
 mod application;
 mod automatic_observer;
 mod catalogue_service;
@@ -77,6 +78,15 @@ pub fn run() {
             commands::deactivate_planning_overlay,
             commands::remove_planning_overlay,
             commands::get_warehouse_snapshot,
+            commands::inspect_analysis_pack,
+            commands::import_analysis_pack,
+            commands::export_analysis_pack,
+            commands::list_analysis_packs,
+            commands::enable_analysis_pack,
+            commands::disable_analysis_pack,
+            commands::rollback_analysis_pack,
+            commands::remove_analysis_pack,
+            commands::get_analysis_pack_contributions,
         ])
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");

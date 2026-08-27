@@ -228,6 +228,11 @@ as decoded telemetry.
 ### Extension data boundary
 
 Analysis Packs reference published normalised metrics and never read saves.
+SQLite retains their bounded canonical JSON, content identity, immutable
+revision history, and explicit enabled revision. Presentation code receives
+only summaries and resolved contributions, never a database handle or table
+name. Each enabled pack is parsed again before evaluation and a failure is
+isolated from recording and other packs.
 Future executable Model Plugins receive only bounded normalised observations
 and versioned game-definition models. Raw archives, binary payloads, SQLite,
 parser maps, and paths remain host-private even when a player grants future

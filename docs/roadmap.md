@@ -83,7 +83,7 @@ Remaining in this slice:
 Ignored reference-machine scale and growth benchmarks accompany the automated
 suite. Broader verified directive coverage remains ongoing catalogue hardening.
 
-## Slice 4 — local Analysis Packs
+## Slice 4 — local Analysis Packs — implemented foundation
 
 - Authoritative Rust validation against Analysis Pack schema and semantic rules
 - Local file inspection with ID, version, content hash, inputs, and contributions
@@ -94,9 +94,10 @@ suite. Broader verified directive coverage remains ongoing catalogue hardening.
   community pack
 - Invalid or failed packs isolated from save observation and core dashboards
 
-This slice follows branch-aware storage and the catalogue warehouse. Packs
-remain independent of installed definitions unless they explicitly request
-published catalogue metrics.
+The first implementation uses SQLite for operational lifecycle state and the
+selected branch's normalised receiver dataset for evaluation. Packs remain
+independent of installed definitions unless a later host API explicitly
+publishes catalogue metrics.
 
 ## Slice 5 — Republic Briefing and Broadcast foundation
 

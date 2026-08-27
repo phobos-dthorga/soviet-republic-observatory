@@ -26,7 +26,7 @@ extensions use the same contract.
 
 ## Analysis Pack threats and controls
 
-| Threat                                     | Current schema-proof control                                       |
+| Threat                                     | Current control                                                    |
 | ------------------------------------------ | ------------------------------------------------------------------ |
 | Script or expression execution             | No expression field; strict unknown-field rejection                |
 | HTML or CSS injection                      | No markup field; strings render as text                            |
@@ -36,11 +36,14 @@ extensions use the same contract.
 | Dependency cycles or hidden forward values | Ordered references; semantic forward-reference and cycle rejection |
 | Cross-branch evidence splicing             | Host-controlled alignment within branch, date, and scope           |
 | Forged trust or provenance                 | Host assigns provenance from content and source observations       |
-| Identity squatting or payload replacement  | Future content identity binds exact ID and version                 |
+| Identity squatting or payload replacement  | SHA-256 content identity and immutable local revisions             |
 | Host-language pack rewrites pack claims    | Pack prose stays author-owned and has a declared/defaulted locale  |
 
-Ajv is a development conformance check. The future Rust host must validate the
-same structural and semantic rules before installation or evaluation.
+Ajv is a development conformance check. The Rust desktop host independently
+validates structural and semantic rules before import and again before an
+enabled revision is evaluated. Import does not enable a pack. Each pack is
+evaluated independently so one corrupt or failed revision cannot block another
+pack, save observation, or a core dashboard.
 
 ## Future Model Plugin threats
 

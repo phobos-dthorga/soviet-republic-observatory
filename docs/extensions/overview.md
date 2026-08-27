@@ -33,8 +33,12 @@ rewrite a pack's analytical claims. Multilingual extension content waits for an
 explicit public package contract rather than borrowing host translation
 namespaces.
 
-The current repository contains schemas, semantic validation proofs, tests, and
-one example. It does **not** load, install, enable, or execute a user file.
+The desktop application now provides a local lifecycle for schema version 1.
+The Rust host authoritatively inspects and validates content, SQLite retains
+immutable revisions and enablement state, and enabled packs are evaluated over
+the selected branch's normalised observations. Pack failures are isolated.
+The included example travels through the same import path as a locally obtained
+community file; there is no privileged first-party evaluator.
 
 ## Model Plugins
 
@@ -74,18 +78,18 @@ These operations remain distinct:
 1. obtain a local package;
 2. inspect identity and contents;
 3. validate format, semantics, compatibility, and content identity;
-4. review requested permissions;
-5. install;
-6. grant or deny permissions;
-7. enable;
-8. start, for a future executable plugin;
-9. update or roll back; and
-10. disable and remove.
+4. import an immutable revision;
+5. enable one selected revision;
+6. import a later revision without silently changing the enabled one;
+7. update or roll back by explicitly selecting a revision;
+8. disable and remove; and
+9. start, only for a future executable plugin.
 
-Installation never implies permission, enabling, or starting. Permissions are
-deny-by-default and bound to the exact extension ID, version, content identity,
-and requested scope. A changed payload cannot reuse an earlier grant merely by
-claiming the same name or version.
+Import never implies enabling or starting. Analysis Pack v1 requests no
+permissions because its vocabulary has no capability fields. Any future
+permissions remain deny-by-default and bind to the exact extension ID, version,
+content identity, and requested scope. A changed payload cannot reuse an earlier
+decision merely by claiming the same name or version.
 
 Local, offline installation is the baseline. A catalogue may later improve
 discovery, but cannot become required for a locally obtained package.

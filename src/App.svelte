@@ -379,7 +379,12 @@
   {:else if activeWorkspace === "broadcast"}
     <BroadcastWorkspace {receiverDataset} />
   {:else if activeWorkspace === "extensions"}
-    <ExtensionsWorkspace />
+    <ExtensionsWorkspace
+      {desktopAvailable}
+      observationContext={receiverDataset
+        ? `${receiverDataset.payload_hash}:${receiverDataset.branch_id}`
+        : ""}
+    />
   {:else if activeWorkspace === "materials"}
     <MaterialsWorkspace
       {desktopAvailable}

@@ -10,6 +10,7 @@ are app-local, offline, unencrypted, and owned by the Rust application.
 | ------------------------------------------------------------- | --------- | ---------------------------------------------------- |
 | settings, save ingestion, recorder ledger, branches           | SQLite    | small transactional changes and crash recovery       |
 | overlay installation and active lifecycle                     | SQLite    | one operational authority for user intent            |
+| Analysis Pack revisions and enablement                        | SQLite    | immutable local lifecycle and explicit activation    |
 | projection outbox and rebuild requests                        | SQLite    | save commits never depend on analytical availability |
 | catalogue generations and definition facts                    | DuckDB    | retained, column-oriented analytical history         |
 | effective planning projections and large observation matrices | DuckDB    | filtered aggregates and model inputs                 |
@@ -98,8 +99,8 @@ the effective value falls back to the installed original until explicit rebase.
 Back up SQLite and DuckDB together while Republic Observatory is closed. A lone
 SQLite backup preserves operational truth and can rebuild current projections,
 but cannot reproduce historical catalogue generations whose installed sources
-no longer exist. A lone DuckDB file does not preserve settings, overlay
-lifecycle, branches, or the projection outbox.
+no longer exist. A lone DuckDB file does not preserve settings, overlay or
+Analysis Pack lifecycle, branches, or the projection outbox.
 
 SQLite schema, DuckDB schema, projector, parser, overlay schema, application,
 Analysis Pack, and future plugin protocol versions are separate compatibility

@@ -24,8 +24,10 @@ game-day positions, preserves gaps, and exposes a textual series summary.
 Its evidence inspector reports source filename, full payload identity, parser
 and compatibility profile, branch placeholder, geographic scope, coverage,
 stable metric/source-field mappings, and the latest source lines. Full local
-paths stay private. The stacked shares are a built-in calculation mirroring the
-Receiver Adoption Laboratory example; no Analysis Pack has been loaded.
+paths stay private. The Broadcast stacked shares remain a built-in calculation
+mirroring the Receiver Adoption Laboratory contract. A player may now import
+and enable that pack separately in Extensions; this does not replace or
+privilege the built-in Broadcast view.
 
 ## Known plain-text save facts
 

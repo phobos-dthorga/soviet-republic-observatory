@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, TryLockError};
 use std::time::Instant;
 
+use crate::analysis_pack::{
+    AnalysisPackContribution, AnalysisPackDocument, AnalysisPackInspection, AnalysisPackSummary,
+};
 use crate::automatic_observer::{AutomaticObserver, latest_save_candidate_path};
 use crate::definition_catalogue::{
     CatalogueDiscoveryPhase, catalogue_watch_roots, discover_catalogue_with_reuse_and_progress,
@@ -147,6 +150,109 @@ impl ObservatoryApplication {
 
     pub fn latest_receiver_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
         self.storage.load_latest_dataset()
+    }
+
+    pub fn inspect_analysis_pack(&self, json: &str) -> AnalysisPackInspection {
+        match AnalysisPackDocument::parse(json.as_bytes())
+            .and_then(|document| document.inspection())
+        {
+            Ok(inspection) => inspection,
+            Err(error) => AnalysisPackInspection {
+                valid: false,
+                code: Some(
+                    error
+                        .analysis_pack_reason()
+                        .unwrap_or(error.code())
+                        .to_owned(),
+                ),
+                pack_id: None,
+                name: None,
+                author: None,
+                version: None,
+                host_api_version: None,
+                default_locale: None,
+                description: None,
+                content_hash: None,
+                consumed_metrics: Vec::new(),
+                derived_metrics: Vec::new(),
+                charts: Vec::new(),
+            },
+        }
+    }
+
+    pub fn import_analysis_pack(
+        &self,
+        json: &str,
+    ) -> Result<AnalysisPackSummary, ObservatoryError> {
+        let document = AnalysisPackDocument::parse(json.as_bytes())?;
+        self.storage.install_analysis_pack(&document)
+    }
+
+    pub fn export_analysis_pack(
+        &self,
+        pack_id: &str,
+        revision: u32,
+    ) -> Result<String, ObservatoryError> {
+        self.storage
+            .analysis_pack_document(pack_id, revision)?
+            .canonical_json()
+    }
+
+    pub fn analysis_packs(&self) -> Result<Vec<AnalysisPackSummary>, ObservatoryError> {
+        self.storage.list_analysis_packs()
+    }
+
+    pub fn enable_analysis_pack(
+        &self,
+        pack_id: &str,
+        revision: Option<u32>,
+    ) -> Result<AnalysisPackSummary, ObservatoryError> {
+        self.storage.enable_analysis_pack(pack_id, revision)
+    }
+
+    pub fn disable_analysis_pack(
+        &self,
+        pack_id: &str,
+    ) -> Result<AnalysisPackSummary, ObservatoryError> {
+        self.storage.disable_analysis_pack(pack_id)
+    }
+
+    pub fn rollback_analysis_pack(
+        &self,
+        pack_id: &str,
+    ) -> Result<AnalysisPackSummary, ObservatoryError> {
+        self.storage.rollback_analysis_pack(pack_id)
+    }
+
+    pub fn remove_analysis_pack(&self, pack_id: &str) -> Result<(), ObservatoryError> {
+        self.storage.remove_analysis_pack(pack_id)
+    }
+
+    pub fn analysis_pack_contributions(
+        &self,
+    ) -> Result<Vec<AnalysisPackContribution>, ObservatoryError> {
+        let Some(dataset) = self.storage.load_latest_dataset()? else {
+            return Ok(Vec::new());
+        };
+        let installed = self.storage.enabled_analysis_pack_revisions()?;
+        let mut contributions = Vec::with_capacity(installed.len());
+        for revision in installed {
+            match AnalysisPackDocument::parse(revision.document_json.as_bytes()) {
+                Ok(document) => {
+                    contributions.push(document.resolve(&revision.content_hash, &dataset));
+                }
+                Err(error) => diagnostics::record(
+                    "error",
+                    "analysis_pack.evaluation_failed",
+                    "analysis_pack_evaluation",
+                    &format!(
+                        "Analysis Pack {} revision {} was isolated after validation failed: {}",
+                        revision.pack_id, revision.revision, error
+                    ),
+                ),
+            }
+        }
+        Ok(contributions)
     }
 
     pub fn archive_overview(&self) -> Result<ArchiveOverview, ObservatoryError> {

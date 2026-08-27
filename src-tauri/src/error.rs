@@ -55,6 +55,10 @@ pub enum ObservatoryError {
     InvalidPlanningOverlay(&'static str),
     #[error("The selected planning overlay profile does not exist.")]
     UnknownPlanningOverlay,
+    #[error("The Analysis Pack is invalid: {0}")]
+    InvalidAnalysisPack(&'static str),
+    #[error("The selected Analysis Pack does not exist.")]
+    UnknownAnalysisPack,
 }
 
 impl ObservatoryError {
@@ -86,6 +90,16 @@ impl ObservatoryError {
             Self::InvalidCatalogueRequest => "invalid_catalogue_request",
             Self::InvalidPlanningOverlay(_) => "invalid_planning_overlay",
             Self::UnknownPlanningOverlay => "unknown_planning_overlay",
+            Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",
+            Self::UnknownAnalysisPack => "unknown_analysis_pack",
+        }
+    }
+
+    pub fn analysis_pack_reason(&self) -> Option<&'static str> {
+        match self {
+            Self::InvalidAnalysisPack(reason) => Some(reason),
+            Self::UnknownAnalysisPack => Some("unknown_analysis_pack"),
+            _ => None,
         }
     }
 }

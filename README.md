@@ -65,7 +65,9 @@ The interface follows the methodology established by
 - Apache ECharts behind one declarative application-owned adapter;
 - canonical `en-AU`, Fluent formatting, and strict inert community language
   packs with complete current-interface coverage;
-- strict, non-executable Analysis Pack and chart-schema proofs;
+- a local Analysis Pack library with authoritative Rust validation, immutable
+  SQLite revisions, explicit enablement, host evaluation, and host-rendered
+  charts;
 - a local-first, summary-to-diagnosis information hierarchy; and
 - live phase/counter reporting for long catalogue work and a bounded,
   user-readable local diagnostic log derived from WyrmGrid's operational model.

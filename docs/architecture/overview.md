@@ -110,6 +110,12 @@ and large observation matrices. A receipt written with each DuckDB projection
 closes the crash gap before SQLite acknowledgement. DuckDB failure is visible
 analytical lag and cannot block SQLite ingestion.
 
+The seventh SQLite migration adds Analysis Pack identities, immutable validated
+revisions, and per-pack enabled-revision state. Pack JSON is bounded and
+canonicalised before storage. It is operational extension state, not a third
+analytical store; the host parses it again before evaluation and isolates a
+failed revision.
+
 ### Analytics
 
 Deterministic metrics, anomaly models, forecasts, experiments, scenarios, and
@@ -140,8 +146,9 @@ become database keys. Analysis Pack prose carries its own declared locale.
 - **Tauri 2** for the desktop shell and a small command boundary.
 - **Svelte 5 + TypeScript** for the interface.
 - **Apache ECharts** behind an application-owned declarative adapter.
-- **SQLite** for local observations and plans behind a modular persistence
-  boundary; the database is unencrypted by explicit decision.
+- **SQLite** for local observations, plans, recorder and extension lifecycle
+  state behind a modular persistence boundary; the database is unencrypted by
+  explicit decision.
 - **DuckDB** for source-qualified catalogue history and model-ready analytical
   projections, with bundled operation and extension loading disabled.
 

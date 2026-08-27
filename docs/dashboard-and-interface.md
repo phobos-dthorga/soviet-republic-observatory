@@ -32,8 +32,9 @@ changing their semantic order.
   cadence, branch warnings, and latest same-branch movement.
 - **Broadcast** — receiver ladder, audience research, programme formulation,
   influence assay, outcomes, Notebook, Bulletin, and station inspector.
-- **Extensions** — synthetic Analysis Pack inspection, public inputs, derived
-  metrics, denied capabilities, lifecycle, and future Model Plugin boundary.
+- **Extensions** — local Analysis Pack inspection, immutable installed
+  revisions, explicit enablement, host-resolved charts, denied capabilities,
+  and the future Model Plugin boundary.
 - **Plan** — targets, milestones, schedule variance, forecasts, and scenarios.
 - **Materials** — Material Periodic Table, source/use views, production network,
   and limiting-input laboratory.
@@ -100,13 +101,15 @@ ranking, wording, and caveat rules. The inspector switches between receiver
 evidence and the synthetic radio/television concept while keeping nominal
 capacity separate from station state.
 
-### Extensions concept
+### Extensions workspace
 
-The Extensions canvas shows one Receiver Adoption Laboratory proof: identity,
-four core inputs, five derived metrics, one 100% stacked-area contribution, and
-the capabilities it does not possess. Inspect, validate, and enable are separate
-future lifecycle steps. Model Plugin controls are labelled planned and
-unavailable, not disabled-but-implemented.
+The Extensions canvas can inspect a local `.roanalysis.json` file without
+installing it, or inspect the included Receiver Adoption Laboratory through the
+same public contract. A valid inspected pack may then be imported disabled.
+Installed revisions can be enabled, disabled, rolled back, exported, or removed.
+Enabled contributions are evaluated over the currently selected observation
+branch and rendered through the application-owned chart adapter. Model Plugin
+controls remain labelled planned and unavailable.
 
 ### Industrial catalogue
 
@@ -218,27 +221,27 @@ points and provenance. Schema version 1 supports line, area, and bar families.
 
 ## Chart map
 
-| Workspace   | Question                              | Preferred form                                  | Fallback when sparse       |
-| ----------- | ------------------------------------- | ----------------------------------------------- | -------------------------- |
-| Briefing    | Are we on schedule?                   | actual-versus-plan line                         | KPI and period bars        |
-| Briefing    | What changed?                         | waterfall when additive; otherwise ranked bars  | exact change list          |
-| Monitor     | Is recording healthy?                 | lifecycle ledger and recorder-health cards      | explicit unavailable state |
-| Monitor     | How far apart are observed saves?     | elapsed-game-day interval bars                  | exact interval text        |
-| Plan        | How uncertain is completion?          | fan chart                                       | milestone interval table   |
-| Materials   | Which resources are exposed?          | periodic-table cells and ranked bars            | sortable resource table    |
-| Materials   | Where are resources used?             | heatmap                                         | grouped horizontal bars    |
-| Laboratory  | What limits output?                   | required-versus-available bars                  | coefficient table          |
-| Population  | Why did population change?            | waterfall                                       | signed component bars      |
-| Population  | Are welfare measures moving together? | aligned small multiples                         | latest values with slopes  |
-| Cities      | Where is distress concentrated?       | city-by-metric heatmap                          | ranked dot plots           |
-| Markets     | How concentrated are exports?         | Pareto                                          | sorted bars plus top share |
-| Markets     | Are prices unstable?                  | indexed line with control band                  | discrete period bars       |
-| Experiments | What changed after an intervention?   | event-time line and interval                    | pre/post slope chart       |
-| Broadcast   | How is receiver adoption changing?    | 100% stacked area                               | latest composition bars    |
-| Broadcast   | Is potential reach being used?        | potential/current lines                         | exact audience cards       |
-| Broadcast   | What direction is influence expected? | signed horizontal bars around zero              | signed effect list         |
-| Broadcast   | What followed a programme change?     | annotated aligned outcome lines                 | pre/post status cards      |
-| Extensions  | What would this pack contribute?      | contract summary and host-rendered mini preview | exact declaration list     |
+| Workspace   | Question                              | Preferred form                                 | Fallback when sparse       |
+| ----------- | ------------------------------------- | ---------------------------------------------- | -------------------------- |
+| Briefing    | Are we on schedule?                   | actual-versus-plan line                        | KPI and period bars        |
+| Briefing    | What changed?                         | waterfall when additive; otherwise ranked bars | exact change list          |
+| Monitor     | Is recording healthy?                 | lifecycle ledger and recorder-health cards     | explicit unavailable state |
+| Monitor     | How far apart are observed saves?     | elapsed-game-day interval bars                 | exact interval text        |
+| Plan        | How uncertain is completion?          | fan chart                                      | milestone interval table   |
+| Materials   | Which resources are exposed?          | periodic-table cells and ranked bars           | sortable resource table    |
+| Materials   | Where are resources used?             | heatmap                                        | grouped horizontal bars    |
+| Laboratory  | What limits output?                   | required-versus-available bars                 | coefficient table          |
+| Population  | Why did population change?            | waterfall                                      | signed component bars      |
+| Population  | Are welfare measures moving together? | aligned small multiples                        | latest values with slopes  |
+| Cities      | Where is distress concentrated?       | city-by-metric heatmap                         | ranked dot plots           |
+| Markets     | How concentrated are exports?         | Pareto                                         | sorted bars plus top share |
+| Markets     | Are prices unstable?                  | indexed line with control band                 | discrete period bars       |
+| Experiments | What changed after an intervention?   | event-time line and interval                   | pre/post slope chart       |
+| Broadcast   | How is receiver adoption changing?    | 100% stacked area                              | latest composition bars    |
+| Broadcast   | Is potential reach being used?        | potential/current lines                        | exact audience cards       |
+| Broadcast   | What direction is influence expected? | signed horizontal bars around zero             | signed effect list         |
+| Broadcast   | What followed a programme change?     | annotated aligned outcome lines                | pre/post status cards      |
+| Extensions  | What does this enabled pack show?     | host-resolved contribution chart               | exact declaration list     |
 
 ## Tables and exact detail
 

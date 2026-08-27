@@ -6,7 +6,7 @@
   "default_locale": "en-AU",
   "name": "Receiver Adoption Laboratory",
   "author": "Republic Observatory contributors",
-  "description": "Classifies citizens by recorded electronic receiver and presents their shares as one complete composition. This file is an inert schema example and is not loaded by the preview.",
+  "description": "Classifies citizens by recorded electronic receiver and presents their shares as one complete composition. This inert example can be inspected and imported through the same public contract as a community pack.",
   "derived_metrics": [
     {
       "id": "classified_population",

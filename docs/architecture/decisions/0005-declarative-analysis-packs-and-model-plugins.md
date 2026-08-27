@@ -1,6 +1,6 @@
 # ADR-0005: declarative Analysis Packs before executable Model Plugins
 
-- **Status:** accepted
+- **Status:** accepted and implemented for Analysis Pack v1
 - **Date:** 2026-08-27
 
 ## Context
@@ -49,10 +49,11 @@ operating-system sandbox.
   evolve independently.
 - Advanced models wait rather than escaping through JavaScript or ECharts
   configuration.
-- A local Analysis Pack importer is meaningful only after branch-aware storage
-  provides trustworthy normalised observations.
-- The current foundation contains proofs and concepts, not an extension manager
-  or executable runtime.
+- The local Analysis Pack lifecycle is implemented after branch-aware storage:
+  Rust validates and evaluates, SQLite owns immutable revisions and enablement,
+  and Svelte receives only bounded contributions.
+- No executable runtime, plugin manifest, or general permission system is
+  implied by the declarative manager.
 
 ## Rejected alternatives
 

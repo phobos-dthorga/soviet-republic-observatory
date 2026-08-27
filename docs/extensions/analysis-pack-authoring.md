@@ -2,9 +2,9 @@
 
 ## Current status
 
-Analysis Pack v1 is a public schema proof. The repository validates examples in
-development, but the application has no importer or extension manager. The
-future Rust desktop host will be the authoritative validator.
+Analysis Pack v1 is a live local extension contract. The Rust desktop host is
+the authoritative structural and semantic validator. Ajv remains a separate
+development conformance check for the published schemas and examples.
 
 Start from
 [`receiver-adoption-laboratory.roanalysis.json`](../../examples/analysis-packs/receiver-adoption-laboratory.roanalysis.json)
@@ -26,6 +26,23 @@ Every pack declares:
 
 Identity is security-sensitive. A future permission grant will bind ID,
 version, content hash, and requested scope, not just the display name.
+
+## Local lifecycle
+
+In the desktop application's **Extensions** workspace:
+
+1. choose **Inspect local pack**, or inspect the included example;
+2. review its identity, content hash, inputs, metrics, charts, and validation
+   result;
+3. choose **Import inspected pack**; import stores an immutable SQLite revision
+   and leaves it disabled;
+4. enable the desired revision explicitly; and
+5. disable, roll back, export, or remove it independently.
+
+Importing changed content under the same pack ID creates a new revision. It does
+not silently replace the enabled revision. Enabled packs are evaluated only
+against the currently selected timeline branch and geographic scope. The JSON
+file is read as content: its source path is not part of the public host API.
 
 The host localises controls surrounding the pack but does not translate or
 silently rewrite the pack's name, description, metric labels, or chart prose.
@@ -101,7 +118,7 @@ payload fields. Semantic validation rejects:
 The development suite also tests script, HTML, and ECharts injection attempts.
 These strings are never evaluated; unknown payload fields fail validation.
 
-Run the proof with:
+Run the development conformance suite with:
 
 ```powershell
 npm test

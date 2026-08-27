@@ -24,7 +24,9 @@ branch, and renders Observer Health, Republic Pulse, and an observed Receiver
 Ladder. The rest of the Briefing and Broadcast concepts remain visibly
 synthetic. The Industrial Catalogue now retains local definition generations in
 DuckDB, projects save observations through a durable SQLite outbox, and supports
-strict inert planning overlays. Binary station telemetry and Analysis Pack loading are not yet
+strict inert planning overlays. The first local Analysis Pack lifecycle now
+validates, stores, enables, evaluates, and renders declarative packs without
+giving them code or database access. Binary station telemetry is not yet
 implemented.
 
 ## Player loop
@@ -128,9 +130,11 @@ physical units as naturally additive.
 
 ### Community Extensions
 
-Players can eventually add locally obtained Analysis Packs that declare
-bounded calculations and chart templates over normalised metrics. The host
-retains calculation, evidence, accessibility, and rendering authority. Advanced
+Players can add locally obtained Analysis Packs that declare bounded
+calculations and chart templates over published normalised metrics. Inspection,
+import, enablement, rollback, export, and removal are separate local operations;
+imported packs begin disabled. The host retains calculation, evidence,
+accessibility, and rendering authority. Advanced
 executable Model Plugins remain out of process and unavailable until a real
 model and security review justify a public protocol.
 

@@ -2,6 +2,11 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  AnalysisPackContribution,
+  AnalysisPackInspection,
+  AnalysisPackSummary,
+} from "../extensions/runtime";
+import type {
   ArchiveOverview,
   ArchiveComparison,
   BranchSelectionResult,
@@ -204,4 +209,57 @@ export function listenForWarehouseUpdates(
   return listen<CatalogueStatus>("warehouse-update", (event) =>
     accept(event.payload),
   );
+}
+
+export function inspectAnalysisPack(
+  json: string,
+): Promise<AnalysisPackInspection> {
+  return invoke<AnalysisPackInspection>("inspect_analysis_pack", { json });
+}
+
+export function importAnalysisPack(json: string): Promise<AnalysisPackSummary> {
+  return invoke<AnalysisPackSummary>("import_analysis_pack", { json });
+}
+
+export function exportAnalysisPack(
+  packId: string,
+  revision: number,
+): Promise<string> {
+  return invoke<string>("export_analysis_pack", { packId, revision });
+}
+
+export function listAnalysisPacks(): Promise<AnalysisPackSummary[]> {
+  return invoke<AnalysisPackSummary[]>("list_analysis_packs");
+}
+
+export function enableAnalysisPack(
+  packId: string,
+  revision?: number,
+): Promise<AnalysisPackSummary> {
+  return invoke<AnalysisPackSummary>("enable_analysis_pack", {
+    packId,
+    revision,
+  });
+}
+
+export function disableAnalysisPack(
+  packId: string,
+): Promise<AnalysisPackSummary> {
+  return invoke<AnalysisPackSummary>("disable_analysis_pack", { packId });
+}
+
+export function rollbackAnalysisPack(
+  packId: string,
+): Promise<AnalysisPackSummary> {
+  return invoke<AnalysisPackSummary>("rollback_analysis_pack", { packId });
+}
+
+export function removeAnalysisPack(packId: string): Promise<void> {
+  return invoke<void>("remove_analysis_pack", { packId });
+}
+
+export function getAnalysisPackContributions(): Promise<
+  AnalysisPackContribution[]
+> {
+  return invoke<AnalysisPackContribution[]>("get_analysis_pack_contributions");
 }

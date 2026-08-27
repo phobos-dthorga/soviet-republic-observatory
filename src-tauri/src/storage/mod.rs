@@ -1,3 +1,4 @@
+mod analysis_packs;
 mod archive;
 mod comparison;
 mod connection;

@@ -34,6 +34,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "warehouse projection outbox and planning overlays",
         include_str!("../../migrations/0006_warehouse_outbox_and_overlays.sql"),
     ),
+    (
+        7,
+        "analysis pack revisions and lifecycle",
+        include_str!("../../migrations/0007_analysis_packs.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {
