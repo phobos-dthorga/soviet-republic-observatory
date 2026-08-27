@@ -563,6 +563,69 @@ pub struct CatalogueGenerationSummary {
     pub warning_count: u32,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogueRefreshPhase {
+    Idle,
+    Discovering,
+    Scanning,
+    Publishing,
+    Finalising,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogueRefreshTrigger {
+    Startup,
+    Filesystem,
+    Manual,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CatalogueRefreshProgress {
+    pub phase: CatalogueRefreshPhase,
+    pub trigger: CatalogueRefreshTrigger,
+    pub progress_percent: Option<u8>,
+    pub started_at_ms: Option<i64>,
+    pub updated_at_ms: Option<i64>,
+    pub current_source: Option<String>,
+    pub sources_discovered: u32,
+    pub sources_total: u32,
+    pub files_discovered: u32,
+    pub files_processed: u32,
+    pub files_reused: u32,
+    pub files_parsed: u32,
+    pub entities_prepared: u32,
+    pub rows_written: u64,
+    pub rows_total: u64,
+    pub error_code: Option<String>,
+}
+
+impl Default for CatalogueRefreshProgress {
+    fn default() -> Self {
+        Self {
+            phase: CatalogueRefreshPhase::Idle,
+            trigger: CatalogueRefreshTrigger::Startup,
+            progress_percent: None,
+            started_at_ms: None,
+            updated_at_ms: None,
+            current_source: None,
+            sources_discovered: 0,
+            sources_total: 0,
+            files_discovered: 0,
+            files_processed: 0,
+            files_reused: 0,
+            files_parsed: 0,
+            entities_prepared: 0,
+            rows_written: 0,
+            rows_total: 0,
+            error_code: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct CatalogueStatus {
     pub warehouse: WarehouseHealth,
@@ -572,6 +635,23 @@ pub struct CatalogueStatus {
     pub last_filesystem_event_ms: Option<i64>,
     pub error_code: Option<String>,
     pub active_overlay: Option<OverlayProfileSummary>,
+    pub refresh: CatalogueRefreshProgress,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiagnosticEntry {
+    pub occurred_at_ms: i64,
+    pub level: String,
+    pub code: String,
+    pub operation: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct DiagnosticLogView {
+    pub language: &'static str,
+    pub storage: &'static str,
+    pub entries: Vec<DiagnosticEntry>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

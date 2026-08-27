@@ -6,9 +6,11 @@ import type {
   ArchiveComparison,
   BranchSelectionResult,
   CataloguePage,
+  CatalogueRefreshProgress,
   CatalogueSearchFilter,
   CatalogueStatus,
   DefinitionDossier,
+  DiagnosticLogView,
   DirectoryKind,
   ObservationImportResult,
   ObserverErrorCode,
@@ -103,6 +105,14 @@ export function getCatalogueStatus(): Promise<CatalogueStatus> {
   return invoke<CatalogueStatus>("get_catalogue_status");
 }
 
+export function getDiagnosticLog(): Promise<DiagnosticLogView> {
+  return invoke<DiagnosticLogView>("diagnostic_log");
+}
+
+export function clearDiagnosticLog(): Promise<DiagnosticLogView> {
+  return invoke<DiagnosticLogView>("clear_diagnostic_log");
+}
+
 export function refreshDefinitions(): Promise<CatalogueStatus> {
   return invoke<CatalogueStatus>("refresh_definitions");
 }
@@ -176,6 +186,14 @@ export function listenForCatalogueUpdates(
   accept: (status: CatalogueStatus) => void,
 ): Promise<UnlistenFn> {
   return listen<CatalogueStatus>("catalogue-update", (event) =>
+    accept(event.payload),
+  );
+}
+
+export function listenForCatalogueProgress(
+  accept: (progress: CatalogueRefreshProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<CatalogueRefreshProgress>("catalogue-progress", (event) =>
     accept(event.payload),
   );
 }

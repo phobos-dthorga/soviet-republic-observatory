@@ -1,15 +1,20 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, TryLockError};
+use std::time::Instant;
 
 use crate::automatic_observer::{AutomaticObserver, latest_save_candidate_path};
-use crate::definition_catalogue::{catalogue_watch_roots, discover_catalogue_with_reuse};
+use crate::definition_catalogue::{
+    CatalogueDiscoveryPhase, catalogue_watch_roots, discover_catalogue_with_reuse_and_progress,
+};
+use crate::diagnostics;
 use crate::error::ObservatoryError;
 use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_directory};
 use crate::model::{
     ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
-    CataloguePage, CatalogueSearchFilter, CatalogueStatus, ConfiguredDirectorySummary,
-    DefinitionDossier, DirectoryKind, ImportOutcome, ObservationImportResult, OverlayInspection,
+    CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
+    CatalogueSearchFilter, CatalogueStatus, ConfiguredDirectorySummary, DefinitionDossier,
+    DirectoryKind, ImportOutcome, ObservationImportResult, OverlayInspection,
     OverlayProfileSummary, ReceiverDataset, RecorderDiscoverySource, RecorderHealth,
     RecorderUpdate, SetupState, WarehouseSnapshot,
 };
@@ -23,12 +28,40 @@ const GAME_MEDIA_DIRECTORY_KEY: &str = "game_media_directory";
 const WORKSHOP_DIRECTORY_KEY: &str = "workshop_directory";
 const AUTOMATIC_OBSERVATION_KEY: &str = "automatic_observation_enabled";
 
+fn catalogue_trigger_name(trigger: CatalogueRefreshTrigger) -> &'static str {
+    match trigger {
+        CatalogueRefreshTrigger::Startup => "startup",
+        CatalogueRefreshTrigger::Filesystem => "filesystem change",
+        CatalogueRefreshTrigger::Manual => "manual request",
+    }
+}
+
+fn ratio_percent(
+    completed: impl Into<u64>,
+    total: impl Into<u64>,
+    range_start: u8,
+    range_end: u8,
+) -> Option<u8> {
+    let completed = completed.into();
+    let total = total.into();
+    if total == 0 {
+        return None;
+    }
+    let span = u64::from(range_end.saturating_sub(range_start));
+    Some(
+        u64::from(range_start)
+            .saturating_add(completed.min(total).saturating_mul(span) / total)
+            .min(u64::from(range_end)) as u8,
+    )
+}
+
 #[derive(Debug)]
 pub struct ObservatoryApplication {
     storage: ObservatoryStorage,
     warehouse: AnalyticalWarehouse,
     automatic_observer: Mutex<AutomaticObserver>,
     catalogue_refresh: Mutex<()>,
+    catalogue_progress: Mutex<CatalogueRefreshProgress>,
 }
 
 impl ObservatoryApplication {
@@ -37,8 +70,18 @@ impl ObservatoryApplication {
         warehouse_path: PathBuf,
     ) -> Result<Self, ObservatoryError> {
         let storage = ObservatoryStorage::initialise(database_path)?;
-        let warehouse = AnalyticalWarehouse::initialise(warehouse_path.clone())
-            .unwrap_or_else(|_| AnalyticalWarehouse::unavailable(warehouse_path));
+        let warehouse = match AnalyticalWarehouse::initialise(warehouse_path.clone()) {
+            Ok(warehouse) => warehouse,
+            Err(_) => {
+                diagnostics::record(
+                    "error",
+                    "warehouse.startup_unavailable",
+                    "application_startup",
+                    "The analytical warehouse could not be opened; save recording remains available.",
+                );
+                AnalyticalWarehouse::unavailable(warehouse_path)
+            }
+        };
         let automatic_observation_enabled = storage.get_bool_setting(AUTOMATIC_OBSERVATION_KEY)?;
         let directory_configured = storage
             .get_setting(SAVE_DIRECTORY_KEY)?
@@ -50,6 +93,7 @@ impl ObservatoryApplication {
             warehouse,
             automatic_observer: Mutex::new(automatic_observer),
             catalogue_refresh: Mutex::new(()),
+            catalogue_progress: Mutex::new(CatalogueRefreshProgress::default()),
         })
     }
 
@@ -269,33 +313,60 @@ impl ObservatoryApplication {
                 .overlay_conflict_count(&profile.profile_id, revision);
         }
         Ok(CatalogueStatus {
-            warehouse: self
-                .warehouse
-                .health(
-                    queue.pending_jobs,
-                    queue.failed_jobs,
-                    queue
-                        .oldest_unresolved_at_ms
-                        .map(|requested_at| now_ms().saturating_sub(requested_at)),
-                    rebuilding,
-                )?,
+            warehouse: self.warehouse.health(
+                queue.pending_jobs,
+                queue.failed_jobs,
+                queue
+                    .oldest_unresolved_at_ms
+                    .map(|requested_at| now_ms().saturating_sub(requested_at)),
+                rebuilding,
+            )?,
             generation: self.warehouse.catalogue_generation().unwrap_or(None),
             last_checked_at_ms,
             last_refreshed_at_ms,
             last_filesystem_event_ms,
             error_code: sqlite_error.or(warehouse_error),
             active_overlay,
+            refresh: self
+                .catalogue_progress
+                .lock()
+                .map(|progress| progress.clone())
+                .unwrap_or_default(),
         })
     }
 
-    pub fn refresh_catalogue(&self) -> Result<CatalogueStatus, ObservatoryError> {
-        let _guard = self
-            .catalogue_refresh
-            .lock()
-            .map_err(|_| ObservatoryError::StorageUnavailable)?;
+    pub fn refresh_catalogue(
+        &self,
+        trigger: CatalogueRefreshTrigger,
+        mut notify: impl FnMut(CatalogueRefreshProgress),
+    ) -> Result<CatalogueStatus, ObservatoryError> {
+        let _guard = match self.catalogue_refresh.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return self.catalogue_status(),
+            Err(TryLockError::Poisoned(_)) => return Err(ObservatoryError::StorageUnavailable),
+        };
         let requested_at = now_ms();
-        self.storage.note_catalogue_refresh_request(requested_at)?;
+        let timer = Instant::now();
+        let mut progress = CatalogueRefreshProgress {
+            phase: CatalogueRefreshPhase::Discovering,
+            trigger,
+            progress_percent: None,
+            started_at_ms: Some(requested_at),
+            updated_at_ms: Some(requested_at),
+            ..CatalogueRefreshProgress::default()
+        };
+        self.report_catalogue_progress(&progress, &mut notify);
+        diagnostics::record(
+            "info",
+            "catalogue.refresh_started",
+            "refresh_catalogue",
+            &format!(
+                "Definition refresh started ({}).",
+                catalogue_trigger_name(trigger)
+            ),
+        );
         let result: Result<(), ObservatoryError> = (|| {
+            self.storage.note_catalogue_refresh_request(requested_at)?;
             let game_directory = self
                 .storage
                 .get_setting(GAME_MEDIA_DIRECTORY_KEY)?
@@ -306,13 +377,78 @@ impl ObservatoryApplication {
                 .get_setting(WORKSHOP_DIRECTORY_KEY)?
                 .filter(|path| path.is_dir());
             let reuse = self.warehouse.catalogue_reuse_cache()?;
-            let generation = discover_catalogue_with_reuse(
+            let generation = discover_catalogue_with_reuse_and_progress(
                 &game_directory,
                 workshop_directory.as_deref(),
                 requested_at,
                 &reuse,
+                |discovery| {
+                    progress.phase = match discovery.phase {
+                        CatalogueDiscoveryPhase::Discovering => CatalogueRefreshPhase::Discovering,
+                        CatalogueDiscoveryPhase::Scanning | CatalogueDiscoveryPhase::Complete => {
+                            CatalogueRefreshPhase::Scanning
+                        }
+                    };
+                    progress.progress_percent = match discovery.phase {
+                        CatalogueDiscoveryPhase::Discovering => ratio_percent(
+                            discovery.sources_discovered,
+                            discovery.sources_total,
+                            0,
+                            10,
+                        ),
+                        CatalogueDiscoveryPhase::Scanning | CatalogueDiscoveryPhase::Complete => {
+                            ratio_percent(
+                                discovery.files_processed,
+                                discovery.files_discovered,
+                                10,
+                                55,
+                            )
+                        }
+                    };
+                    progress.updated_at_ms = Some(now_ms());
+                    progress.current_source = discovery.current_source;
+                    progress.sources_discovered = discovery.sources_discovered;
+                    progress.sources_total = discovery.sources_total;
+                    progress.files_discovered = discovery.files_discovered;
+                    progress.files_processed = discovery.files_processed;
+                    progress.files_reused = discovery.files_reused;
+                    progress.files_parsed = discovery.files_parsed;
+                    progress.entities_prepared = discovery.entities_prepared;
+                    self.report_catalogue_progress(&progress, &mut notify);
+                },
             )?;
-            let changed = self.warehouse.publish_catalogue(&generation)?;
+            diagnostics::record(
+                "info",
+                "catalogue.scan_complete",
+                "refresh_catalogue",
+                &format!(
+                    "Definition scan prepared {} entities from {} files ({} reused; {} parsed) in {} ms.",
+                    progress.entities_prepared,
+                    progress.files_processed,
+                    progress.files_reused,
+                    progress.files_parsed,
+                    timer.elapsed().as_millis()
+                ),
+            );
+            progress.phase = CatalogueRefreshPhase::Publishing;
+            progress.progress_percent = Some(55);
+            progress.current_source = None;
+            progress.updated_at_ms = Some(now_ms());
+            self.report_catalogue_progress(&progress, &mut notify);
+            let changed =
+                self.warehouse
+                    .publish_catalogue_with_progress(&generation, |publication| {
+                        progress.rows_written = publication.rows_written;
+                        progress.rows_total = publication.rows_total;
+                        progress.progress_percent =
+                            ratio_percent(publication.rows_written, publication.rows_total, 55, 95);
+                        progress.updated_at_ms = Some(now_ms());
+                        self.report_catalogue_progress(&progress, &mut notify);
+                    })?;
+            progress.phase = CatalogueRefreshPhase::Finalising;
+            progress.progress_percent = Some(98);
+            progress.updated_at_ms = Some(now_ms());
+            self.report_catalogue_progress(&progress, &mut notify);
             if changed {
                 let active = self.storage.active_overlay_document()?;
                 let overlay_identity = active
@@ -328,9 +464,53 @@ impl ObservatoryApplication {
             self.warehouse
                 .note_catalogue_failure(requested_at, error.code());
             let _ = self.storage.note_catalogue_refresh_failure(error.code());
+            progress.phase = CatalogueRefreshPhase::Failed;
+            progress.progress_percent = None;
+            progress.current_source = None;
+            progress.updated_at_ms = Some(now_ms());
+            progress.error_code = Some(error.code().to_owned());
+            self.report_catalogue_progress(&progress, &mut notify);
+            diagnostics::record(
+                "error",
+                "catalogue.refresh_failed",
+                "refresh_catalogue",
+                &format!(
+                    "Definition refresh failed with code {} after {} ms.",
+                    error.code(),
+                    timer.elapsed().as_millis()
+                ),
+            );
         }
         result?;
+        progress.phase = CatalogueRefreshPhase::Complete;
+        progress.progress_percent = Some(100);
+        progress.current_source = None;
+        progress.updated_at_ms = Some(now_ms());
+        self.report_catalogue_progress(&progress, &mut notify);
+        diagnostics::record(
+            "info",
+            "catalogue.refresh_complete",
+            "refresh_catalogue",
+            &format!(
+                "Definition refresh completed: {} files, {} entities and {} warehouse rows in {} ms.",
+                progress.files_processed,
+                progress.entities_prepared,
+                progress.rows_written,
+                timer.elapsed().as_millis()
+            ),
+        );
         self.catalogue_status()
+    }
+
+    fn report_catalogue_progress(
+        &self,
+        progress: &CatalogueRefreshProgress,
+        notify: &mut impl FnMut(CatalogueRefreshProgress),
+    ) {
+        if let Ok(mut current) = self.catalogue_progress.lock() {
+            *current = progress.clone();
+        }
+        notify(progress.clone());
     }
 
     pub fn catalogue_search(

@@ -228,11 +228,7 @@ fn valid_value(value: &OverlayValue) -> bool {
             value.boolean.is_some() && value.number.is_none() && value.text.is_none()
         }
     };
-    payload_valid
-        && value
-            .unit
-            .as_deref()
-            .is_none_or(valid_unit)
+    payload_valid && value.unit.as_deref().is_none_or(valid_unit)
 }
 
 fn valid_reverse_domain_id(value: &str) -> bool {
@@ -384,11 +380,13 @@ fn valid_semver_identifiers(value: &str, reject_numeric_leading_zero: bool) -> b
     !value.is_empty()
         && value.split('.').all(|identifier| {
             !identifier.is_empty()
-                && identifier.chars().all(|character| {
-                    character.is_ascii_alphanumeric() || character == '-'
-                })
+                && identifier
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
                 && (!reject_numeric_leading_zero
-                    || !identifier.chars().all(|character| character.is_ascii_digit())
+                    || !identifier
+                        .chars()
+                        .all(|character| character.is_ascii_digit())
                     || identifier == "0"
                     || !identifier.starts_with('0'))
         })

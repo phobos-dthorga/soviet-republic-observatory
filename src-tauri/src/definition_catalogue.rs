@@ -30,6 +30,26 @@ pub struct CatalogueGeneration {
     pub entities: Vec<ParsedDefinition>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CatalogueDiscoveryPhase {
+    Discovering,
+    Scanning,
+    Complete,
+}
+
+#[derive(Clone, Debug)]
+pub struct CatalogueDiscoveryProgress {
+    pub phase: CatalogueDiscoveryPhase,
+    pub current_source: Option<String>,
+    pub sources_discovered: u32,
+    pub sources_total: u32,
+    pub files_discovered: u32,
+    pub files_processed: u32,
+    pub files_reused: u32,
+    pub files_parsed: u32,
+    pub entities_prepared: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct CatalogueSource {
     pub source_id: String,
@@ -116,22 +136,77 @@ fn discover_catalogue(
     discover_catalogue_with_reuse(media_directory, None, created_at_ms, &HashMap::new())
 }
 
+#[cfg(test)]
 pub fn discover_catalogue_with_reuse(
     media_directory: &Path,
     optional_workshop_directory: Option<&Path>,
     created_at_ms: i64,
     reuse: &HashMap<String, CatalogueReuseEntry>,
 ) -> Result<CatalogueGeneration, ObservatoryError> {
+    discover_catalogue_with_reuse_and_progress(
+        media_directory,
+        optional_workshop_directory,
+        created_at_ms,
+        reuse,
+        |_| {},
+    )
+}
+
+pub fn discover_catalogue_with_reuse_and_progress(
+    media_directory: &Path,
+    optional_workshop_directory: Option<&Path>,
+    created_at_ms: i64,
+    reuse: &HashMap<String, CatalogueReuseEntry>,
+    mut report: impl FnMut(CatalogueDiscoveryProgress),
+) -> Result<CatalogueGeneration, ObservatoryError> {
     let roots = discover_source_roots(media_directory, optional_workshop_directory)?;
+    let sources_total = roots.len().min(u32::MAX as usize) as u32;
     let mut files = Vec::new();
     let mut entities = Vec::new();
     let mut source_entries = BTreeMap::<String, Vec<(String, String)>>::new();
     let mut total_bytes = 0_u64;
+    let mut source_candidates = Vec::with_capacity(roots.len());
+    let mut files_discovered = 0_u32;
 
-    for source in &roots {
+    report(CatalogueDiscoveryProgress {
+        phase: CatalogueDiscoveryPhase::Discovering,
+        current_source: None,
+        sources_discovered: 0,
+        sources_total,
+        files_discovered: 0,
+        files_processed: 0,
+        files_reused: 0,
+        files_parsed: 0,
+        entities_prepared: 0,
+    });
+
+    for (source_index, source) in roots.iter().enumerate() {
         let candidates = candidate_files(source)?;
+        files_discovered =
+            files_discovered.saturating_add(candidates.len().min(u32::MAX as usize) as u32);
+        if files_discovered as usize > MAX_FILES {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        report(CatalogueDiscoveryProgress {
+            phase: CatalogueDiscoveryPhase::Discovering,
+            current_source: Some(bounded_source_name(&source.package_name)),
+            sources_discovered: (source_index + 1).min(u32::MAX as usize) as u32,
+            sources_total,
+            files_discovered,
+            files_processed: 0,
+            files_reused: 0,
+            files_parsed: 0,
+            entities_prepared: 0,
+        });
+        source_candidates.push((source, candidates));
+    }
+
+    let mut files_processed = 0_u32;
+    let mut files_reused = 0_u32;
+    let mut files_parsed = 0_u32;
+    for (source, candidates) in source_candidates {
         for candidate in candidates {
-            if files.len() >= MAX_FILES {
+            if files_processed as usize >= MAX_FILES {
                 return Err(ObservatoryError::InvalidCatalogueRequest);
             }
             let metadata = fs::symlink_metadata(&candidate)
@@ -152,6 +227,7 @@ pub fn discover_catalogue_with_reuse(
             let (entity_kind, source_object_id, entity_id, revision_hash) =
                 definition_identity(source, &logical_path, &content_hash);
             let (definition, warning_count) = if let Some(cached) = reuse.get(&revision_hash) {
+                files_reused = files_reused.saturating_add(1);
                 (
                     ParsedDefinition {
                         entity_id,
@@ -168,6 +244,7 @@ pub fn discover_catalogue_with_reuse(
                     0,
                 )
             } else {
+                files_parsed = files_parsed.saturating_add(1);
                 parse_definition(source, &logical_path, &content_hash, &bytes)
             };
             source_entries
@@ -182,6 +259,20 @@ pub fn discover_catalogue_with_reuse(
                 warning_count,
             });
             entities.push(definition);
+            files_processed = files_processed.saturating_add(1);
+            if files_processed == files_discovered || files_processed.is_multiple_of(32) {
+                report(CatalogueDiscoveryProgress {
+                    phase: CatalogueDiscoveryPhase::Scanning,
+                    current_source: Some(bounded_source_name(&source.package_name)),
+                    sources_discovered: sources_total,
+                    sources_total,
+                    files_discovered,
+                    files_processed,
+                    files_reused,
+                    files_parsed,
+                    entities_prepared: entities.len().min(u32::MAX as usize) as u32,
+                });
+            }
         }
     }
 
@@ -253,6 +344,18 @@ pub fn discover_catalogue_with_reuse(
         generation_hasher.update(file.content_hash.as_bytes());
     }
 
+    report(CatalogueDiscoveryProgress {
+        phase: CatalogueDiscoveryPhase::Complete,
+        current_source: None,
+        sources_discovered: sources_total,
+        sources_total,
+        files_discovered,
+        files_processed,
+        files_reused,
+        files_parsed,
+        entities_prepared: entities.len().min(u32::MAX as usize) as u32,
+    });
+
     Ok(CatalogueGeneration {
         generation_id: hex_bytes(&generation_hasher.finalize()),
         game_build_id,
@@ -261,6 +364,14 @@ pub fn discover_catalogue_with_reuse(
         files,
         entities,
     })
+}
+
+fn bounded_source_name(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(120)
+        .collect()
 }
 
 pub fn catalogue_watch_roots(
@@ -1438,8 +1549,7 @@ mod tests {
                 && relation.target_id == "resource::chemicals"
         }));
         assert!(recipe.relations.iter().any(|relation| {
-            relation.relation_kind == "production_input"
-                && relation.target_id == "resource::oil"
+            relation.relation_kind == "production_input" && relation.target_id == "resource::oil"
         }));
     }
 
@@ -1497,18 +1607,26 @@ mod tests {
         let first = discover_catalogue(&media, 1).expect("first catalogue");
         let cache = reuse_entries(&first);
         fs::remove_file(buildings.join("two.ini")).expect("remove source file");
-        let second = discover_catalogue_with_reuse(&media, None, 2, &cache)
-            .expect("incremental catalogue");
+        let second =
+            discover_catalogue_with_reuse(&media, None, 2, &cache).expect("incremental catalogue");
         let one = second
             .entities
             .iter()
             .find(|entity| entity.display_name == "One")
             .expect("retained entity");
-        assert!(one.properties.is_empty(), "unchanged entity was not reparsed");
+        assert!(
+            one.properties.is_empty(),
+            "unchanged entity was not reparsed"
+        );
         assert!(second.entities.iter().any(|entity| {
             entity.entity_kind == "recipe" && entity.source_object_id.ends_with("one")
         }));
-        assert!(!second.entities.iter().any(|entity| entity.display_name == "Two"));
+        assert!(
+            !second
+                .entities
+                .iter()
+                .any(|entity| entity.display_name == "Two")
+        );
         assert_ne!(first.generation_id, second.generation_id);
     }
 
@@ -1531,7 +1649,10 @@ mod tests {
             .find(|entity| entity.entity_kind == "building")
             .expect("entity");
         assert_eq!(entity.coverage, "partial");
-        assert_eq!(entity.unknown_directives, vec![("$UNSUPPORTED".to_owned(), 1)]);
+        assert_eq!(
+            entity.unknown_directives,
+            vec![("$UNSUPPORTED".to_owned(), 1)]
+        );
         assert!(generation.files[0].warning_count > 0);
     }
 
@@ -1614,8 +1735,8 @@ mod tests {
             .expect("updated definition");
         }
         let started = Instant::now();
-        let second = discover_catalogue_with_reuse(&media, None, 2, &cache)
-            .expect("incremental catalogue");
+        let second =
+            discover_catalogue_with_reuse(&media, None, 2, &cache).expect("incremental catalogue");
         eprintln!(
             "incremental files={} elapsed={:?}",
             second.files.len(),

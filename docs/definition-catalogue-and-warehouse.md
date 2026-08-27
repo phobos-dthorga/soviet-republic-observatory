@@ -47,9 +47,19 @@ precedence.
 Files are bounded, symlinks are skipped, paths are stored relative to a source,
 and content hashes make unchanged entity revisions reusable. Publication is one
 DuckDB transaction; malformed input leaves the previous generation active.
+Rows are staged through DuckDB bulk appenders and unseen revisions are selected
+as sets; a query or statement per entity is not an acceptable publication path.
 Native file events are hints collected into five-second batches. Startup and
 manual refresh perform a manifest/fingerprint reconciliation so missed events
 do not become silent staleness.
+
+The interface reports discovery, scanning, publication, and finalisation as
+live bounded progress. It exposes aggregate counts and the current source, not
+paths or source contents. A 15-second absence of progress is labelled as a
+possible storage stall and linked conceptually to the local Diagnostics log;
+it is not silently treated as success or failure. Concurrent refresh requests
+return the active status instead of forming an invisible queue behind a long
+operation.
 
 The parser retains typed fields, repeatable relations, units, bounded directive
 arguments, line numbers, coverage, and unknown-directive counts. It does not
@@ -118,6 +128,9 @@ without making them ordinary CI requirements. An optimised Windows run on
 
 - 5,484 supported installed definition files and 6,010 catalogue entities in
   1.56 seconds;
+- the same 5,484-file catalogue scanned and published as 150,642 staged rows to
+  a new temporary DuckDB warehouse in 6.60 seconds after the batched-publication
+  change;
 - a 5,000-file Workshop batch with 100 changed definitions re-indexed in 1.41
   seconds; and
 - 100,000 entities, 2,000,000 typed properties, and 5,000,000 observation rows

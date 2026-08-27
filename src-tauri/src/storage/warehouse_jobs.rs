@@ -158,10 +158,7 @@ impl ObservatoryStorage {
         )?;
         enqueue_projection_job(
             &transaction,
-            &content_derived_projection_id(
-                "rebuild",
-                &format!("all_observations:{requested_at}"),
-            ),
+            &content_derived_projection_id("rebuild", &format!("all_observations:{requested_at}")),
             "rebuild",
             "all_observations",
             requested_at,

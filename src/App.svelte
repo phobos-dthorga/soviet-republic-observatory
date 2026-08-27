@@ -10,18 +10,25 @@
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
+  import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import {
+    clearDiagnosticLog,
     compareArchiveObservations,
     desktopHostAvailable,
     getArchiveOverview,
+    getCatalogueStatus,
+    getDiagnosticLog,
     getLatestReceiverDataset,
     getRecorderHealth,
     getSetupState,
     listenForRecorderUpdates,
+    listenForCatalogueProgress,
     selectTimelineBranch,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
+    CatalogueRefreshProgress,
+    DiagnosticLogView,
     ReceiverDataset,
     RecorderHealth,
     RecorderUpdate,
@@ -60,6 +67,11 @@
   let activeWorkspace = $state<WorkspaceName>("briefing");
   let languageDialogOpen = $state(false);
   let observationDialogOpen = $state(false);
+  let diagnosticsDialogOpen = $state(false);
+  let diagnosticsBusy = $state(false);
+  let diagnosticsError = $state("");
+  let diagnosticLog = $state<DiagnosticLogView | null>(null);
+  let catalogueProgress = $state<CatalogueRefreshProgress | null>(null);
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -126,29 +138,75 @@
     }
   }
 
+  async function refreshDiagnostics(): Promise<void> {
+    if (!desktopAvailable || diagnosticsBusy) return;
+    diagnosticsBusy = true;
+    diagnosticsError = "";
+    try {
+      diagnosticLog = await getDiagnosticLog();
+    } catch {
+      diagnosticsError = $translation("diagnostics-read-failed");
+    } finally {
+      diagnosticsBusy = false;
+    }
+  }
+
+  function openDiagnostics(): void {
+    diagnosticsDialogOpen = true;
+    void refreshDiagnostics();
+  }
+
+  async function clearDiagnostics(): Promise<void> {
+    if (
+      !desktopAvailable ||
+      diagnosticsBusy ||
+      !window.confirm($translation("diagnostics-clear-confirm"))
+    )
+      return;
+    diagnosticsBusy = true;
+    diagnosticsError = "";
+    try {
+      diagnosticLog = await clearDiagnosticLog();
+    } catch {
+      diagnosticsError = $translation("diagnostics-clear-failed");
+    } finally {
+      diagnosticsBusy = false;
+    }
+  }
+
   onMount(() => {
     if (!desktopAvailable) return;
     let disposed = false;
     let stopListening: (() => void) | undefined;
+    let stopCatalogueListening: (() => void) | undefined;
     void Promise.all([
       getSetupState(),
       getLatestReceiverDataset(),
       getArchiveOverview(),
       getRecorderHealth(),
-    ]).then(([setup, dataset, archive, health]) => {
+      getCatalogueStatus(),
+    ]).then(([setup, dataset, archive, health, catalogue]) => {
       if (disposed) return;
       setupState = setup;
       receiverDataset = dataset;
       archiveOverview = archive;
       recorderHealth = health;
+      catalogueProgress = catalogue.refresh;
     });
     void listenForRecorderUpdates(acceptRecorderUpdate).then((unlisten) => {
       if (disposed) unlisten();
       else stopListening = unlisten;
     });
+    void listenForCatalogueProgress((progress) => {
+      if (!disposed) catalogueProgress = progress;
+    }).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopCatalogueListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
+      stopCatalogueListening?.();
     };
   });
 
@@ -218,6 +276,29 @@
     </nav>
 
     <div class="command-actions">
+      {#if catalogueProgress && ["discovering", "scanning", "publishing", "finalising", "failed"].includes(catalogueProgress.phase)}
+        <button
+          type="button"
+          class="catalogue-state"
+          class:attention={catalogueProgress.phase === "failed"}
+          onclick={() => (activeWorkspace = "materials")}
+        >
+          <span>{$translation("catalogue-global-progress")}</span>
+          <strong
+            >{catalogueProgress.phase === "failed"
+              ? $translation("catalogue-global-attention")
+              : `${catalogueProgress.progress_percent ?? "—"}%`}</strong
+          >
+        </button>
+      {/if}
+      <button
+        type="button"
+        class="diagnostics-button"
+        disabled={!desktopAvailable}
+        onclick={openDiagnostics}
+      >
+        {$translation("diagnostics-open")}
+      </button>
       <button
         type="button"
         class="language-button"
@@ -333,4 +414,14 @@
   onclose={() => (observationDialogOpen = false)}
   onsetupchange={acceptSetupChange}
   onobservation={acceptObservation}
+/>
+
+<DiagnosticsDialog
+  open={diagnosticsDialogOpen}
+  busy={diagnosticsBusy}
+  log={diagnosticLog}
+  errorMessage={diagnosticsError}
+  onclose={() => (diagnosticsDialogOpen = false)}
+  onrefresh={() => void refreshDiagnostics()}
+  onclear={() => void clearDiagnostics()}
 />

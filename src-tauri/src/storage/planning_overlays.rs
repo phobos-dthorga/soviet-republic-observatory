@@ -1,7 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 
-use super::warehouse_jobs::enqueue_projection_job;
 use super::warehouse_jobs::content_derived_projection_id;
+use super::warehouse_jobs::enqueue_projection_job;
 use super::{ObservatoryStorage, now_ms};
 use crate::error::ObservatoryError;
 use crate::model::OverlayProfileSummary;
@@ -290,10 +290,8 @@ fn enqueue_overlay_state_job(
     let source_identity = revision
         .map(|revision| format!("{profile_id}:{revision}"))
         .unwrap_or_else(|| "none".to_owned());
-    let projection_id = content_derived_projection_id(
-        "overlay",
-        &format!("{source_identity}:{requested_at_ms}"),
-    );
+    let projection_id =
+        content_derived_projection_id("overlay", &format!("{source_identity}:{requested_at_ms}"));
     enqueue_projection_job(
         transaction,
         &projection_id,
@@ -366,6 +364,11 @@ mod tests {
         storage.deactivate_overlay().expect("deactivate");
         assert!(storage.active_overlay_summary().expect("state").is_none());
         storage.remove_overlay(&second.profile_id).expect("remove");
-        assert!(storage.list_overlay_profiles().expect("profiles").is_empty());
+        assert!(
+            storage
+                .list_overlay_profiles()
+                .expect("profiles")
+                .is_empty()
+        );
     }
 }

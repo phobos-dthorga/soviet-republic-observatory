@@ -68,8 +68,8 @@ fn interrupted_warehouse_jobs_return_to_pending_without_losing_the_observation()
 #[test]
 fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
     let directory = tempdir().expect("temporary directory");
-    let storage = ObservatoryStorage::initialise(directory.path().join("retry.sqlite3"))
-        .expect("storage");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("retry.sqlite3")).expect("storage");
     storage
         .save_inspection(&inspection("warehouse-outage", "outage.zip", &[1, 2]))
         .expect("observation remains committed");
@@ -84,7 +84,9 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
     assert_eq!(failed.failed_jobs, 1);
     assert_eq!(storage.distinct_state_count().expect("retained state"), 1);
 
-    storage.enqueue_warehouse_rebuild().expect("request rebuild");
+    storage
+        .enqueue_warehouse_rebuild()
+        .expect("request rebuild");
     let retry = storage.projection_queue_status().expect("retry health");
     assert_eq!(retry.failed_jobs, 0);
     assert_eq!(retry.pending_jobs, 2);

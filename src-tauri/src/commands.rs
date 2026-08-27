@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::model::{
     ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
-    CatalogueSearchFilter, CatalogueStatus, DefinitionDossier, DirectoryKind,
+    CatalogueSearchFilter, CatalogueStatus, DefinitionDossier, DiagnosticLogView, DirectoryKind,
     ObservationImportResult, OverlayInspection, OverlayProfileSummary, ReceiverDataset,
     RecorderHealth, SetupState, WarehouseSnapshot,
 };
@@ -100,8 +100,32 @@ pub fn get_catalogue_status(state: State<'_, AppState>) -> Result<CatalogueStatu
 }
 
 #[tauri::command]
-pub fn refresh_definitions(state: State<'_, AppState>) -> Result<CatalogueStatus, CommandError> {
-    state.application.refresh_catalogue().map_err(Into::into)
+pub async fn refresh_definitions(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CatalogueStatus, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.refresh_catalogue(crate::model::CatalogueRefreshTrigger::Manual, |progress| {
+            let _ = app.emit(crate::catalogue_service::CATALOGUE_PROGRESS_EVENT, progress);
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "catalogue_worker_unavailable".to_owned(),
+        diagnostic: "The definition refresh worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn diagnostic_log() -> DiagnosticLogView {
+    crate::diagnostics::view()
+}
+
+#[tauri::command]
+pub fn clear_diagnostic_log() -> DiagnosticLogView {
+    crate::diagnostics::clear()
 }
 
 #[tauri::command]

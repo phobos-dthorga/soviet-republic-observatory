@@ -65,8 +65,10 @@ The interface follows the methodology established by
 - Apache ECharts behind one declarative application-owned adapter;
 - canonical `en-AU`, Fluent formatting, and strict inert community language
   packs with complete current-interface coverage;
-- strict, non-executable Analysis Pack and chart-schema proofs; and
-- a local-first, summary-to-diagnosis information hierarchy.
+- strict, non-executable Analysis Pack and chart-schema proofs;
+- a local-first, summary-to-diagnosis information hierarchy; and
+- live phase/counter reporting for long catalogue work and a bounded,
+  user-readable local diagnostic log derived from WyrmGrid's operational model.
 
 It is deliberately not a WyrmGrid reskin. The Observatory has its own visual
 identity, resource vocabulary, navigation, statistical contracts, and game-save
@@ -94,7 +96,10 @@ inspect ancestry, select a timeline branch, and
 compare two distinct states on that branch. Configure the game installation
 folder to build the Industrial Catalogue from local base, DLC, subscribed
 Workshop, and WIP definitions. A separate Workshop-folder selector is available
-when Steam discovery cannot resolve external Workshop content.
+when Steam discovery cannot resolve external Workshop content. The header shows
+active Catalogue work; **Materials** provides the detailed progress ledger, and
+**Diagnostics** exposes the bounded local operational record when a run needs
+investigation.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.

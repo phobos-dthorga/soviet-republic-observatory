@@ -22,6 +22,43 @@ pub const WAREHOUSE_SCHEMA_VERSION: u32 = 2;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
+#[derive(Clone, Debug)]
+pub struct WarehousePublishProgress {
+    pub rows_written: u64,
+    pub rows_total: u64,
+}
+
+fn catalogue_publish_row_count(generation: &CatalogueGeneration) -> u64 {
+    let entity_rows = generation.entities.len().saturating_mul(2);
+    let detail_rows = generation.entities.iter().fold(0_usize, |count, entity| {
+        count
+            .saturating_add(entity.properties.len())
+            .saturating_add(entity.relations.len())
+            .saturating_add(entity.unknown_directives.len())
+    });
+    generation
+        .sources
+        .len()
+        .saturating_add(generation.files.len())
+        .saturating_add(entity_rows)
+        .saturating_add(detail_rows)
+        .min(u64::MAX as usize) as u64
+}
+
+fn note_published_row(
+    report: &mut impl FnMut(WarehousePublishProgress),
+    rows_written: &mut u64,
+    rows_total: u64,
+) {
+    *rows_written = rows_written.saturating_add(1);
+    if *rows_written == rows_total || rows_written.is_multiple_of(512) {
+        report(WarehousePublishProgress {
+            rows_written: *rows_written,
+            rows_total,
+        });
+    }
+}
+
 const MIGRATIONS: &[(u32, &str)] = &[
     (
         1,
@@ -80,9 +117,18 @@ impl AnalyticalWarehouse {
         }
     }
 
+    #[cfg(test)]
     pub fn publish_catalogue(
         &self,
         generation: &CatalogueGeneration,
+    ) -> Result<bool, ObservatoryError> {
+        self.publish_catalogue_with_progress(generation, |_| {})
+    }
+
+    pub fn publish_catalogue_with_progress(
+        &self,
+        generation: &CatalogueGeneration,
+        mut report: impl FnMut(WarehousePublishProgress),
     ) -> Result<bool, ObservatoryError> {
         let mut connection = self.lock()?;
         let current = connection.query_row(
@@ -98,12 +144,45 @@ impl AnalyticalWarehouse {
             return Ok(false);
         }
 
+        let generation_exists = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM catalogue_generations WHERE generation_id = ?1)",
+            [&generation.generation_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if generation_exists {
+            connection.execute(
+                "UPDATE warehouse_metadata SET current_catalogue_generation_id = ?1, \
+                 last_catalogue_refresh_ms = ?2, last_catalogue_error_code = NULL \
+                 WHERE singleton_id = 1",
+                params![generation.generation_id, generation.created_at_ms],
+            )?;
+            return Ok(true);
+        }
+
         let transaction = connection.transaction()?;
         let warning_count = generation
             .files
             .iter()
             .map(|file| u64::from(file.warning_count))
             .sum::<u64>();
+        let rows_total = catalogue_publish_row_count(generation);
+        let mut rows_written = 0_u64;
+        report(WarehousePublishProgress {
+            rows_written,
+            rows_total,
+        });
+
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_definition_entity_revisions AS \
+                 SELECT * FROM definition_entity_revisions WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_definition_properties AS \
+                 SELECT * FROM definition_properties WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_definition_relations AS \
+                 SELECT * FROM definition_relations WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_definition_unknown_directives AS \
+                 SELECT * FROM definition_unknown_directives WHERE FALSE;",
+        )?;
+
         transaction.execute(
             "INSERT INTO catalogue_generations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
@@ -121,10 +200,9 @@ impl AnalyticalWarehouse {
         )?;
 
         {
-            let mut statement = transaction
-                .prepare("INSERT INTO catalogue_sources VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+            let mut appender = transaction.appender("catalogue_sources")?;
             for source in &generation.sources {
-                statement.execute(params![
+                appender.append_row(params![
                     generation.generation_id,
                     source.source_id,
                     source.source_kind,
@@ -133,13 +211,13 @@ impl AnalyticalWarehouse {
                     source.content_hash,
                     source.file_count,
                 ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total);
             }
         }
         {
-            let mut statement = transaction
-                .prepare("INSERT INTO catalogue_files VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)")?;
+            let mut appender = transaction.appender("catalogue_files")?;
             for file in &generation.files {
-                statement.execute(params![
+                appender.append_row(params![
                     generation.generation_id,
                     file.source_id,
                     file.logical_path,
@@ -148,83 +226,113 @@ impl AnalyticalWarehouse {
                     DEFINITION_PARSER_VERSION,
                     file.warning_count,
                 ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total);
             }
         }
-        for entity in &generation.entities {
-            let revision_exists = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM definition_entity_revisions WHERE revision_hash = ?1)",
-                [&entity.revision_hash],
-                |row| row.get::<_, bool>(0),
-            )?;
-            if !revision_exists {
-                transaction.execute(
-                    "INSERT INTO definition_entity_revisions VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![
+
+        {
+            let mut appender = transaction.appender("incoming_definition_entity_revisions")?;
+            for entity in &generation.entities {
+                appender.append_row(params![
+                    entity.revision_hash,
+                    entity.entity_kind,
+                    entity.source_id,
+                    entity.source_object_id,
+                    entity.display_name,
+                    entity.coverage,
+                ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total);
+            }
+        }
+        {
+            let mut appender = transaction.appender("incoming_definition_properties")?;
+            for entity in &generation.entities {
+                for property in &entity.properties {
+                    appender.append_row(params![
                         entity.revision_hash,
-                        entity.entity_kind,
-                        entity.source_id,
-                        entity.source_object_id,
-                        entity.display_name,
-                        entity.coverage,
-                    ],
-                )?;
-                {
-                    let mut statement = transaction.prepare(
-                        "INSERT INTO definition_properties VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'game_definition', ?11)",
-                    )?;
-                    for property in &entity.properties {
-                        statement.execute(params![
-                            entity.revision_hash,
-                            property.field_id,
-                            property.occurrence,
-                            property.value_kind,
-                            property.value_number,
-                            property.value_text,
-                            property.unit,
-                            property.source_directive,
-                            property.source_line,
-                            property.raw_arguments,
-                            property.resolution,
-                        ])?;
-                    }
-                }
-                {
-                    let mut statement = transaction.prepare(
-                        "INSERT INTO definition_relations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                    )?;
-                    for relation in &entity.relations {
-                        statement.execute(params![
-                            entity.revision_hash,
-                            relation.relation_kind,
-                            relation.occurrence,
-                            relation.target_id,
-                            relation.quantity,
-                            relation.unit,
-                            relation.phase_id,
-                            relation.source_directive,
-                            relation.source_line,
-                            relation.raw_arguments,
-                            relation.resolution,
-                        ])?;
-                    }
-                }
-                {
-                    let mut statement = transaction
-                        .prepare("INSERT INTO definition_unknown_directives VALUES(?1, ?2, ?3)")?;
-                    for (directive, count) in &entity.unknown_directives {
-                        statement.execute(params![entity.revision_hash, directive, count])?;
-                    }
+                        property.field_id,
+                        property.occurrence,
+                        property.value_kind,
+                        property.value_number,
+                        property.value_text,
+                        property.unit,
+                        property.source_directive,
+                        property.source_line,
+                        property.raw_arguments,
+                        "game_definition",
+                        property.resolution,
+                    ])?;
+                    note_published_row(&mut report, &mut rows_written, rows_total);
                 }
             }
-            transaction.execute(
-                "INSERT INTO catalogue_generation_entities VALUES(?1, ?2, ?3)",
-                params![
+        }
+        {
+            let mut appender = transaction.appender("incoming_definition_relations")?;
+            for entity in &generation.entities {
+                for relation in &entity.relations {
+                    appender.append_row(params![
+                        entity.revision_hash,
+                        relation.relation_kind,
+                        relation.occurrence,
+                        relation.target_id,
+                        relation.quantity,
+                        relation.unit,
+                        relation.phase_id,
+                        relation.source_directive,
+                        relation.source_line,
+                        relation.raw_arguments,
+                        relation.resolution,
+                    ])?;
+                    note_published_row(&mut report, &mut rows_written, rows_total);
+                }
+            }
+        }
+        {
+            let mut appender = transaction.appender("incoming_definition_unknown_directives")?;
+            for entity in &generation.entities {
+                for (directive, count) in &entity.unknown_directives {
+                    appender.append_row(params![entity.revision_hash, directive, count])?;
+                    note_published_row(&mut report, &mut rows_written, rows_total);
+                }
+            }
+        }
+
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_new_revisions AS \
+                 SELECT incoming.revision_hash \
+                 FROM incoming_definition_entity_revisions incoming \
+                 LEFT JOIN definition_entity_revisions existing USING(revision_hash) \
+                 WHERE existing.revision_hash IS NULL; \
+             INSERT INTO definition_entity_revisions \
+                 SELECT incoming.* FROM incoming_definition_entity_revisions incoming \
+                 JOIN incoming_new_revisions USING(revision_hash); \
+             INSERT INTO definition_properties \
+                 SELECT incoming.* FROM incoming_definition_properties incoming \
+                 JOIN incoming_new_revisions USING(revision_hash); \
+             INSERT INTO definition_relations \
+                 SELECT incoming.* FROM incoming_definition_relations incoming \
+                 JOIN incoming_new_revisions USING(revision_hash); \
+             INSERT INTO definition_unknown_directives \
+                 SELECT incoming.* FROM incoming_definition_unknown_directives incoming \
+                 JOIN incoming_new_revisions USING(revision_hash);",
+        )?;
+
+        {
+            let mut appender = transaction.appender("catalogue_generation_entities")?;
+            for entity in &generation.entities {
+                appender.append_row(params![
                     generation.generation_id,
                     entity.entity_id,
                     entity.revision_hash
-                ],
-            )?;
+                ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total);
+            }
         }
+
+        report(WarehousePublishProgress {
+            rows_written,
+            rows_total,
+        });
         transaction.execute(
             "UPDATE catalogue_generations SET \
                  property_count = (SELECT COUNT(*) FROM catalogue_generation_entities membership \
@@ -561,9 +669,7 @@ impl AnalyticalWarehouse {
             .map_err(Into::into)
     }
 
-    pub fn catalogue_runtime(
-        &self,
-    ) -> Result<CatalogueRuntime, ObservatoryError> {
+    pub fn catalogue_runtime(&self) -> Result<CatalogueRuntime, ObservatoryError> {
         self.lock()?.query_row(
             "SELECT last_catalogue_check_ms, last_catalogue_refresh_ms, last_catalogue_error_code \
              FROM warehouse_metadata WHERE singleton_id = 1",
@@ -1069,7 +1175,10 @@ mod tests {
                 ))
                 .expect("version one schema");
             connection
-                .execute("INSERT INTO warehouse_schema_migrations VALUES(1, now())", [])
+                .execute(
+                    "INSERT INTO warehouse_schema_migrations VALUES(1, now())",
+                    [],
+                )
                 .expect("version one marker");
         }
 
@@ -1165,11 +1274,12 @@ mod tests {
             }],
         };
         assert!(warehouse.publish_catalogue(&generation).expect("publish"));
-        assert!(!warehouse.publish_catalogue(&generation).expect("same generation"));
-        assert_eq!(
-            warehouse.catalogue_reuse_cache().expect("cache").len(),
-            1
+        assert!(
+            !warehouse
+                .publish_catalogue(&generation)
+                .expect("same generation")
         );
+        assert_eq!(warehouse.catalogue_reuse_cache().expect("cache").len(), 1);
 
         let document = PlanningOverlayDocument {
             schema_version: 1,
@@ -1222,7 +1332,10 @@ mod tests {
         assert_eq!(dossier.facts[0].evidence_kind, "player_override");
         let snapshot = warehouse.snapshot().expect("pinned model snapshot");
         assert_eq!(snapshot.catalogue_generation_id, generation.generation_id);
-        assert_eq!(snapshot.overlay_profile_id.as_deref(), Some(document.id.as_str()));
+        assert_eq!(
+            snapshot.overlay_profile_id.as_deref(),
+            Some(document.id.as_str())
+        );
         assert_eq!(snapshot.overlay_revision, Some(1));
         assert_eq!(snapshot.warehouse_schema_version, WAREHOUSE_SCHEMA_VERSION);
         assert_eq!(snapshot.projector_version, PROJECTOR_VERSION);
@@ -1237,6 +1350,39 @@ mod tests {
             )
             .expect("effective planning projection");
         assert_eq!(effective, (25.0, "player_override".to_owned()));
+    }
+
+    #[test]
+    #[ignore = "requires a private local W&R installation and is a reference-machine benchmark"]
+    fn presently_installed_catalogue_publishes_in_bounded_batches() {
+        let media = std::env::var_os("RO_GAME_MEDIA").expect("set RO_GAME_MEDIA privately");
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("local.duckdb"))
+            .expect("warehouse");
+        let started = Instant::now();
+        let generation = crate::definition_catalogue::discover_catalogue_with_reuse(
+            std::path::Path::new(&media),
+            None,
+            1,
+            &std::collections::HashMap::new(),
+        )
+        .expect("local catalogue");
+        let mut latest = None;
+        assert!(
+            warehouse
+                .publish_catalogue_with_progress(&generation, |progress| latest = Some(progress))
+                .expect("publish")
+        );
+        let latest = latest.expect("publication progress");
+        eprintln!(
+            "catalogue files={} entities={} rows={} elapsed={:?}",
+            generation.files.len(),
+            generation.entities.len(),
+            latest.rows_written,
+            started.elapsed()
+        );
+        assert_eq!(latest.rows_written, latest.rows_total);
+        assert!(started.elapsed() < Duration::from_secs(30));
     }
 
     #[test]

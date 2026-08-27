@@ -275,6 +275,34 @@ export type CatalogueGenerationSummary = {
   warning_count: number;
 };
 
+export type CatalogueRefreshPhase =
+  | "idle"
+  | "discovering"
+  | "scanning"
+  | "publishing"
+  | "finalising"
+  | "complete"
+  | "failed";
+
+export type CatalogueRefreshProgress = {
+  phase: CatalogueRefreshPhase;
+  trigger: "startup" | "filesystem" | "manual";
+  progress_percent: number | null;
+  started_at_ms: number | null;
+  updated_at_ms: number | null;
+  current_source: string | null;
+  sources_discovered: number;
+  sources_total: number;
+  files_discovered: number;
+  files_processed: number;
+  files_reused: number;
+  files_parsed: number;
+  entities_prepared: number;
+  rows_written: number;
+  rows_total: number;
+  error_code: string | null;
+};
+
 export type OverlayProfileSummary = {
   profile_id: string;
   display_name: string;
@@ -295,6 +323,21 @@ export type CatalogueStatus = {
   last_filesystem_event_ms: number | null;
   error_code: string | null;
   active_overlay: OverlayProfileSummary | null;
+  refresh: CatalogueRefreshProgress;
+};
+
+export type DiagnosticEntry = {
+  occurred_at_ms: number;
+  level: string;
+  code: string;
+  operation: string;
+  message: string;
+};
+
+export type DiagnosticLogView = {
+  language: string;
+  storage: string;
+  entries: DiagnosticEntry[];
 };
 
 export type CatalogueSearchFilter = {

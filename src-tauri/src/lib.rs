@@ -3,6 +3,7 @@ mod automatic_observer;
 mod catalogue_service;
 mod commands;
 mod definition_catalogue;
+mod diagnostics;
 mod error;
 mod game_vocabulary;
 mod model;
@@ -27,6 +28,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let data_directory = app.path().app_local_data_dir()?;
+            std::fs::create_dir_all(&data_directory)?;
+            diagnostics::initialize(Some(&data_directory));
+            diagnostics::record(
+                "info",
+                "application.started",
+                "application_startup",
+                "Republic Observatory started.",
+            );
             let application = Arc::new(
                 ObservatoryApplication::initialise(
                     data_directory.join("republic-observatory.sqlite3"),
@@ -54,6 +63,8 @@ pub fn run() {
             commands::compare_archive_observations,
             commands::get_catalogue_status,
             commands::refresh_definitions,
+            commands::diagnostic_log,
+            commands::clear_diagnostic_log,
             commands::rebuild_warehouse,
             commands::search_catalogue,
             commands::get_definition_dossier,

@@ -8,9 +8,11 @@ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter};
 
 use crate::application::ObservatoryApplication;
+use crate::model::CatalogueRefreshTrigger;
 use crate::storage::now_ms;
 
 pub const CATALOGUE_UPDATE_EVENT: &str = "catalogue-update";
+pub const CATALOGUE_PROGRESS_EVENT: &str = "catalogue-progress";
 const SERVICE_TICK: Duration = Duration::from_millis(500);
 const DEBOUNCE_MS: i64 = 5_000;
 
@@ -30,6 +32,7 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
     let mut watched_roots = Vec::new();
     let mut configured_directory: Option<PathBuf> = None;
     let mut refresh_due_at: Option<i64> = None;
+    let mut refresh_trigger = CatalogueRefreshTrigger::Startup;
 
     loop {
         let current_directory = application
@@ -42,16 +45,20 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
             configured_directory = current_directory;
             update_watches(watcher.as_mut(), &mut watched_roots, requested_roots);
             refresh_due_at = configured_directory.as_ref().map(|_| now_ms());
+            refresh_trigger = CatalogueRefreshTrigger::Startup;
         }
 
         if receive_relevant_event(&receiver) {
             let event_at = now_ms();
             let _ = application.note_catalogue_filesystem_event(event_at);
             refresh_due_at = Some(event_at.saturating_add(DEBOUNCE_MS));
+            refresh_trigger = CatalogueRefreshTrigger::Filesystem;
         }
 
         if refresh_due_at.is_some_and(|due| now_ms() >= due) {
-            let _ = application.refresh_catalogue();
+            let _ = application.refresh_catalogue(refresh_trigger, |progress| {
+                let _ = app_handle.emit(CATALOGUE_PROGRESS_EVENT, progress);
+            });
             if let Ok(status) = application.catalogue_status() {
                 let _ = app_handle.emit(CATALOGUE_UPDATE_EVENT, status);
             }
