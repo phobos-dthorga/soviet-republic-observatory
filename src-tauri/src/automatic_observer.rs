@@ -279,7 +279,9 @@ impl AutomaticObserver {
         match inspect_save_archive(&candidate.path, profile) {
             Ok(inspection) => {
                 let inserted = storage.save_inspection(&inspection)?;
-                let dataset = storage.load_dataset(&inspection.interpretation_id)?;
+                let dataset = storage
+                    .load_context_dataset()?
+                    .ok_or(ObservatoryError::UnknownObservation)?;
                 let outcome = if inserted {
                     ImportOutcome::Imported
                 } else {
@@ -291,7 +293,12 @@ impl AutomaticObserver {
                     &inspection.interpretation_id,
                     observed_at_ms,
                 )?;
-                let import_result = ObservationImportResult { outcome, dataset };
+                let import_result = ObservationImportResult {
+                    outcome,
+                    recorded_interpretation_id: inspection.interpretation_id,
+                    active_context_id: storage.load_archive_overview()?.analysis_context.context_id,
+                    dataset,
+                };
                 self.record_observation(&candidate.file_name, observed_at_ms);
                 Ok(self.update(Some(import_result)))
             }

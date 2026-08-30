@@ -4,10 +4,173 @@ use tempfile::tempdir;
 use super::ObservatoryStorage;
 use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
-    CoverageReport, CoverageStatus, ReceiverRecord, RecorderCandidateStatus,
-    RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
-    SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    AnalysisContextMode, AnalysisContextOrigin, CoverageReport, CoverageStatus, ReceiverRecord,
+    RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot,
+    SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
 };
+
+#[test]
+fn exact_historical_preview_excludes_later_states_and_returns_to_the_proven_tip() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("historical.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&inspection("anchor-state", "anchor.zip", &[1, 2]))
+        .expect("anchor");
+    storage
+        .save_inspection(&inspection("later-state", "later.zip", &[1, 2, 3]))
+        .expect("later");
+
+    storage
+        .inspect_observation("anchor-state")
+        .expect("inspect anchor");
+    let archive = storage.load_archive_overview().expect("historical archive");
+    assert_eq!(
+        archive.analysis_context.mode,
+        AnalysisContextMode::HistoricalPreview
+    );
+    assert!(!archive.analysis_context.is_tip);
+    assert_eq!(
+        archive.analysis_context.head_interpretation_id.as_deref(),
+        Some("anchor-state")
+    );
+    assert!(archive.observations.iter().any(|observation| {
+        observation.interpretation_id == "anchor-state"
+            && observation.included_in_context
+            && observation.active_head
+    }));
+    assert!(archive.observations.iter().any(|observation| {
+        observation.interpretation_id == "later-state" && !observation.included_in_context
+    }));
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("dataset")
+            .expect("head")
+            .payload_hash,
+        "anchor-state"
+    );
+
+    storage.return_to_branch_tip().expect("return to tip");
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("dataset")
+            .expect("tip")
+            .payload_hash,
+        "later-state"
+    );
+}
+
+#[test]
+fn continuations_are_durable_reusable_forks_and_only_strict_descendants_advance_them() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("continuations.sqlite3");
+    let first_branch;
+    {
+        let storage = ObservatoryStorage::initialise(path.clone()).expect("storage");
+        storage
+            .save_inspection(&inspection("anchor-state", "anchor.zip", &[1, 2]))
+            .expect("anchor");
+        storage
+            .save_inspection(&inspection("abandoned-future", "future.zip", &[1, 2, 3]))
+            .expect("future");
+        first_branch = storage
+            .create_continuation("anchor-state", Some("Steel-first continuation"))
+            .expect("first continuation");
+        let second_branch = storage
+            .create_continuation("anchor-state", None)
+            .expect("second continuation");
+        assert_ne!(first_branch, second_branch);
+        let archive = storage.load_archive_overview().expect("archive");
+        let manual = archive
+            .branches
+            .iter()
+            .filter(|branch| branch.origin == AnalysisContextOrigin::ManualContinuation)
+            .collect::<Vec<_>>();
+        assert_eq!(manual.len(), 2);
+        assert_eq!(
+            manual
+                .iter()
+                .find(|branch| branch.branch_id == first_branch)
+                .and_then(|branch| branch.parent_branch_id.as_deref()),
+            Some("main")
+        );
+        assert_eq!(
+            manual
+                .iter()
+                .find(|branch| branch.branch_id == second_branch)
+                .and_then(|branch| branch.parent_branch_id.as_deref()),
+            Some(first_branch.as_str())
+        );
+
+        storage
+            .select_branch(&first_branch)
+            .expect("select first continuation");
+        storage
+            .save_inspection(&inspection("continued-state", "continued.zip", &[1, 2, 9]))
+            .expect("strict continuation descendant");
+        let dataset = storage
+            .load_latest_dataset()
+            .expect("dataset")
+            .expect("continued head");
+        assert_eq!(dataset.payload_hash, "continued-state");
+        assert_eq!(dataset.branch_id, first_branch);
+        assert_ne!(dataset.original_branch_id, dataset.branch_id);
+
+        let nested_branch = storage
+            .create_continuation("continued-state", Some("Nested continuation"))
+            .expect("nested continuation");
+        assert_eq!(
+            storage
+                .load_archive_overview()
+                .expect("nested archive")
+                .branches
+                .iter()
+                .find(|branch| branch.branch_id == nested_branch)
+                .and_then(|branch| branch.parent_branch_id.as_deref()),
+            Some(first_branch.as_str())
+        );
+        storage
+            .select_branch(&first_branch)
+            .expect("restore first continuation");
+
+        storage
+            .save_inspection(&inspection("unrelated-state", "unrelated.zip", &[7, 8]))
+            .expect("unrelated observation");
+        assert_eq!(
+            storage
+                .load_latest_dataset()
+                .expect("dataset")
+                .expect("unchanged head")
+                .payload_hash,
+            "continued-state"
+        );
+        storage
+            .set_branch_label(&first_branch, Some("Renamed continuation"))
+            .expect("rename");
+    }
+
+    let reopened = ObservatoryStorage::initialise(path).expect("reopen");
+    let archive = reopened.load_archive_overview().expect("persisted archive");
+    assert_eq!(archive.selected_branch_id, first_branch);
+    assert_eq!(
+        archive.analysis_context.origin,
+        AnalysisContextOrigin::ManualContinuation
+    );
+    assert_eq!(
+        archive.analysis_context.head_interpretation_id.as_deref(),
+        Some("continued-state")
+    );
+    assert_eq!(
+        archive
+            .branches
+            .iter()
+            .find(|branch| branch.branch_id == first_branch)
+            .and_then(|branch| branch.player_label.as_deref()),
+        Some("Renamed continuation")
+    );
+}
 
 #[test]
 fn stores_normalised_metrics_and_separates_files_from_distinct_states() {
@@ -127,7 +290,7 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
         .expect("request rebuild");
     let retry = storage.projection_queue_status().expect("retry health");
     assert_eq!(retry.failed_jobs, 0);
-    assert_eq!(retry.pending_jobs, 2);
+    assert_eq!(retry.pending_jobs, 3);
     assert!(retry.oldest_unresolved_at_ms.is_some());
 }
 
@@ -338,7 +501,7 @@ fn extending_an_older_state_after_an_incompatible_tip_creates_a_fork() {
 
     let archive = storage.load_archive_overview().expect("archive");
     assert_eq!(archive.branches.len(), 2);
-    assert_eq!(archive.selected_branch_id, "fork-fork-state");
+    assert_eq!(archive.selected_branch_id, "main");
     let fork = archive
         .branches
         .iter()
@@ -387,7 +550,19 @@ fn selecting_a_branch_changes_the_latest_dataset_without_rewriting_history() {
     assert_eq!(
         storage
             .load_latest_dataset()
-            .expect("latest fork")
+            .expect("persistent main context")
+            .expect("main dataset")
+            .payload_hash,
+        "main-state"
+    );
+
+    storage
+        .select_branch("fork-fork-state")
+        .expect("select fork");
+    assert_eq!(
+        storage
+            .load_latest_dataset()
+            .expect("selected fork")
             .expect("fork dataset")
             .payload_hash,
         "fork-state"
@@ -410,10 +585,10 @@ fn selecting_a_branch_changes_the_latest_dataset_without_rewriting_history() {
     assert_eq!(
         storage
             .load_latest_dataset()
-            .expect("reselected fork")
-            .expect("fork dataset")
+            .expect("persistent selected branch")
+            .expect("main dataset")
             .payload_hash,
-        "fork-state"
+        "main-state"
     );
 }
 
@@ -444,7 +619,7 @@ fn unrelated_history_remains_unassigned() {
 
     let archive = storage.load_archive_overview().expect("archive");
     assert_eq!(archive.unresolved_state_count, 1);
-    assert_eq!(archive.selected_branch_id, "unassigned");
+    assert_eq!(archive.selected_branch_id, "main");
     let unresolved = archive
         .observations
         .iter()
@@ -541,7 +716,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        10
+        11
     );
     assert_eq!(
         migrated

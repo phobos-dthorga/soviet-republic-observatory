@@ -7,7 +7,7 @@ use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
-    ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
+    AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
     OverlayInspection, OverlayProfileSummary, ProductionRouteCoverage, ProductionRouteModel,
@@ -80,10 +80,52 @@ pub fn set_automatic_observation(
 pub fn select_timeline_branch(
     branch_id: String,
     state: State<'_, AppState>,
-) -> Result<BranchSelectionResult, CommandError> {
+) -> Result<AnalysisContextResult, CommandError> {
     state
         .application
         .select_branch(&branch_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn inspect_archive_observation(
+    interpretation_id: String,
+    state: State<'_, AppState>,
+) -> Result<AnalysisContextResult, CommandError> {
+    state
+        .application
+        .inspect_archive_observation(&interpretation_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn return_to_branch_tip(
+    state: State<'_, AppState>,
+) -> Result<AnalysisContextResult, CommandError> {
+    state.application.return_to_branch_tip().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn create_timeline_continuation(
+    interpretation_id: String,
+    label: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AnalysisContextResult, CommandError> {
+    state
+        .application
+        .create_continuation(&interpretation_id, label.as_deref())
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn set_timeline_branch_label(
+    branch_id: String,
+    label: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<AnalysisContextResult, CommandError> {
+    state
+        .application
+        .set_branch_label(&branch_id, label.as_deref())
         .map_err(Into::into)
 }
 

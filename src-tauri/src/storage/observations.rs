@@ -1,8 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::archive::{
-    persist_history_signature, persist_resolution, resolve_branch, selected_branch_id,
-};
+use super::archive::{persist_history_signature, persist_resolution, resolve_branch};
 use super::history::{load_history, persist_compacted_history, persist_latest_metric_evidence};
 use super::snapshots::persist_snapshots;
 use super::{ObservatoryStorage, from_sql_integer, now_ms, to_sql_integer};
@@ -122,6 +120,15 @@ impl ObservatoryStorage {
             }
             persist_history_signature(&transaction, &storage_key, &inspection.records)?;
             persist_resolution(&transaction, &storage_key, &resolution)?;
+            super::analysis_context::record_observation_memberships(
+                &transaction,
+                &storage_key,
+                &inspection.interpretation_id,
+                &resolution.branch_id,
+                resolution.relationship,
+                resolution.parent_payload_hash.as_deref(),
+                resolution.shared_record_count,
+            )?;
             super::warehouse_jobs::enqueue_projection_job(
                 &transaction,
                 &format!("observation:{}", inspection.interpretation_id),
@@ -130,15 +137,6 @@ impl ObservatoryStorage {
                 now_ms(),
             )?;
         } else {
-            let branch_id = transaction.query_row(
-                "SELECT branch_id FROM observation_sources WHERE payload_hash = ?1",
-                [&storage_key],
-                |row| row.get::<_, String>(0),
-            )?;
-            transaction.execute(
-                "UPDATE archive_state SET selected_branch_id = ?1 WHERE singleton_id = 1",
-                [branch_id],
-            )?;
             let snapshots_exist = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM snapshot_scopes WHERE payload_hash = ?1)",
                 [&storage_key],
@@ -188,21 +186,7 @@ impl ObservatoryStorage {
     }
 
     pub fn load_latest_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
-        let connection = self.connect()?;
-        let selected = selected_branch_id(&connection)?;
-        let interpretation_id = connection
-            .query_row(
-                "SELECT interpretation_id FROM observation_sources \
-                 WHERE branch_id = ?1 ORDER BY imported_at_ms DESC, interpretation_id DESC LIMIT 1",
-                [&selected],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        interpretation_id
-            .map(|interpretation_id| {
-                self.load_dataset_with_connection(&connection, &interpretation_id)
-            })
-            .transpose()
+        self.load_context_dataset()
     }
 
     pub fn load_dataset(
@@ -239,7 +223,7 @@ impl ObservatoryStorage {
             .map_err(Into::into)
     }
 
-    fn load_dataset_with_connection(
+    pub(crate) fn load_dataset_with_connection(
         &self,
         connection: &Connection,
         interpretation_id: &str,
@@ -335,7 +319,9 @@ impl ObservatoryStorage {
                 mapping_classification: source.21,
                 parser_engine_version: source.22,
             },
-            branch_id: source.8,
+            branch_id: source.8.clone(),
+            original_branch_id: source.8,
+            analysis_context_id: None,
             geographic_scope: source.9,
             coverage,
             source_fields,

@@ -69,7 +69,9 @@ impl ObservatoryStorage {
             .query_row(
                 "SELECT projection_id, projection_kind, source_identity \
                  FROM warehouse_projection_jobs WHERE status = 'pending' \
-                 ORDER BY CASE projection_kind WHEN 'rebuild' THEN 0 ELSE 1 END, \
+                 ORDER BY CASE projection_kind \
+                            WHEN 'rebuild' THEN 0 WHEN 'observation' THEN 1 \
+                            WHEN 'overlay_state' THEN 2 ELSE 3 END, \
                           requested_at_ms, projection_id LIMIT 1",
                 [],
                 |row| {
@@ -153,7 +155,7 @@ impl ObservatoryStorage {
         transaction.execute(
             "UPDATE warehouse_projection_jobs SET status = 'pending', error_code = NULL, \
                  applied_at_ms = NULL \
-             WHERE projection_kind IN ('observation', 'overlay_state')",
+             WHERE projection_kind IN ('observation', 'overlay_state', 'branch_membership')",
             [],
         )?;
         enqueue_projection_job(

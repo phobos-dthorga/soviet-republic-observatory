@@ -26,6 +26,8 @@ const dataset: ReceiverDataset = {
     parser_engine_version: "1.0.0",
   },
   branch_id: "unassigned",
+  original_branch_id: "unassigned",
+  analysis_context_id: "ctx-test",
   geographic_scope: "republic",
   coverage: {
     status: "complete",

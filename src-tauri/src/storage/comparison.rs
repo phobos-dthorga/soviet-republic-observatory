@@ -17,11 +17,33 @@ impl ObservatoryStorage {
             return Err(ObservatoryError::SameObservationComparison);
         }
         let connection = self.connect()?;
-        let (from, from_record) = load_comparison_observation(&connection, from_interpretation_id)?;
-        let (to, to_record) = load_comparison_observation(&connection, to_interpretation_id)?;
-        if from.branch_id != to.branch_id || from.branch_id == "unassigned" {
+        let context = super::analysis_context::load_analysis_context_from(&connection)?;
+        if context.selected_branch_id == "unassigned" {
             return Err(ObservatoryError::IncompatibleComparison);
         }
+        let head = context
+            .head_interpretation_id
+            .as_deref()
+            .ok_or(ObservatoryError::IncompatibleComparison)?;
+        let head_revision = membership_revision(&connection, &context.selected_branch_id, head)?;
+        let from_revision = membership_revision(
+            &connection,
+            &context.selected_branch_id,
+            from_interpretation_id,
+        )?;
+        let to_revision = membership_revision(
+            &connection,
+            &context.selected_branch_id,
+            to_interpretation_id,
+        )?;
+        if from_revision >= to_revision || to_revision > head_revision {
+            return Err(ObservatoryError::IncompatibleComparison);
+        }
+        let (mut from, from_record) =
+            load_comparison_observation(&connection, from_interpretation_id)?;
+        let (mut to, to_record) = load_comparison_observation(&connection, to_interpretation_id)?;
+        from.branch_id.clone_from(&context.selected_branch_id);
+        to.branch_id.clone_from(&context.selected_branch_id);
 
         let from_values = [
             from_record.none,
@@ -58,6 +80,22 @@ impl ObservatoryStorage {
             classified_total_change,
         })
     }
+}
+
+fn membership_revision(
+    connection: &Connection,
+    branch_id: &str,
+    interpretation_id: &str,
+) -> Result<u32, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT membership_revision FROM timeline_branch_memberships \
+             WHERE branch_id = ?1 AND interpretation_id = ?2",
+            [branch_id, interpretation_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or(ObservatoryError::IncompatibleComparison)
 }
 
 fn load_comparison_observation(

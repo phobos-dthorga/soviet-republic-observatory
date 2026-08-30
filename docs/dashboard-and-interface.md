@@ -56,10 +56,15 @@ The Archive separates files observed from distinct statistical states. Its
 branch list changes the analytical context without rewriting history. The state
 ledger exposes game date, exact lineage relationship, shared-prefix evidence,
 coverage, content identity, repeated-file count, and bounded snapshot coverage.
-The comparison assay accepts two distinct states only from the same resolved
+**Inspect this save** pins every analytical workspace to that exact immutable
+state and excludes later membership. **Return to latest** resolves the proven
+tip of the selected branch. **Continue from this save** creates a durable,
+renameable continuation while preserving later history on its existing branch.
+The comparison assay accepts two evidence-ordered states only from the selected
 branch and reports exact receiver-class changes over the actual elapsed game
-days. An unrelated or tied history remains visibly unassigned. File names are
-display evidence only and never establish ancestry.
+days. An unrelated or tied history remains visibly unassigned. File names,
+timestamps, import order, and game dates are display evidence only and never
+establish ancestry.
 
 ### Save observer
 

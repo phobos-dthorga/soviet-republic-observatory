@@ -38,14 +38,12 @@ export function selectedBranchObservations(
 ): ArchiveObservation[] {
   if (!archive || archive.selected_branch_id === "unassigned") return [];
   return archive.observations
-    .filter(
-      (observation) => observation.branch_id === archive.selected_branch_id,
-    )
-    .sort((left, right) => {
-      const leftDay = gameDay(left) ?? Number.MIN_SAFE_INTEGER;
-      const rightDay = gameDay(right) ?? Number.MIN_SAFE_INTEGER;
-      return leftDay - rightDay || left.imported_at_ms - right.imported_at_ms;
-    });
+    .filter((observation) => observation.included_in_context)
+    .sort(
+      (left, right) =>
+        (left.context_sequence ?? Number.MAX_SAFE_INTEGER) -
+        (right.context_sequence ?? Number.MAX_SAFE_INTEGER),
+    );
 }
 
 export function createCadenceChart(

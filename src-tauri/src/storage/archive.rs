@@ -33,8 +33,8 @@ pub(crate) struct BranchResolution {
     branch_kind: &'static str,
     parent_branch_id: Option<String>,
     fork_record_id: Option<u32>,
-    parent_payload_hash: Option<String>,
-    relationship: &'static str,
+    pub parent_payload_hash: Option<String>,
+    pub relationship: &'static str,
     pub shared_record_count: u32,
 }
 
@@ -265,6 +265,17 @@ pub(crate) fn persist_resolution(
         ],
     )?;
     transaction.execute(
+        "INSERT OR IGNORE INTO timeline_branch_metadata(\
+             branch_id, origin, short_identity, player_label, anchor_interpretation_id,\
+             membership_revision, created_at_ms, updated_at_ms\
+         ) VALUES(?1, 'automatic', ?2, NULL, NULL, 0, ?3, ?3)",
+        params![
+            resolution.branch_id,
+            resolution.branch_id.chars().take(24).collect::<String>(),
+            now_ms(),
+        ],
+    )?;
+    transaction.execute(
         "INSERT OR REPLACE INTO observation_lineage(\
              payload_hash, parent_payload_hash, relationship, shared_record_count, resolved_at_ms\
          ) VALUES(?1, ?2, ?3, ?4, ?5)",
@@ -275,10 +286,6 @@ pub(crate) fn persist_resolution(
             resolution.shared_record_count,
             now_ms(),
         ],
-    )?;
-    transaction.execute(
-        "UPDATE archive_state SET selected_branch_id = ?1 WHERE singleton_id = 1",
-        [&resolution.branch_id],
     )?;
     Ok(())
 }
@@ -324,11 +331,47 @@ pub(crate) fn reconcile_unassigned_observations(
         let records = load_history(&transaction, &hash)?;
         let prefixes = history_prefix_fingerprints(&records);
         let resolution = resolve_history(&transaction, &hash, &records, &prefixes)?;
+        let interpretation_id = transaction.query_row(
+            "SELECT interpretation_id FROM observation_sources WHERE payload_hash = ?1",
+            [&hash],
+            |row| row.get::<_, String>(0),
+        )?;
+        transaction.execute(
+            "DELETE FROM timeline_branch_memberships WHERE interpretation_id = ?1",
+            [&interpretation_id],
+        )?;
+        transaction.execute(
+            "UPDATE timeline_branch_metadata SET membership_revision = membership_revision + 1, \
+             updated_at_ms = ?1 WHERE branch_id = 'unassigned'",
+            [now_ms()],
+        )?;
+        let unassigned_revision = transaction.query_row(
+            "SELECT membership_revision FROM timeline_branch_metadata \
+             WHERE branch_id = 'unassigned'",
+            [],
+            |row| row.get::<_, u32>(0),
+        )?;
+        super::warehouse_jobs::enqueue_projection_job(
+            &transaction,
+            &format!("branch_membership:unassigned:{unassigned_revision}"),
+            "branch_membership",
+            "unassigned",
+            now_ms(),
+        )?;
         transaction.execute(
             "UPDATE observation_sources SET branch_id = ?1 WHERE payload_hash = ?2",
             params![resolution.branch_id, hash],
         )?;
         persist_resolution(&transaction, &hash, &resolution)?;
+        super::analysis_context::record_observation_memberships(
+            &transaction,
+            &hash,
+            &interpretation_id,
+            &resolution.branch_id,
+            resolution.relationship,
+            resolution.parent_payload_hash.as_deref(),
+            resolution.shared_record_count,
+        )?;
         transaction.commit()?;
     }
     Ok(())
@@ -337,7 +380,8 @@ pub(crate) fn reconcile_unassigned_observations(
 impl ObservatoryStorage {
     pub fn load_archive_overview(&self) -> Result<ArchiveOverview, ObservatoryError> {
         let connection = self.connect()?;
-        let selected_branch_id = selected_branch_id(&connection)?;
+        let context = super::analysis_context::load_analysis_context_from(&connection)?;
+        let selected_branch_id = context.selected_branch_id.clone();
         let file_observation_count = count(&connection, "archive_observations")?;
         let distinct_state_count = count(&connection, "observation_sources")?;
         let unresolved_state_count = connection.query_row(
@@ -346,7 +390,8 @@ impl ObservatoryStorage {
             |row| row.get::<_, u32>(0),
         )?;
         let branches = load_branches(&connection, &selected_branch_id)?;
-        let observations = load_archive_observations(&connection)?;
+        let mut observations = load_archive_observations(&connection)?;
+        mark_context_observations(&connection, &context, &mut observations)?;
         Ok(ArchiveOverview {
             selected_branch_id,
             file_observation_count,
@@ -354,24 +399,12 @@ impl ObservatoryStorage {
             unresolved_state_count,
             branches,
             observations,
+            analysis_context: context,
         })
     }
 
     pub fn select_branch(&self, branch_id: &str) -> Result<(), ObservatoryError> {
-        let connection = self.connect()?;
-        let exists = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM timeline_branches WHERE branch_id = ?1)",
-            [branch_id],
-            |row| row.get::<_, bool>(0),
-        )?;
-        if !exists {
-            return Err(ObservatoryError::UnknownBranch);
-        }
-        connection.execute(
-            "UPDATE archive_state SET selected_branch_id = ?1 WHERE singleton_id = 1",
-            [branch_id],
-        )?;
-        Ok(())
+        self.select_analysis_branch(branch_id)
     }
 
     pub fn file_observation_count(&self) -> Result<u32, ObservatoryError> {
@@ -383,16 +416,6 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         count(&connection, "observation_sources")
     }
-}
-
-pub(crate) fn selected_branch_id(connection: &Connection) -> Result<String, ObservatoryError> {
-    connection
-        .query_row(
-            "SELECT selected_branch_id FROM archive_state WHERE singleton_id = 1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(Into::into)
 }
 
 fn load_resolved_summaries(
@@ -454,8 +477,13 @@ fn load_branches(
 ) -> Result<Vec<TimelineBranch>, ObservatoryError> {
     let rows = {
         let mut statement = connection.prepare(
-            "SELECT branch_id, branch_kind, parent_branch_id, fork_record_id \
-             FROM timeline_branches ORDER BY created_at_ms, branch_id",
+            "SELECT branch.branch_id, branch.branch_kind, branch.parent_branch_id, \
+                    branch.fork_record_id, metadata.origin, metadata.short_identity, \
+                    metadata.player_label, metadata.anchor_interpretation_id, \
+                    metadata.membership_revision \
+             FROM timeline_branches branch \
+             JOIN timeline_branch_metadata metadata USING (branch_id) \
+             ORDER BY branch.created_at_ms, branch.branch_id",
         )?;
         statement
             .query_map([], |row| {
@@ -464,14 +492,30 @@ fn load_branches(
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<u32>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, u32>(8)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?
     };
     let mut branches = Vec::new();
-    for (branch_id, branch_kind, parent_branch_id, fork_record_id) in rows {
+    for (
+        branch_id,
+        branch_kind,
+        parent_branch_id,
+        fork_record_id,
+        origin,
+        short_identity,
+        player_label,
+        anchor_interpretation_id,
+        membership_revision,
+    ) in rows
+    {
         let observation_count = connection.query_row(
-            "SELECT COUNT(*) FROM observation_sources WHERE branch_id = ?1",
+            "SELECT COUNT(*) FROM timeline_branch_memberships WHERE branch_id = ?1",
             [&branch_id],
             |row| row.get::<_, u32>(0),
         )?;
@@ -488,6 +532,15 @@ fn load_branches(
             observation_count,
             latest_year: latest.map(|date| date.0),
             latest_day: latest.map(|date| date.1),
+            origin: if origin == "manual_continuation" {
+                crate::model::AnalysisContextOrigin::ManualContinuation
+            } else {
+                crate::model::AnalysisContextOrigin::Automatic
+            },
+            short_identity,
+            player_label,
+            anchor_interpretation_id,
+            membership_revision,
         });
     }
     Ok(branches)
@@ -552,10 +605,49 @@ fn load_archive_observations(
                 profile_id: row.get(17)?,
                 profile_version: row.get(18)?,
                 resolved_profile_hash: row.get(19)?,
+                included_in_context: false,
+                active_head: false,
+                context_sequence: None,
             })
         })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(Into::into)
+}
+
+fn mark_context_observations(
+    connection: &Connection,
+    context: &crate::model::AnalysisContext,
+    observations: &mut [ArchiveObservation],
+) -> Result<(), ObservatoryError> {
+    let Some(head) = context.head_interpretation_id.as_deref() else {
+        return Ok(());
+    };
+    let head_revision = connection
+        .query_row(
+            "SELECT membership_revision FROM timeline_branch_memberships \
+             WHERE branch_id = ?1 AND interpretation_id = ?2",
+            params![context.selected_branch_id, head],
+            |row| row.get::<_, u32>(0),
+        )
+        .optional()?;
+    let Some(head_revision) = head_revision else {
+        return Ok(());
+    };
+    let mut statement = connection.prepare(
+        "SELECT interpretation_id, membership_revision FROM timeline_branch_memberships \
+         WHERE branch_id = ?1 AND membership_revision <= ?2",
+    )?;
+    let included = statement
+        .query_map(params![context.selected_branch_id, head_revision], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
+        })?
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
+    for observation in observations {
+        observation.context_sequence = included.get(&observation.interpretation_id).copied();
+        observation.included_in_context = observation.context_sequence.is_some();
+        observation.active_head = observation.interpretation_id == head;
+    }
+    Ok(())
 }
 
 fn latest_date_for_branch(
@@ -564,11 +656,11 @@ fn latest_date_for_branch(
 ) -> Result<Option<(i32, u16)>, ObservatoryError> {
     connection
         .query_row(
-            "SELECT node.year, node.day FROM observation_sources os \
-             JOIN observation_history_tips tip ON tip.payload_hash = os.payload_hash \
+            "SELECT node.year, node.day FROM timeline_branch_memberships membership \
+             JOIN observation_history_tips tip ON tip.payload_hash = membership.payload_hash \
              JOIN receiver_history_nodes node ON node.node_id = tip.tip_node_id \
-             WHERE os.branch_id = ?1 \
-             ORDER BY node.game_day DESC, node.record_id DESC LIMIT 1",
+             WHERE membership.branch_id = ?1 \
+             ORDER BY membership.membership_revision DESC LIMIT 1",
             [branch_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

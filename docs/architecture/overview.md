@@ -91,6 +91,14 @@ re-observing a shorter prefix, or finding a unique partial divergence creates a
 separate fork. Evidence tied across branches or sharing no supported prefix
 remains `unassigned`. Filename and modification order never establish ancestry.
 
+SQLite also owns an exact `AnalysisContext`: selected branch, immutable head,
+preview/latest mode, origin, membership revision, and evidence watermarks.
+Observations keep their original automatic branch while many-to-many membership
+allows a manual continuation to reuse an anchor without copying facts. Only a
+strict supported-history descendant advances the selected continuation.
+DuckDB receives versioned membership generations through the governed outbox;
+it does not decide branch membership.
+
 ### Storage
 
 The first append-only SQLite migration stores observation sources, embedded

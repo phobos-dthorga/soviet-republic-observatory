@@ -42,6 +42,8 @@ export type ReceiverDataset = {
   format_profile: string;
   compatibility: CompatibilityProvenance;
   branch_id: string;
+  original_branch_id: string;
+  analysis_context_id: string | null;
   geographic_scope: string;
   coverage: CoverageReport;
   source_fields: MetricEvidence[];
@@ -57,6 +59,11 @@ export type TimelineBranch = {
   latest_year: number | null;
   latest_day: number | null;
   selected: boolean;
+  origin: "automatic" | "manual_continuation";
+  short_identity: string;
+  player_label: string | null;
+  anchor_interpretation_id: string | null;
+  membership_revision: number;
 };
 
 export type ArchiveObservation = {
@@ -75,7 +82,8 @@ export type ArchiveObservation = {
     | "equivalent_history"
     | "rollback_fork"
     | "divergent_fork"
-    | "ambiguous";
+    | "ambiguous"
+    | "continuation_anchor";
   parent_payload_hash: string | null;
   shared_record_count: number;
   latest_year: number | null;
@@ -86,6 +94,25 @@ export type ArchiveObservation = {
   republic_snapshot_fields: number;
   city_snapshot_count: number;
   city_snapshot_fields: number;
+  included_in_context: boolean;
+  active_head: boolean;
+  context_sequence: number | null;
+};
+
+export type AnalysisContext = {
+  context_id: string;
+  selected_branch_id: string;
+  head_interpretation_id: string | null;
+  original_branch_id: string | null;
+  mode: "latest" | "historical_preview";
+  origin: "automatic" | "manual_continuation";
+  is_tip: boolean;
+  membership_revision: number;
+  compatibility_profile_id: string | null;
+  compatibility_profile_hash: string | null;
+  observation_watermark: string | null;
+  catalogue_generation_id: string | null;
+  overlay_revision: string | null;
 };
 
 export type ArchiveOverview = {
@@ -95,12 +122,16 @@ export type ArchiveOverview = {
   unresolved_state_count: number;
   branches: TimelineBranch[];
   observations: ArchiveObservation[];
+  analysis_context: AnalysisContext;
 };
 
-export type BranchSelectionResult = {
+export type AnalysisContextResult = {
   archive: ArchiveOverview;
+  context: AnalysisContext;
   dataset: ReceiverDataset | null;
 };
+
+export type BranchSelectionResult = AnalysisContextResult;
 
 export type ComparisonObservation = {
   payload_hash: string;
@@ -240,6 +271,8 @@ export type ImportOutcome = "imported" | "duplicate";
 
 export type ObservationImportResult = {
   outcome: ImportOutcome;
+  recorded_interpretation_id: string;
+  active_context_id: string;
   dataset: ReceiverDataset;
 };
 
@@ -349,6 +382,7 @@ export type WarehouseWriteActivity = {
     | "catalogue_publication"
     | "observation_projection"
     | "overlay_projection"
+    | "branch_membership_projection"
     | "observation_rebuild";
   stage: "staging" | "merging" | "committing" | "rebuilding";
   started_at_ms: number;

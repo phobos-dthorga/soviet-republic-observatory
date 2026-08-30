@@ -18,7 +18,7 @@ use crate::language_pack::{
     LanguagePackInspection, LanguageStatus, LegacyLanguageHandover, inspect_community_manifest,
 };
 use crate::model::{
-    ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
+    AnalysisContextResult, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
@@ -333,13 +333,23 @@ impl ObservatoryApplication {
             progress.progress_percent = Some(92);
             progress.updated_at_ms = Some(now_ms());
             self.report_reinterpretation_progress(&progress, &mut notify);
-            let dataset = self.storage.load_dataset(&inspection.interpretation_id)?;
+            let dataset = self
+                .storage
+                .load_context_dataset()?
+                .ok_or(ObservatoryError::UnknownObservation)?;
+            let active_context_id = self
+                .storage
+                .load_archive_overview()?
+                .analysis_context
+                .context_id;
             Ok(ObservationImportResult {
                 outcome: if inserted {
                     ImportOutcome::Imported
                 } else {
                     ImportOutcome::Duplicate
                 },
+                recorded_interpretation_id: inspection.interpretation_id,
+                active_context_id,
                 dataset,
             })
         })();
@@ -489,7 +499,12 @@ impl ObservatoryApplication {
     }
 
     pub fn archive_overview(&self) -> Result<ArchiveOverview, ObservatoryError> {
-        self.storage.load_archive_overview()
+        let mut archive = self.storage.load_archive_overview()?;
+        archive.analysis_context.catalogue_generation_id = self
+            .warehouse
+            .catalogue_generation_if_ready()
+            .map(|generation| generation.generation_id);
+        Ok(archive)
     }
 
     pub fn configure_directory(
@@ -541,7 +556,10 @@ impl ObservatoryApplication {
         let profile = self.compatibility.active()?;
         let inspection = inspect_save_archive(&path, &profile)?;
         let inserted = self.storage.save_inspection(&inspection)?;
-        let dataset = self.storage.load_dataset(&inspection.interpretation_id)?;
+        let dataset = self
+            .storage
+            .load_context_dataset()?
+            .ok_or(ObservatoryError::UnknownObservation)?;
         self.automatic_observer
             .lock()
             .map_err(|_| ObservatoryError::StorageUnavailable)?
@@ -552,6 +570,12 @@ impl ObservatoryApplication {
             } else {
                 ImportOutcome::Duplicate
             },
+            recorded_interpretation_id: inspection.interpretation_id,
+            active_context_id: self
+                .storage
+                .load_archive_overview()?
+                .analysis_context
+                .context_id,
             dataset,
         })
     }
@@ -559,11 +583,48 @@ impl ObservatoryApplication {
     pub fn select_branch(
         &self,
         branch_id: &str,
-    ) -> Result<BranchSelectionResult, ObservatoryError> {
+    ) -> Result<AnalysisContextResult, ObservatoryError> {
         self.storage.select_branch(branch_id)?;
-        Ok(BranchSelectionResult {
-            archive: self.storage.load_archive_overview()?,
-            dataset: self.storage.load_latest_dataset()?,
+        self.analysis_context_result()
+    }
+
+    pub fn inspect_archive_observation(
+        &self,
+        interpretation_id: &str,
+    ) -> Result<AnalysisContextResult, ObservatoryError> {
+        self.storage.inspect_observation(interpretation_id)?;
+        self.analysis_context_result()
+    }
+
+    pub fn return_to_branch_tip(&self) -> Result<AnalysisContextResult, ObservatoryError> {
+        self.storage.return_to_branch_tip()?;
+        self.analysis_context_result()
+    }
+
+    pub fn create_continuation(
+        &self,
+        interpretation_id: &str,
+        label: Option<&str>,
+    ) -> Result<AnalysisContextResult, ObservatoryError> {
+        self.storage.create_continuation(interpretation_id, label)?;
+        self.analysis_context_result()
+    }
+
+    pub fn set_branch_label(
+        &self,
+        branch_id: &str,
+        label: Option<&str>,
+    ) -> Result<AnalysisContextResult, ObservatoryError> {
+        self.storage.set_branch_label(branch_id, label)?;
+        self.analysis_context_result()
+    }
+
+    fn analysis_context_result(&self) -> Result<AnalysisContextResult, ObservatoryError> {
+        let archive = self.archive_overview()?;
+        Ok(AnalysisContextResult {
+            context: archive.analysis_context.clone(),
+            archive,
+            dataset: self.storage.load_context_dataset()?,
         })
     }
 
@@ -1028,6 +1089,18 @@ impl ObservatoryApplication {
                     now_ms(),
                 )
             }),
+            "branch_membership" => self
+                .storage
+                .branch_membership_projection(&job.source_identity)
+                .and_then(|(revision, memberships)| {
+                    self.warehouse.project_branch_memberships(
+                        &job.projection_id,
+                        &memberships,
+                        &job.source_identity,
+                        revision,
+                        now_ms(),
+                    )
+                }),
             "rebuild" => self
                 .warehouse
                 .rebuild_observations(&job.projection_id, now_ms()),

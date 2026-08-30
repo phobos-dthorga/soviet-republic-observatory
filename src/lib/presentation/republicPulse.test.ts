@@ -23,6 +23,21 @@ const archive: ArchiveOverview = {
     observation("middle", "main", 2, 20, 2),
     observation("first", "main", 1, 330, 1),
   ],
+  analysis_context: {
+    context_id: "ctx-test",
+    selected_branch_id: "main",
+    head_interpretation_id: "latest-interpretation",
+    original_branch_id: "main",
+    mode: "latest",
+    origin: "automatic",
+    is_tip: true,
+    membership_revision: 3,
+    compatibility_profile_id: null,
+    compatibility_profile_hash: null,
+    observation_watermark: "latest-interpretation",
+    catalogue_generation_id: null,
+    overlay_revision: null,
+  },
 };
 
 describe("Republic Pulse", () => {
@@ -88,5 +103,15 @@ function observation(
     republic_snapshot_fields: 18,
     city_snapshot_count: 1,
     city_snapshot_fields: 5,
+    included_in_context: branch_id === "main",
+    active_head: payload_hash === "latest",
+    context_sequence:
+      branch_id === "main"
+        ? payload_hash === "first"
+          ? 1
+          : payload_hash === "middle"
+            ? 2
+            : 3
+        : null,
   };
 }

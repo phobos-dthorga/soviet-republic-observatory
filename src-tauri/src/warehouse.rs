@@ -10,7 +10,7 @@ use crate::definition_catalogue::{
 };
 use crate::error::ObservatoryError;
 use crate::model::{
-    CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
+    BranchMembershipProjection, CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
     DefinitionValue, ProductionRouteCoverage, ProductionRouteFlow, ProductionRouteModel,
@@ -24,7 +24,7 @@ use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 4;
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 5;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
@@ -131,6 +131,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         4,
         include_str!("../warehouse_migrations/0004_definition_mapping_provenance.sql"),
+    ),
+    (
+        5,
+        include_str!("../warehouse_migrations/0005_branch_memberships.sql"),
     ),
 ];
 
@@ -777,6 +781,64 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    pub fn project_branch_memberships(
+        &self,
+        projection_id: &str,
+        memberships: &[BranchMembershipProjection],
+        branch_id: &str,
+        membership_revision: u32,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
+            return Ok(());
+        }
+        let rows_total = u64::try_from(memberships.len()).unwrap_or(u64::MAX);
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::BranchMembershipProjection, rows_total)?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO branch_membership_generations VALUES(?1, ?2, ?3)",
+            params![branch_id, membership_revision, applied_at_ms],
+        )?;
+        {
+            let mut appender = transaction.appender("branch_observation_memberships")?;
+            for (index, membership) in memberships.iter().enumerate() {
+                appender.append_row(params![
+                    membership.branch_id,
+                    membership.membership_revision,
+                    membership.interpretation_id,
+                    membership.payload_hash,
+                    membership.parent_interpretation_id,
+                    membership.relationship,
+                    membership.shared_record_count,
+                ])?;
+                let written = u64::try_from(index + 1).unwrap_or(rows_total);
+                if written == rows_total || written.is_multiple_of(512) {
+                    permit.progress(WarehouseWriteStage::Staging, written);
+                }
+            }
+        }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
+        record_receipt(
+            &transaction,
+            projection_id,
+            "branch_membership",
+            branch_id,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1 WHERE singleton_id = 1",
+            [applied_at_ms],
+        )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
+        transaction.commit()?;
+        permit.complete();
+        Ok(())
+    }
+
     pub fn rebuild_observations(
         &self,
         projection_id: &str,
@@ -793,8 +855,11 @@ impl AnalyticalWarehouse {
         permit.progress(WarehouseWriteStage::Rebuilding, 0);
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM observation_metrics", [])?;
+        transaction.execute("DELETE FROM branch_observation_memberships", [])?;
+        transaction.execute("DELETE FROM branch_membership_generations", [])?;
         transaction.execute(
-            "DELETE FROM projection_receipts WHERE projection_kind = 'observation'",
+            "DELETE FROM projection_receipts \
+             WHERE projection_kind IN ('observation', 'branch_membership')",
             [],
         )?;
         record_receipt(
@@ -1978,6 +2043,8 @@ mod tests {
                     .expect("profile")
                     .provenance(),
             branch_id: "main".to_owned(),
+            original_branch_id: "main".to_owned(),
+            analysis_context_id: None,
             geographic_scope: "republic".to_owned(),
             coverage: CoverageReport {
                 status: CoverageStatus::Complete,
@@ -2017,6 +2084,74 @@ mod tests {
         );
         drop(warehouse);
         AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn branch_membership_generations_are_idempotent_and_can_project_an_empty_revision() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("branches.duckdb"))
+            .expect("warehouse");
+        let membership = BranchMembershipProjection {
+            branch_id: "continuation-test".to_owned(),
+            membership_revision: 1,
+            interpretation_id: "interpretation-one".to_owned(),
+            payload_hash: "payload-one".to_owned(),
+            parent_interpretation_id: None,
+            relationship: "continuation_anchor".to_owned(),
+            shared_record_count: 2,
+        };
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:continuation-test:1",
+                std::slice::from_ref(&membership),
+                "continuation-test",
+                1,
+                10,
+            )
+            .expect("first projection");
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:continuation-test:1",
+                std::slice::from_ref(&membership),
+                "continuation-test",
+                1,
+                11,
+            )
+            .expect("duplicate delivery");
+        assert_eq!(
+            warehouse
+                .lock()
+                .expect("connection")
+                .query_row(
+                    "SELECT COUNT(*) FROM current_branch_observation_memberships",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("current membership"),
+            1
+        );
+
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:continuation-test:2",
+                &[],
+                "continuation-test",
+                2,
+                12,
+            )
+            .expect("empty replacement generation");
+        assert_eq!(
+            warehouse
+                .lock()
+                .expect("connection")
+                .query_row(
+                    "SELECT COUNT(*) FROM current_branch_observation_memberships",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("empty current generation"),
+            0
+        );
     }
 
     #[test]

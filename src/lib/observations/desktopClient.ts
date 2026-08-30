@@ -9,7 +9,7 @@ import type {
 import type {
   ArchiveOverview,
   ArchiveComparison,
-  BranchSelectionResult,
+  AnalysisContextResult,
   CataloguePage,
   CatalogueRefreshProgress,
   CatalogueSearchFilter,
@@ -76,9 +76,41 @@ export function listenForRecorderUpdates(
 
 export function selectTimelineBranch(
   branchId: string,
-): Promise<BranchSelectionResult> {
-  return invoke<BranchSelectionResult>("select_timeline_branch", {
+): Promise<AnalysisContextResult> {
+  return invoke<AnalysisContextResult>("select_timeline_branch", {
     branchId,
+  });
+}
+
+export function inspectArchiveObservation(
+  interpretationId: string,
+): Promise<AnalysisContextResult> {
+  return invoke<AnalysisContextResult>("inspect_archive_observation", {
+    interpretationId,
+  });
+}
+
+export function returnToBranchTip(): Promise<AnalysisContextResult> {
+  return invoke<AnalysisContextResult>("return_to_branch_tip");
+}
+
+export function createTimelineContinuation(
+  interpretationId: string,
+  label?: string,
+): Promise<AnalysisContextResult> {
+  return invoke<AnalysisContextResult>("create_timeline_continuation", {
+    interpretationId,
+    label,
+  });
+}
+
+export function setTimelineBranchLabel(
+  branchId: string,
+  label: string | null,
+): Promise<AnalysisContextResult> {
+  return invoke<AnalysisContextResult>("set_timeline_branch_label", {
+    branchId,
+    label,
   });
 }
 

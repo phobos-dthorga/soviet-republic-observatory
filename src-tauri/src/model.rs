@@ -239,6 +239,8 @@ pub struct ReceiverDataset {
     pub format_profile: String,
     pub compatibility: CompatibilityProvenance,
     pub branch_id: String,
+    pub original_branch_id: String,
+    pub analysis_context_id: Option<String>,
     pub geographic_scope: String,
     pub coverage: CoverageReport,
     pub source_fields: Vec<MetricEvidence>,
@@ -255,6 +257,11 @@ pub struct TimelineBranch {
     pub latest_year: Option<i32>,
     pub latest_day: Option<u16>,
     pub selected: bool,
+    pub origin: AnalysisContextOrigin,
+    pub short_identity: String,
+    pub player_label: Option<String>,
+    pub anchor_interpretation_id: Option<String>,
+    pub membership_revision: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -279,6 +286,40 @@ pub struct ArchiveObservation {
     pub republic_snapshot_fields: u32,
     pub city_snapshot_count: u32,
     pub city_snapshot_fields: u32,
+    pub included_in_context: bool,
+    pub active_head: bool,
+    pub context_sequence: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisContextMode {
+    Latest,
+    HistoricalPreview,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisContextOrigin {
+    Automatic,
+    ManualContinuation,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AnalysisContext {
+    pub context_id: String,
+    pub selected_branch_id: String,
+    pub head_interpretation_id: Option<String>,
+    pub original_branch_id: Option<String>,
+    pub mode: AnalysisContextMode,
+    pub origin: AnalysisContextOrigin,
+    pub is_tip: bool,
+    pub membership_revision: u32,
+    pub compatibility_profile_id: Option<String>,
+    pub compatibility_profile_hash: Option<String>,
+    pub observation_watermark: Option<String>,
+    pub catalogue_generation_id: Option<String>,
+    pub overlay_revision: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -289,12 +330,25 @@ pub struct ArchiveOverview {
     pub unresolved_state_count: u32,
     pub branches: Vec<TimelineBranch>,
     pub observations: Vec<ArchiveObservation>,
+    pub analysis_context: AnalysisContext,
 }
 
 #[derive(Clone, Debug, Serialize)]
-pub struct BranchSelectionResult {
+pub struct AnalysisContextResult {
     pub archive: ArchiveOverview,
+    pub context: AnalysisContext,
     pub dataset: Option<ReceiverDataset>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BranchMembershipProjection {
+    pub branch_id: String,
+    pub membership_revision: u32,
+    pub interpretation_id: String,
+    pub payload_hash: String,
+    pub parent_interpretation_id: Option<String>,
+    pub relationship: String,
+    pub shared_record_count: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -440,6 +494,8 @@ pub enum ImportOutcome {
 #[derive(Clone, Debug, Serialize)]
 pub struct ObservationImportResult {
     pub outcome: ImportOutcome,
+    pub recorded_interpretation_id: String,
+    pub active_context_id: String,
     pub dataset: ReceiverDataset,
 }
 
@@ -643,6 +699,7 @@ pub enum WarehouseWriteKind {
     CataloguePublication,
     ObservationProjection,
     OverlayProjection,
+    BranchMembershipProjection,
     ObservationRebuild,
 }
 

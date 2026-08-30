@@ -7,6 +7,7 @@ use crate::model::{WarehouseWriteActivity, WarehouseWriteKind, WarehouseWriteSta
 const MAX_CATALOGUE_ROWS: u64 = 6_000_000;
 const MAX_OBSERVATION_ROWS: u64 = 5_000_000;
 const MAX_OVERLAY_ROWS: u64 = 4_608;
+const MAX_BRANCH_MEMBERSHIP_ROWS: u64 = 1_000_000;
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -143,6 +144,7 @@ fn row_limit(kind: WarehouseWriteKind) -> u64 {
         WarehouseWriteKind::CataloguePublication => MAX_CATALOGUE_ROWS,
         WarehouseWriteKind::ObservationProjection => MAX_OBSERVATION_ROWS,
         WarehouseWriteKind::OverlayProjection => MAX_OVERLAY_ROWS,
+        WarehouseWriteKind::BranchMembershipProjection => MAX_BRANCH_MEMBERSHIP_ROWS,
         WarehouseWriteKind::ObservationRebuild => 0,
     }
 }

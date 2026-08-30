@@ -45,6 +45,8 @@ pub enum ObservatoryError {
     SameObservationComparison,
     #[error("One of the selected observations no longer exists.")]
     UnknownObservation,
+    #[error("That timeline branch label is invalid.")]
+    InvalidBranchLabel,
     #[error("The analytical warehouse is unavailable.")]
     WarehouseUnavailable,
     #[error("The analytical warehouse write exceeds its bounded workload limit.")]
@@ -143,6 +145,7 @@ impl ObservatoryError {
             Self::IncompatibleComparison => "incompatible_comparison",
             Self::SameObservationComparison => "same_observation_comparison",
             Self::UnknownObservation => "unknown_observation",
+            Self::InvalidBranchLabel => "invalid_branch_label",
             Self::WarehouseUnavailable => "warehouse_unavailable",
             Self::WarehouseWriteLimit => "warehouse_write_limit",
             Self::CatalogueUnavailable => "catalogue_unavailable",

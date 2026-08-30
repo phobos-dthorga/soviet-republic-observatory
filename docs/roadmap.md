@@ -62,8 +62,15 @@ Implemented foundation:
 - Native event-driven recorder with periodic reconciliation fallback
 - Crash-recoverable SQLite candidate lifecycle ledger
 - Event-driven Observer Health and save-to-save Republic Pulse workspace
+- Exact historical analytical heads, reversible save inspection, proven-tip
+  return, and persistent player-created continuations
+- Many-to-many branch memberships with immutable original branch evidence,
+  strict-descendant advancement, restart recovery, and governed DuckDB
+  projection
 
-The branch-aware archive slice is complete at its currently documented scope.
+The branch-aware archive and historical-continuation slice is complete at its
+currently documented scope. Cross-branch alternate-futures comparison remains
+deliberately unavailable.
 
 ## Slice 3 — definition catalogue and planning warehouse — implemented foundation
 

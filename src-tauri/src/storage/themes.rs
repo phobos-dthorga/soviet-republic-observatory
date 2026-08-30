@@ -3,8 +3,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::{ObservatoryStorage, now_ms};
 use crate::error::ObservatoryError;
 use crate::theme::{
-    AvailableThemeRevision, DEFAULT_THEME_ID, DEFAULT_THEME_VERSION, ThemeSource,
-    ThemeStatus, built_in_themes, canonical_theme_json, parse_community_theme, parse_stored_theme,
+    AvailableThemeRevision, DEFAULT_THEME_ID, DEFAULT_THEME_VERSION, ThemeSource, ThemeStatus,
+    built_in_themes, canonical_theme_json, parse_community_theme, parse_stored_theme,
     same_theme_appearance, theme_content_hash, validate_contrast,
 };
 

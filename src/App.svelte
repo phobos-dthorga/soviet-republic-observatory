@@ -22,6 +22,7 @@
   import {
     clearDiagnosticLog,
     compareArchiveObservations,
+    createTimelineContinuation,
     desktopHostAvailable,
     getArchiveOverview,
     getCatalogueStatus,
@@ -30,12 +31,15 @@
     getReinterpretationProgress,
     getRecorderHealth,
     getSetupState,
+    inspectArchiveObservation,
     listenForRecorderUpdates,
     listenForCatalogueProgress,
     listenForCompatibilityUpdates,
     listenForReinterpretationProgress,
     listenForWarehouseUpdates,
     selectTimelineBranch,
+    returnToBranchTip,
+    setTimelineBranchLabel,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
@@ -106,6 +110,8 @@
         return $translation("nav-monitor");
       case "overlay_projection":
         return $translation("catalogue-overlays");
+      case "branch_membership_projection":
+        return $translation("archive-branches");
       case "observation_rebuild":
         return $translation("catalogue-rebuild");
     }
@@ -133,19 +139,60 @@
 
   function activeBranchLabel(): string {
     if (!receiverDataset) return "planning-preview";
+    const selected = archiveOverview?.branches.find(
+      (branch) => branch.selected,
+    );
+    if (selected?.player_label) return selected.player_label;
     if (receiverDataset.branch_id === "main")
       return $translation("archive-branch-main");
     if (receiverDataset.branch_id === "unassigned")
       return $translation("archive-branch-unassigned");
-    return $translation("archive-branch-fork", {
-      identity: receiverDataset.branch_id.replace("fork-", "").slice(0, 6),
-    });
+    return $translation(
+      selected?.origin === "manual_continuation"
+        ? "archive-branch-continuation"
+        : "archive-branch-fork",
+      {
+        identity:
+          selected?.short_identity ?? receiverDataset.branch_id.slice(0, 12),
+      },
+    );
   }
 
   async function selectBranch(branchId: string): Promise<void> {
     const result = await selectTimelineBranch(branchId);
+    applyAnalysisContext(result);
+  }
+
+  function applyAnalysisContext(result: {
+    archive: ArchiveOverview;
+    dataset: ReceiverDataset | null;
+  }): void {
     archiveOverview = result.archive;
     receiverDataset = result.dataset;
+  }
+
+  async function inspectObservation(interpretationId: string): Promise<void> {
+    applyAnalysisContext(await inspectArchiveObservation(interpretationId));
+  }
+
+  async function returnLatest(): Promise<void> {
+    applyAnalysisContext(await returnToBranchTip());
+  }
+
+  async function continueFromObservation(
+    interpretationId: string,
+    label: string,
+  ): Promise<void> {
+    applyAnalysisContext(
+      await createTimelineContinuation(interpretationId, label),
+    );
+  }
+
+  async function renameBranch(
+    branchId: string,
+    label: string | null,
+  ): Promise<void> {
+    applyAnalysisContext(await setTimelineBranchLabel(branchId, label));
   }
 
   function acceptObservation(dataset: ReceiverDataset): void {
@@ -520,7 +567,12 @@
           count: setupState?.observed_saves ?? 0,
         })}</span
       >
-      <button type="button" disabled>{$translation("return-latest")}</button>
+      <button
+        type="button"
+        disabled={!desktopAvailable || archiveOverview?.analysis_context.is_tip}
+        onclick={() => void returnLatest()}
+        >{$translation("return-latest")}</button
+      >
     </div>
   </section>
 
@@ -540,7 +592,7 @@
     <ExtensionsWorkspace
       {desktopAvailable}
       observationContext={receiverDataset
-        ? `${receiverDataset.payload_hash}:${receiverDataset.branch_id}`
+        ? `${receiverDataset.analysis_context_id ?? "unbound"}:${receiverDataset.interpretation_id}:${receiverDataset.branch_id}`
         : ""}
     />
   {:else if activeWorkspace === "materials"}
@@ -553,6 +605,10 @@
       archive={archiveOverview}
       {desktopAvailable}
       onselect={selectBranch}
+      oninspect={inspectObservation}
+      oncontinue={continueFromObservation}
+      onrename={renameBranch}
+      onreturn={returnLatest}
       oncompare={compareArchiveObservations}
     />
   {/if}

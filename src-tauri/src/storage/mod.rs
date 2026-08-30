@@ -1,3 +1,4 @@
+mod analysis_context;
 mod analysis_packs;
 mod archive;
 mod comparison;

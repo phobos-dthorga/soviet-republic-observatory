@@ -478,12 +478,14 @@ impl AnalysisPackDocument {
             dataset.coverage.status == CoverageStatus::Partial || first_chart_point > 0;
         let hash_label = &content_hash[..content_hash.len().min(12)];
         let chart_source = bounded_source(format!(
-            "{} {} · {} · {} selected observations · branch {} · {}",
+            "{} {} · {} · {} selected observations · branch {} · head {} · context {} · {}",
             self.id,
             self.version,
             hash_label,
             chart_points.len(),
             dataset.branch_id,
+            &dataset.interpretation_id[..dataset.interpretation_id.len().min(12)],
+            dataset.analysis_context_id.as_deref().unwrap_or("unbound"),
             dataset.geographic_scope
         ));
 
@@ -839,6 +841,8 @@ mod tests {
                     .expect("profile")
                     .provenance(),
             branch_id: "main".to_owned(),
+            original_branch_id: "main".to_owned(),
+            analysis_context_id: Some("ctx-test".to_owned()),
             geographic_scope: "republic".to_owned(),
             coverage: CoverageReport {
                 status: CoverageStatus::Complete,

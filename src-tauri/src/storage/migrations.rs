@@ -54,6 +54,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "safe immutable theme revisions and selected theme preference",
         include_str!("../../migrations/0010_theme_revisions.sql"),
     ),
+    (
+        11,
+        "historical analytical heads and continuation memberships",
+        include_str!("../../migrations/0011_historical_analysis_contexts.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

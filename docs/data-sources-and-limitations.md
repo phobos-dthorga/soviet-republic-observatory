@@ -25,7 +25,17 @@ The implemented manual and automatic observers follow this sequence:
    atomically in app-local SQLite;
 8. resolve exact supported prefixes into a main timeline, successor, fork, or
    visibly unassigned state; and
-9. return a bounded dataset for the selected branch to the presentation.
+9. update a selected branch only when strict prefix descent is proven; and
+10. return a bounded dataset for the selected branch's exact analytical head to
+    the presentation.
+
+Historical selection never invents a rollback event. A historical preview is a
+reversible view over an existing immutable interpretation. A continuation is a
+player-created branch membership, not a claim that the game save itself stores
+that branch name. Later states are excluded rather than deleted. An unrelated,
+shorter, or ambiguous save remains recorded but cannot hijack the selected
+continuation. Cross-branch statistics remain unavailable until a dedicated
+alternate-futures model can expose a proven shared divergence point.
 
 The reviewed W&R 1.1.1.9 compatibility profile reproduces the previously
 verified text parser mappings. A valid local override is accepted immediately

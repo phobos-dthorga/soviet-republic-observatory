@@ -102,7 +102,9 @@ seconds as a fallback, waits for unchanged file metadata before reading, and
 retries temporary incomplete archives. The source archive remains untouched.
 Use **Monitor** to inspect recorder health and Republic Pulse, and **Archive** to
 inspect ancestry, select a timeline branch, and
-compare two distinct states on that branch. Configure the game installation
+compare two distinct states on that branch. Archive can also pin an exact older
+save or create a durable continuation from it without deleting the later
+future. Configure the game installation
 folder to build the Industrial Catalogue from local base, DLC, subscribed
 Workshop, and WIP definitions. A separate Workshop-folder selector is available
 when Steam discovery cannot resolve external Workshop content. The header shows

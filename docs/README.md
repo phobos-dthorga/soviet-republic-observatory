@@ -48,6 +48,9 @@ an engineering requirement.
 - [Safe community themes and contrast assurance](themes.md) — inert semantic
   colour roles, native validation, immutable revisions, fallback, authoring,
   and every-build interface audits
+- [Historical analytical heads and continuations](architecture/decisions/0017-historical-heads-and-continuations.md)
+  — exact save previews, durable forks, many-to-many memberships, and ancestry
+  integrity
 
 ## Architecture
 
@@ -68,6 +71,7 @@ an engineering requirement.
 - [ADR-0014: exceptional visuals through explicit analytical contracts](architecture/decisions/0014-exceptional-visuals-doctrine.md)
 - [ADR-0015: inert community themes with native validation](architecture/decisions/0015-inert-community-themes.md)
 - [ADR-0016: enforce the domain and presentation boundary](architecture/decisions/0016-domain-presentation-boundary.md)
+- [ADR-0017: exact analytical heads and evidence-backed continuations](architecture/decisions/0017-historical-heads-and-continuations.md)
 
 ## Evidence status vocabulary
 

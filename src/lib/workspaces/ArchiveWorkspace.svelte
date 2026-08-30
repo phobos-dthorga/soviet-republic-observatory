@@ -13,11 +13,19 @@
     archive,
     desktopAvailable,
     onselect,
+    oninspect,
+    oncontinue,
+    onrename,
+    onreturn,
     oncompare,
   }: {
     archive: ArchiveOverview | null;
     desktopAvailable: boolean;
     onselect: (branchId: string) => Promise<void>;
+    oninspect: (interpretationId: string) => Promise<void>;
+    oncontinue: (interpretationId: string, label: string) => Promise<void>;
+    onrename: (branchId: string, label: string | null) => Promise<void>;
+    onreturn: () => Promise<void>;
     oncompare: (
       fromPayloadHash: string,
       toPayloadHash: string,
@@ -32,15 +40,24 @@
   let comparisonTo = $state("");
   let comparisonBranch = $state("");
   let comparison = $state<ArchiveComparison | null>(null);
+  let contextBusy = $state(false);
+  let contextError = $state(false);
+  let branchLabelDraft = $state("");
   const selectedBranch = $derived(
     archive?.branches.find((branch) => branch.selected) ?? null,
   );
   const branchObservations = $derived(
-    (archive?.observations ?? []).filter(
-      (observation) =>
-        observation.branch_id === archive?.selected_branch_id &&
-        observation.branch_id !== "unassigned",
-    ),
+    (archive?.observations ?? [])
+      .filter(
+        (observation) =>
+          observation.included_in_context &&
+          archive?.selected_branch_id !== "unassigned",
+      )
+      .sort(
+        (left, right) =>
+          (left.context_sequence ?? Number.MAX_SAFE_INTEGER) -
+          (right.context_sequence ?? Number.MAX_SAFE_INTEGER),
+      ),
   );
 
   $effect(() => {
@@ -53,6 +70,10 @@
     comparisonError = false;
   });
 
+  $effect(() => {
+    branchLabelDraft = selectedBranch?.player_label ?? "";
+  });
+
   const relationshipKeys: Record<
     ArchiveObservation["relationship"],
     TranslationKey
@@ -63,16 +84,86 @@
     rollback_fork: "archive-relationship-rollback-fork",
     divergent_fork: "archive-relationship-divergent-fork",
     ambiguous: "archive-relationship-ambiguous",
+    continuation_anchor: "archive-relationship-continuation-anchor",
   };
 
   function branchLabel(branch: TimelineBranch): string {
+    if (branch.player_label) return branch.player_label;
     if (branch.branch_kind === "main")
       return $translation("archive-branch-main");
     if (branch.branch_kind === "unassigned")
       return $translation("archive-branch-unassigned");
-    return $translation("archive-branch-fork", {
-      identity: branch.branch_id.replace("fork-", "").slice(0, 6),
+    return $translation(
+      branch.origin === "manual_continuation"
+        ? "archive-branch-continuation"
+        : "archive-branch-fork",
+      {
+        identity: branch.short_identity,
+      },
+    );
+  }
+
+  async function inspectObservation(interpretationId: string): Promise<void> {
+    if (contextBusy) return;
+    contextBusy = true;
+    contextError = false;
+    try {
+      await oninspect(interpretationId);
+    } catch {
+      contextError = true;
+    } finally {
+      contextBusy = false;
+    }
+  }
+
+  async function continueFrom(observation: ArchiveObservation): Promise<void> {
+    if (contextBusy) return;
+    const ordinal =
+      (archive?.branches ?? []).filter(
+        (branch) =>
+          branch.origin === "manual_continuation" &&
+          branch.anchor_interpretation_id === observation.interpretation_id,
+      ).length + 1;
+    const label = $translation("archive-continuation-default-label", {
+      date: gameDate(observation.latest_year, observation.latest_day),
+      ordinal,
     });
+    if (!window.confirm($translation("archive-continuation-confirm"))) return;
+    contextBusy = true;
+    contextError = false;
+    try {
+      await oncontinue(observation.interpretation_id, label);
+    } catch {
+      contextError = true;
+    } finally {
+      contextBusy = false;
+    }
+  }
+
+  async function returnLatest(): Promise<void> {
+    if (contextBusy) return;
+    contextBusy = true;
+    contextError = false;
+    try {
+      await onreturn();
+    } catch {
+      contextError = true;
+    } finally {
+      contextBusy = false;
+    }
+  }
+
+  async function saveBranchLabel(): Promise<void> {
+    if (!selectedBranch || contextBusy) return;
+    contextBusy = true;
+    contextError = false;
+    try {
+      await onrename(selectedBranch.branch_id, branchLabelDraft.trim() || null);
+    } catch {
+      contextError = true;
+    } finally {
+      contextBusy = false;
+    }
   }
 
   function gameDate(year: number | null, day: number | null): string {
@@ -206,6 +297,22 @@
       <span>{$translation("archive-evidence-explanation")}</span>
     </div>
 
+    {#if archive?.analysis_context.mode === "historical_preview"}
+      <div class="archive-context-banner" role="status">
+        <div>
+          <strong>{$translation("archive-historical-preview")}</strong>
+          <span>{$translation("archive-historical-preview-detail")}</span>
+        </div>
+        <button
+          type="button"
+          disabled={contextBusy}
+          onclick={() => void returnLatest()}
+        >
+          {$translation("return-latest")}
+        </button>
+      </div>
+    {/if}
+
     <header class="page-heading">
       <div>
         <span class="eyebrow">{$translation("archive-heading-eyebrow")}</span>
@@ -229,6 +336,11 @@
     {#if selectionError}
       <p class="language-error" role="alert">
         {$translation("error-observer-unknown-branch")}
+      </p>
+    {/if}
+    {#if contextError}
+      <p class="language-error" role="alert">
+        {$translation("archive-context-action-failed")}
       </p>
     {/if}
 
@@ -457,8 +569,8 @@
         </div>
         {#each archive.observations as observation}
           <article
-            class:selected={observation.branch_id ===
-              archive.selected_branch_id}
+            class:selected={observation.included_in_context}
+            class:active-head={observation.active_head}
           >
             <div>
               <strong>{observation.source_file_name}</strong>
@@ -468,6 +580,22 @@
                   timeStyle: "short",
                 })}</small
               >
+              <div class="archive-row-actions">
+                <button
+                  type="button"
+                  disabled={contextBusy || observation.active_head}
+                  onclick={() =>
+                    void inspectObservation(observation.interpretation_id)}
+                  >{$translation("archive-inspect-save")}</button
+                >
+                <button
+                  type="button"
+                  disabled={contextBusy ||
+                    observation.branch_id === "unassigned"}
+                  onclick={() => void continueFrom(observation)}
+                  >{$translation("archive-continue-save")}</button
+                >
+              </div>
             </div>
             <div>
               <strong
@@ -584,6 +712,28 @@
           >
         </div>
       </div>
+      {#if selectedBranch.origin === "manual_continuation"}
+        <form
+          class="archive-label-editor"
+          onsubmit={(event) => {
+            event.preventDefault();
+            void saveBranchLabel();
+          }}
+        >
+          <label>
+            <span>{$translation("archive-branch-label")}</span>
+            <input
+              maxlength="120"
+              value={branchLabelDraft || selectedBranch.player_label || ""}
+              oninput={(event) =>
+                (branchLabelDraft = event.currentTarget.value)}
+            />
+          </label>
+          <button type="submit" disabled={contextBusy}
+            >{$translation("archive-save-label")}</button
+          >
+        </form>
+      {/if}
     {:else}
       <p class="archive-inspector-empty">
         {$translation("archive-no-selected-branch")}
