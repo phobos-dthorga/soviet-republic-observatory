@@ -55,6 +55,7 @@ an engineering requirement.
 - [ADR-0010: native recorder and durable candidate ledger](architecture/decisions/0010-native-recorder-and-durable-candidate-ledger.md)
 - [ADR-0011: dual-engine definition catalogue and planning warehouse](architecture/decisions/0011-dual-engine-catalogue-and-warehouse.md)
 - [ADR-0012: versioned inert game compatibility profiles](architecture/decisions/0012-versioned-game-compatibility-profiles.md)
+- [ADR-0013: governed DuckDB write boundary](architecture/decisions/0013-governed-duckdb-write-boundary.md)
 
 ## Evidence status vocabulary
 

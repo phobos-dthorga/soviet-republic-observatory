@@ -759,6 +759,9 @@ impl ObservatoryApplication {
             Ok(())
         })();
         if let Err(error) = &result {
+            if progress.phase == CatalogueRefreshPhase::Publishing {
+                self.warehouse.note_catalogue_write_failure();
+            }
             self.warehouse
                 .note_catalogue_failure(requested_at, error.code());
             let _ = self.storage.note_catalogue_refresh_failure(error.code());
@@ -960,6 +963,8 @@ impl ObservatoryApplication {
                 );
             }
             Err(error) => {
+                self.warehouse.note_projection_failure();
+                let retry_delay_ms = self.warehouse.retry_delay().as_millis();
                 self.storage
                     .fail_projection_job(&job.projection_id, error.code())?;
                 diagnostics::record(
@@ -967,16 +972,21 @@ impl ObservatoryApplication {
                     "warehouse.projection_failed",
                     "project_warehouse",
                     &format!(
-                        "Analytical warehouse projection failed ({}) with code {} after {} ms.",
+                        "Analytical warehouse projection failed ({}) with code {} after {} ms; write protection will wait {} ms.",
                         job.projection_kind,
                         error.code(),
-                        timer.elapsed().as_millis()
+                        timer.elapsed().as_millis(),
+                        retry_delay_ms,
                     ),
                 );
                 return Err(error);
             }
         }
         Ok(true)
+    }
+
+    pub(crate) fn warehouse_retry_delay(&self) -> std::time::Duration {
+        self.warehouse.retry_delay()
     }
 
     pub(crate) fn catalogue_configuration(&self) -> Result<Option<PathBuf>, ObservatoryError> {

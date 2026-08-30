@@ -71,6 +71,7 @@
     incompatible_comparison: "error-observer-incompatible-comparison",
     same_observation_comparison: "error-observer-same-comparison",
     unknown_observation: "error-observer-unknown-observation",
+    warehouse_write_limit: "error-observer-warehouse-write-limit",
     invalid_compatibility_profile: "error-observer-invalid-compatibility",
     binary_compatibility_mismatch: "error-observer-binary-compatibility",
     critical_task_busy: "error-observer-critical-task-busy",

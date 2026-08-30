@@ -79,6 +79,8 @@ Remaining in this slice:
   lifecycle, conflict fallbacks, and supplemental player definitions
 - Model snapshots pin catalogue generation, overlay revision, observation
   watermark, schema, and projector versions
+- Governed bulk-only variable writes, bounded workload classes, visible active
+  stages, and exponential failure backoff across every DuckDB projector
 
 Ignored reference-machine scale and growth benchmarks accompany the automated
 suite. Broader verified directive coverage remains ongoing catalogue hardening.

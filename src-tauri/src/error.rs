@@ -47,6 +47,8 @@ pub enum ObservatoryError {
     UnknownObservation,
     #[error("The analytical warehouse is unavailable.")]
     WarehouseUnavailable,
+    #[error("The analytical warehouse write exceeds its bounded workload limit.")]
+    WarehouseWriteLimit,
     #[error("No installed-game definition catalogue is available.")]
     CatalogueUnavailable,
     #[error("The definition catalogue request is invalid.")]
@@ -96,6 +98,7 @@ impl ObservatoryError {
             Self::SameObservationComparison => "same_observation_comparison",
             Self::UnknownObservation => "unknown_observation",
             Self::WarehouseUnavailable => "warehouse_unavailable",
+            Self::WarehouseWriteLimit => "warehouse_write_limit",
             Self::CatalogueUnavailable => "catalogue_unavailable",
             Self::InvalidCatalogueRequest => "invalid_catalogue_request",
             Self::CatalogueCompatibilityConflict => "catalogue_compatibility_conflict",
@@ -142,7 +145,9 @@ impl From<rusqlite::Error> for ObservatoryError {
 }
 
 impl From<duckdb::Error> for ObservatoryError {
-    fn from(_: duckdb::Error) -> Self {
+    fn from(_error: duckdb::Error) -> Self {
+        #[cfg(debug_assertions)]
+        eprintln!("DuckDB diagnostic: {_error}");
         Self::WarehouseUnavailable
     }
 }

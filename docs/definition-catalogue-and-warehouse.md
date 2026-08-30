@@ -41,6 +41,16 @@ projection owns it, the host returns the durable SQLite queue state and a
 lagging warehouse snapshot so startup and the shared task indicator remain
 responsive.
 
+The application-wide warehouse write governor bounds each declared workload,
+publishes active stage and row progress without taking the DuckDB connection,
+and applies exponential backoff after consecutive failures. Catalogue,
+observation, and planning-overlay facts all use appenders plus set-oriented
+merges; only fixed metadata, receipts, publication pointers, and transactional
+deletion use direct statements. Overlay conflict detection is one bulk merge,
+not a query per operation. Work exceeding a class limit must be split into
+immutable resumable partitions rather than truncated or admitted by casually
+raising the limit.
+
 Every model request must obtain one `WarehouseSnapshot`: catalogue generation,
 compatibility profile ID/version/resolved hash and mapping classification,
 active planning-overlay profile and revision, observation watermark, warehouse

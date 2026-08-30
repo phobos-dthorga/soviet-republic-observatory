@@ -336,12 +336,26 @@ export type ObserverErrorCode =
   | "incompatible_comparison"
   | "same_observation_comparison"
   | "unknown_observation"
+  | "warehouse_write_limit"
   | "invalid_compatibility_profile"
   | "binary_compatibility_mismatch"
   | "critical_task_busy"
   | "unknown";
 
 export type WarehousePhase = "ready" | "lagging" | "rebuilding" | "attention";
+
+export type WarehouseWriteActivity = {
+  kind:
+    | "catalogue_publication"
+    | "observation_projection"
+    | "overlay_projection"
+    | "observation_rebuild";
+  stage: "staging" | "merging" | "committing" | "rebuilding";
+  started_at_ms: number;
+  updated_at_ms: number;
+  rows_processed: number;
+  rows_total: number;
+};
 
 export type WarehouseHealth = {
   phase: WarehousePhase;
@@ -352,6 +366,9 @@ export type WarehouseHealth = {
   last_projected_at_ms: number | null;
   observation_watermark: string | null;
   database_size_bytes: number;
+  active_write: WarehouseWriteActivity | null;
+  consecutive_write_failures: number;
+  retry_after_ms: number | null;
 };
 
 export type CatalogueGenerationSummary = {

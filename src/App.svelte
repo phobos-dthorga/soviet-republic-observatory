@@ -9,6 +9,7 @@
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
+  import { formatNumber } from "./lib/i18n/format";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
@@ -43,6 +44,7 @@
     RecorderUpdate,
     ReinterpretationProgress,
     SetupState,
+    WarehouseWriteActivity,
   } from "./lib/observations/types";
 
   type WorkspaceName =
@@ -90,6 +92,39 @@
   let archiveOverview = $state<ArchiveOverview | null>(null);
   let recorderHealth = $state<RecorderHealth | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
+
+  function warehouseActivityLabel(activity: WarehouseWriteActivity): string {
+    switch (activity.kind) {
+      case "catalogue_publication":
+        return $translation("catalogue-global-progress");
+      case "observation_projection":
+        return $translation("nav-monitor");
+      case "overlay_projection":
+        return $translation("catalogue-overlays");
+      case "observation_rebuild":
+        return $translation("catalogue-rebuild");
+    }
+  }
+
+  function warehouseProgressPercent(
+    activity: WarehouseWriteActivity | null,
+  ): number | null {
+    if (!activity || activity.rows_total === 0) return null;
+    return Math.min(
+      100,
+      Math.round((activity.rows_processed / activity.rows_total) * 100),
+    );
+  }
+
+  function warehouseProgressDetail(status: CatalogueStatus): string {
+    const health = status.warehouse;
+    if (health.failed_jobs > 0 || health.consecutive_write_failures > 0)
+      return $translation("catalogue-global-attention");
+    if (health.active_write?.rows_total) {
+      return `${formatNumber(health.active_write.rows_processed, $activeLocale)} / ${formatNumber(health.active_write.rows_total, $activeLocale)} ${$translation("catalogue-progress-warehouse-rows")}`;
+    }
+    return `${health.pending_jobs} ${$translation("catalogue-pending-jobs")}`;
+  }
 
   function activeBranchLabel(): string {
     if (!receiverDataset) return "planning-preview";
@@ -344,15 +379,18 @@
     </nav>
 
     <div class="command-actions">
-      {#if warehouseStatus && (warehouseStatus.warehouse.pending_jobs > 0 || warehouseStatus.warehouse.failed_jobs > 0 || warehouseStatus.warehouse.phase === "rebuilding")}
+      {#if warehouseStatus && (warehouseStatus.warehouse.pending_jobs > 0 || warehouseStatus.warehouse.failed_jobs > 0 || warehouseStatus.warehouse.active_write || warehouseStatus.warehouse.consecutive_write_failures > 0 || warehouseStatus.warehouse.phase === "rebuilding")}
         <TaskProgressIndicator
           label={$translation("catalogue-warehouse")}
-          detail={warehouseStatus.warehouse.failed_jobs > 0
-            ? $translation("catalogue-global-attention")
-            : `${warehouseStatus.warehouse.pending_jobs} ${$translation("catalogue-pending-jobs")}`}
-          percent={null}
-          failed={warehouseStatus.warehouse.failed_jobs > 0}
-          currentItem={$translation("catalogue-recorder-independent")}
+          detail={warehouseProgressDetail(warehouseStatus)}
+          percent={warehouseProgressPercent(
+            warehouseStatus.warehouse.active_write,
+          )}
+          failed={warehouseStatus.warehouse.failed_jobs > 0 ||
+            warehouseStatus.warehouse.consecutive_write_failures > 0}
+          currentItem={warehouseStatus.warehouse.active_write
+            ? warehouseActivityLabel(warehouseStatus.warehouse.active_write)
+            : $translation("catalogue-recorder-independent")}
           onclick={() => (activeWorkspace = "materials")}
         />
       {/if}

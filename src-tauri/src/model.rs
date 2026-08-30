@@ -637,6 +637,34 @@ pub enum WarehousePhase {
     Attention,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WarehouseWriteKind {
+    CataloguePublication,
+    ObservationProjection,
+    OverlayProjection,
+    ObservationRebuild,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WarehouseWriteStage {
+    Staging,
+    Merging,
+    Committing,
+    Rebuilding,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct WarehouseWriteActivity {
+    pub kind: WarehouseWriteKind,
+    pub stage: WarehouseWriteStage,
+    pub started_at_ms: i64,
+    pub updated_at_ms: i64,
+    pub rows_processed: u64,
+    pub rows_total: u64,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct WarehouseHealth {
     pub phase: WarehousePhase,
@@ -647,6 +675,9 @@ pub struct WarehouseHealth {
     pub last_projected_at_ms: Option<i64>,
     pub observation_watermark: Option<String>,
     pub database_size_bytes: u64,
+    pub active_write: Option<WarehouseWriteActivity>,
+    pub consecutive_write_failures: u32,
+    pub retry_after_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]

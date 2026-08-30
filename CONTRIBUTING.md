@@ -55,6 +55,16 @@ or raw save through a command or extension contract. Transfers use bounded,
 versioned Rust models and the idempotent SQLite projection outbox. A warehouse
 failure must not block save observation or SQLite-backed views.
 
+Every variable-cardinality DuckDB write must use the governed bulk boundary:
+declare its workload class and bounded row total, stage through an appender,
+merge as a set, report progress, and add a realistic maximum-size regression
+test. Direct statements are reserved for fixed-cardinality metadata, receipts,
+watermarks, publication pointers, and transactional deletion. Do not execute a
+query or insert inside a fact, entity, metric, or overlay loop. Do not raise a
+governor limit to accommodate an unpartitioned workload; design immutable,
+resumable partitions and an atomic publication step instead. See
+[ADR-0013](docs/architecture/decisions/0013-governed-duckdb-write-boundary.md).
+
 Planning overlays and Analysis Packs are inert data. They cannot contain code,
 expressions, markup, URLs, paths, renderer configuration, or direct ECharts
 options. Future executable plugins remain out of process with deny-by-default

@@ -18,6 +18,7 @@ mod save_archive;
 mod stats_parser;
 mod storage;
 mod warehouse;
+mod warehouse_governor;
 mod warehouse_service;
 
 use std::sync::Arc;

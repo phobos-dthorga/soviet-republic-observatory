@@ -6,7 +6,7 @@
   "author": "Republic Observatory contributors",
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 17,
+  "source_catalog_revision": 18,
   "direction": "left_to_right",
   "messages": {
     "action-close": "Close",
@@ -878,6 +878,9 @@
     "catalogue-parser": "Parser",
     "catalogue-watermark": "Observation watermark",
     "catalogue-last-projection": "Last successful projection",
+    "catalogue-active-write": "Active governed write",
+    "catalogue-write-failures": "Consecutive write failures",
+    "catalogue-retry-protection": "Retry protection",
     "catalogue-unavailable": "Unavailable",
     "catalogue-auto-cost-warning": "Automatic construction coefficients remain unresolved rules until the game's conversion is verified; they are never displayed as final material quantities.",
     "observer-workshop-folder": "Workshop catalogue folder",
@@ -944,6 +947,7 @@
     "error-observer-invalid-compatibility": "The compatibility profile is invalid. The last valid mapping remains active.",
     "error-observer-binary-compatibility": "A declared fixed binary layout did not safely match this save.",
     "error-observer-critical-task-busy": "A save reinterpretation is already running.",
+    "error-observer-warehouse-write-limit": "The analytical workload exceeded its safe warehouse write limit. Save recording remains available; inspect Diagnostics for details.",
     "error-catalogue-compatibility-conflict": "An exact mod compatibility scope no longer matches the installed definition content. The previous catalogue remains active; review the scope before acknowledging the new hash."
   }
 }

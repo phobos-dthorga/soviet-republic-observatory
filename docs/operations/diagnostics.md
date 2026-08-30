@@ -101,3 +101,11 @@ progress evidence. Publication remains one transaction, so interruption
 preserves the previously active generation. Status snapshots use non-blocking
 connection access, keeping setup and progress indicators responsive while a
 writer owns the warehouse.
+
+The non-blocking warehouse health snapshot exposes only the controlled write
+kind, phase, and aggregate row progress. Completion and failure diagnostics add
+elapsed time, the failure code, and bounded retry delay. Success closes the
+failure circuit. Consecutive failures delay the next projector claim
+exponentially up to 30 seconds, preventing a damaged or unavailable warehouse
+from producing a hot failure loop. The diagnostic record does not include
+projection identities, definition contents, save values, SQL, or paths.

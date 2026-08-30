@@ -27,8 +27,9 @@
     DefinitionValue,
     OverlayInspection,
     OverlayProfileSummary,
+    WarehouseWriteActivity,
   } from "../observations/types";
-  import { formatDate } from "../i18n/format";
+  import { formatDate, formatNumber } from "../i18n/format";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { catalogueProgressView } from "../tasks/catalogueProgress";
   import {
@@ -99,6 +100,27 @@
       dateStyle: "short",
       timeStyle: "short",
     });
+  }
+
+  function warehouseActivityLabel(activity: WarehouseWriteActivity): string {
+    const kind =
+      activity.kind === "catalogue_publication"
+        ? $translation("catalogue-global-progress")
+        : activity.kind === "observation_projection"
+          ? $translation("nav-monitor")
+          : activity.kind === "overlay_projection"
+            ? $translation("catalogue-overlays")
+            : $translation("catalogue-rebuild");
+    const stage =
+      activity.stage === "staging"
+        ? $translation("catalogue-progress-stage-publish")
+        : activity.stage === "rebuilding"
+          ? $translation("catalogue-rebuild")
+          : $translation("catalogue-progress-stage-finalise");
+    const progress = activity.rows_total
+      ? ` · ${formatNumber(activity.rows_processed, $activeLocale)} / ${formatNumber(activity.rows_total, $activeLocale)}`
+      : "";
+    return `${kind} · ${stage}${progress}`;
   }
 
   function displayValue(value: DefinitionValue | null): string {
@@ -794,6 +816,25 @@
       <div>
         <strong>{$translation("catalogue-last-projection")}</strong><span
           >{formatTimestamp(status?.warehouse.last_projected_at_ms)}</span
+        >
+      </div>
+      <div>
+        <strong>{$translation("catalogue-active-write")}</strong><span
+          >{status?.warehouse.active_write
+            ? warehouseActivityLabel(status.warehouse.active_write)
+            : $translation("catalogue-none")}</span
+        >
+      </div>
+      <div>
+        <strong>{$translation("catalogue-write-failures")}</strong><span
+          >{status?.warehouse.consecutive_write_failures ?? 0}</span
+        >
+      </div>
+      <div>
+        <strong>{$translation("catalogue-retry-protection")}</strong><span
+          >{status?.warehouse.retry_after_ms
+            ? `${formatNumber(Math.ceil(status.warehouse.retry_after_ms / 1000), $activeLocale)} s`
+            : $translation("catalogue-current")}</span
         >
       </div>
     </section>

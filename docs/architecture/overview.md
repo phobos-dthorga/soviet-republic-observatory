@@ -31,6 +31,9 @@ Configured save directory
   operational store ───► SQLite facts + lineage + projection outbox
           │ versioned idempotent models
           ▼
+  write governor ──────► bulk budgets + progress + failure backoff
+          │
+          ▼
   DuckDB warehouse ────► catalogue generations + analytical projections
           │
           ▼
@@ -120,6 +123,13 @@ and large observation matrices. A receipt written with each DuckDB projection
 closes the crash gap before SQLite acknowledgement. DuckDB failure is visible
 analytical lag and cannot block SQLite ingestion.
 
+The governed write boundary rejects oversized jobs before warehouse mutation,
+requires append-and-merge transfer for variable-cardinality rows, reports the
+active write without waiting for its connection, and applies bounded
+exponential backoff after consecutive failures. Fixed metadata statements
+remain direct and transactional. The governor never drops or delays SQLite
+observation commits.
+
 The seventh SQLite migration adds Analysis Pack identities, immutable validated
 revisions, and per-pack enabled-revision state. Pack JSON is bounded and
 canonicalised before storage. It is operational extension state, not a third
@@ -197,6 +207,7 @@ replacement boundary.
 - `CompatibilityProfile`, `CompatibilityProvenance`, and `InterpretationIdentity`
 - `CatalogueGeneration`, `DefinitionDossier`, and `PlanningOverlayRevision`
 - `ProjectionJob` and `WarehouseSnapshot`
+- `WarehouseWriteActivity` and governed write budget
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned

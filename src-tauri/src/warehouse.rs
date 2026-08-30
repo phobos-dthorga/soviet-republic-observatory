@@ -14,10 +14,13 @@ use crate::model::{
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
     DefinitionValue, ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth, WarehousePhase,
-    WarehouseSnapshot,
+    WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
 };
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
+};
+use crate::warehouse_governor::{
+    WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
 pub const WAREHOUSE_SCHEMA_VERSION: u32 = 4;
@@ -52,9 +55,11 @@ fn note_published_row(
     report: &mut impl FnMut(WarehousePublishProgress),
     rows_written: &mut u64,
     rows_total: u64,
+    permit: &WarehouseWritePermit<'_>,
 ) {
     *rows_written = rows_written.saturating_add(1);
     if *rows_written == rows_total || rows_written.is_multiple_of(512) {
+        permit.progress(WarehouseWriteStage::Staging, *rows_written);
         report(WarehousePublishProgress {
             rows_written: *rows_written,
             rows_total,
@@ -103,6 +108,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
 pub struct AnalyticalWarehouse {
     database_path: PathBuf,
     connection: Mutex<Connection>,
+    governor: WarehouseGovernor,
     available: bool,
 }
 
@@ -134,6 +140,7 @@ impl AnalyticalWarehouse {
         Ok(Self {
             database_path,
             connection: Mutex::new(connection),
+            governor: WarehouseGovernor::default(),
             available: true,
         })
     }
@@ -147,6 +154,7 @@ impl AnalyticalWarehouse {
             connection: Mutex::new(
                 Connection::open_in_memory().expect("an in-memory DuckDB connection must open"),
             ),
+            governor: WarehouseGovernor::default(),
             available: false,
         }
     }
@@ -165,6 +173,10 @@ impl AnalyticalWarehouse {
         mut report: impl FnMut(WarehousePublishProgress),
     ) -> Result<bool, ObservatoryError> {
         let mut connection = self.lock()?;
+        let rows_total = catalogue_publish_row_count(generation);
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::CataloguePublication, rows_total)?;
         let current = connection.query_row(
             "SELECT current_catalogue_generation_id FROM warehouse_metadata WHERE singleton_id = 1",
             [],
@@ -175,6 +187,7 @@ impl AnalyticalWarehouse {
             [generation.created_at_ms],
         )?;
         if current.as_deref() == Some(&generation.generation_id) {
+            permit.complete();
             return Ok(false);
         }
 
@@ -184,12 +197,14 @@ impl AnalyticalWarehouse {
             |row| row.get::<_, bool>(0),
         )?;
         if generation_exists {
+            permit.progress(WarehouseWriteStage::Committing, rows_total);
             connection.execute(
                 "UPDATE warehouse_metadata SET current_catalogue_generation_id = ?1, \
                  last_catalogue_refresh_ms = ?2, last_catalogue_error_code = NULL \
                  WHERE singleton_id = 1",
                 params![generation.generation_id, generation.created_at_ms],
             )?;
+            permit.complete();
             return Ok(true);
         }
 
@@ -199,7 +214,6 @@ impl AnalyticalWarehouse {
             .iter()
             .map(|file| u64::from(file.warning_count))
             .sum::<u64>();
-        let rows_total = catalogue_publish_row_count(generation);
         let mut rows_written = 0_u64;
         report(WarehousePublishProgress {
             rows_written,
@@ -254,7 +268,7 @@ impl AnalyticalWarehouse {
                     source.content_hash,
                     source.file_count,
                 ])?;
-                note_published_row(&mut report, &mut rows_written, rows_total);
+                note_published_row(&mut report, &mut rows_written, rows_total, &permit);
             }
         }
         {
@@ -269,7 +283,7 @@ impl AnalyticalWarehouse {
                     DEFINITION_PARSER_VERSION,
                     file.warning_count,
                 ])?;
-                note_published_row(&mut report, &mut rows_written, rows_total);
+                note_published_row(&mut report, &mut rows_written, rows_total, &permit);
             }
         }
         {
@@ -286,7 +300,7 @@ impl AnalyticalWarehouse {
                     scope.mapping_count,
                     scope_state_name(scope.state),
                 ])?;
-                note_published_row(&mut report, &mut rows_written, rows_total);
+                note_published_row(&mut report, &mut rows_written, rows_total, &permit);
             }
         }
 
@@ -301,7 +315,7 @@ impl AnalyticalWarehouse {
                     entity.display_name,
                     entity.coverage,
                 ])?;
-                note_published_row(&mut report, &mut rows_written, rows_total);
+                note_published_row(&mut report, &mut rows_written, rows_total, &permit);
             }
         }
         {
@@ -325,7 +339,7 @@ impl AnalyticalWarehouse {
                         property.catalogue_scope_id,
                         property.mapping_classification,
                     ])?;
-                    note_published_row(&mut report, &mut rows_written, rows_total);
+                    note_published_row(&mut report, &mut rows_written, rows_total, &permit);
                 }
             }
         }
@@ -349,7 +363,7 @@ impl AnalyticalWarehouse {
                         relation.catalogue_scope_id,
                         relation.mapping_classification,
                     ])?;
-                    note_published_row(&mut report, &mut rows_written, rows_total);
+                    note_published_row(&mut report, &mut rows_written, rows_total, &permit);
                 }
             }
         }
@@ -358,11 +372,24 @@ impl AnalyticalWarehouse {
             for entity in &generation.entities {
                 for (directive, count) in &entity.unknown_directives {
                     appender.append_row(params![entity.revision_hash, directive, count])?;
-                    note_published_row(&mut report, &mut rows_written, rows_total);
+                    note_published_row(&mut report, &mut rows_written, rows_total, &permit);
                 }
             }
         }
 
+        {
+            let mut appender = transaction.appender("catalogue_generation_entities")?;
+            for entity in &generation.entities {
+                appender.append_row(params![
+                    generation.generation_id,
+                    entity.entity_id,
+                    entity.revision_hash
+                ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total, &permit);
+            }
+        }
+
+        permit.progress(WarehouseWriteStage::Merging, rows_written);
         transaction.execute_batch(
             "CREATE OR REPLACE TEMP TABLE incoming_new_revisions AS \
                  SELECT incoming.revision_hash \
@@ -383,22 +410,11 @@ impl AnalyticalWarehouse {
                  JOIN incoming_new_revisions USING(revision_hash);",
         )?;
 
-        {
-            let mut appender = transaction.appender("catalogue_generation_entities")?;
-            for entity in &generation.entities {
-                appender.append_row(params![
-                    generation.generation_id,
-                    entity.entity_id,
-                    entity.revision_hash
-                ])?;
-                note_published_row(&mut report, &mut rows_written, rows_total);
-            }
-        }
-
         report(WarehousePublishProgress {
             rows_written,
             rows_total,
         });
+        permit.progress(WarehouseWriteStage::Committing, rows_written);
         transaction.execute(
             "UPDATE catalogue_generations SET \
                  property_count = (SELECT COUNT(*) FROM catalogue_generation_entities membership \
@@ -416,6 +432,7 @@ impl AnalyticalWarehouse {
             params![generation.generation_id, generation.created_at_ms],
         )?;
         transaction.commit()?;
+        permit.complete();
         Ok(true)
     }
 
@@ -427,6 +444,18 @@ impl AnalyticalWarehouse {
                 params![checked_at_ms, code],
             );
         }
+    }
+
+    pub fn note_projection_failure(&self) {
+        self.governor.note_failure();
+    }
+
+    pub fn note_catalogue_write_failure(&self) {
+        self.governor.note_failure();
+    }
+
+    pub fn retry_delay(&self) -> std::time::Duration {
+        self.governor.retry_delay()
     }
 
     pub fn catalogue_reuse_cache(
@@ -486,8 +515,15 @@ impl AnalyticalWarehouse {
     ) -> Result<(), ObservatoryError> {
         let mut connection = self.lock()?;
         if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
             return Ok(());
         }
+        let rows_total = u64::try_from(dataset.points.len())
+            .unwrap_or(u64::MAX)
+            .saturating_mul(4);
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::ObservationProjection, rows_total)?;
         let transaction = connection.transaction()?;
         transaction.execute_batch(
             "CREATE OR REPLACE TEMP TABLE incoming_observation_metrics AS \
@@ -495,6 +531,7 @@ impl AnalyticalWarehouse {
         )?;
         {
             let mut appender = transaction.appender("incoming_observation_metrics")?;
+            let mut rows_written = 0_u64;
             for point in &dataset.points {
                 for (metric_id, value) in [
                     ("core.citizens.electronics.none", point.none),
@@ -519,9 +556,14 @@ impl AnalyticalWarehouse {
                         dataset.compatibility.resolved_profile_hash,
                         dataset.compatibility.mapping_classification,
                     ])?;
+                    rows_written = rows_written.saturating_add(1);
+                    if rows_written == rows_total || rows_written.is_multiple_of(512) {
+                        permit.progress(WarehouseWriteStage::Staging, rows_written);
+                    }
                 }
             }
         }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
         transaction.execute_batch(
             "INSERT INTO observation_metrics \
                  SELECT * FROM incoming_observation_metrics ON CONFLICT DO NOTHING;",
@@ -538,7 +580,9 @@ impl AnalyticalWarehouse {
              WHERE singleton_id = 1",
             params![applied_at_ms, dataset.interpretation_id],
         )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
         transaction.commit()?;
+        permit.complete();
         Ok(())
     }
 
@@ -550,18 +594,42 @@ impl AnalyticalWarehouse {
     ) -> Result<(), ObservatoryError> {
         let mut connection = self.lock()?;
         if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
             return Ok(());
         }
+        let rows_total = active
+            .map(|(_, _, document)| {
+                document
+                    .operations
+                    .len()
+                    .saturating_add(document.supplements.len())
+            })
+            .and_then(|rows| u64::try_from(rows).ok())
+            .unwrap_or_default();
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::OverlayProjection, rows_total)?;
         let transaction = connection.transaction()?;
-        transaction.execute("DELETE FROM active_overlay_operations", [])?;
-        transaction.execute("DELETE FROM active_overlay_entities", [])?;
+        transaction.execute_batch(
+            r#"CREATE OR REPLACE TEMP TABLE incoming_overlay_operations(
+                   profile_id VARCHAR, revision BIGINT, operation_index BIGINT, operation VARCHAR,
+                   entity_id VARCHAR, field_id VARCHAR, occurrence BIGINT,
+                   expected_revision_hash VARCHAR, expected_value_kind VARCHAR,
+                   expected_value_number DOUBLE, expected_value_text VARCHAR, expected_value_unit VARCHAR,
+                   value_kind VARCHAR, value_number DOUBLE, value_text VARCHAR, unit VARCHAR, reason VARCHAR);
+               CREATE OR REPLACE TEMP TABLE incoming_overlay_entities AS
+                   SELECT * FROM active_overlay_entities WHERE FALSE;
+               DELETE FROM active_overlay_operations;
+               DELETE FROM active_overlay_entities;"#,
+        )?;
         if let Some((profile_id, revision, document)) = active {
-            for (index, operation) in document.operations.iter().enumerate() {
-                let conflict = overlay_conflict(&transaction, operation)?;
-                let value = operation.value.as_ref();
-                transaction.execute(
-                    "INSERT INTO active_overlay_operations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                    params![
+            let mut rows_written = 0_u64;
+            {
+                let mut appender = transaction.appender("incoming_overlay_operations")?;
+                for (index, operation) in document.operations.iter().enumerate() {
+                    let expected = operation.expected_value.as_ref();
+                    let value = operation.value.as_ref();
+                    appender.append_row(params![
                         profile_id,
                         revision,
                         index as u64,
@@ -574,25 +642,32 @@ impl AnalyticalWarehouse {
                         operation.field_id,
                         operation.occurrence,
                         operation.expected_revision_hash,
+                        expected.map(|value| value.kind.as_str()),
+                        expected.and_then(|value| value.number),
+                        expected.and_then(overlay_text),
+                        expected.and_then(|value| value.unit.as_deref()),
                         value.map(|value| value.kind.as_str()),
                         value.and_then(|value| value.number),
                         value.and_then(overlay_text),
                         value.and_then(|value| value.unit.as_deref()),
                         operation.reason,
-                        conflict,
-                    ],
-                )?;
+                    ])?;
+                    rows_written = rows_written.saturating_add(1);
+                    if rows_written == rows_total || rows_written.is_multiple_of(512) {
+                        permit.progress(WarehouseWriteStage::Staging, rows_written);
+                    }
+                }
             }
-            for supplement in &document.supplements {
-                let entity_id = format!(
-                    "overlay::{profile_id}::{}::{}",
-                    supplement.entity_kind, supplement.local_id
-                );
-                let properties_json = serde_json::to_string(&supplement.properties)
-                    .map_err(|_| ObservatoryError::InvalidPlanningOverlay("invalid_json"))?;
-                transaction.execute(
-                    "INSERT INTO active_overlay_entities VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                    params![
+            {
+                let mut appender = transaction.appender("incoming_overlay_entities")?;
+                for supplement in &document.supplements {
+                    let entity_id = format!(
+                        "overlay::{profile_id}::{}::{}",
+                        supplement.entity_kind, supplement.local_id
+                    );
+                    let properties_json = serde_json::to_string(&supplement.properties)
+                        .map_err(|_| ObservatoryError::InvalidPlanningOverlay("invalid_json"))?;
+                    appender.append_row(params![
                         profile_id,
                         revision,
                         entity_id,
@@ -600,9 +675,43 @@ impl AnalyticalWarehouse {
                         supplement.display_name,
                         supplement.reason,
                         properties_json,
-                    ],
-                )?;
+                    ])?;
+                    rows_written = rows_written.saturating_add(1);
+                    if rows_written == rows_total || rows_written.is_multiple_of(512) {
+                        permit.progress(WarehouseWriteStage::Staging, rows_written);
+                    }
+                }
             }
+            permit.progress(WarehouseWriteStage::Merging, rows_written);
+            transaction.execute_batch(
+                r#"INSERT INTO active_overlay_operations
+                   SELECT incoming.profile_id, incoming.revision, incoming.operation_index,
+                          incoming.operation, incoming.entity_id, incoming.field_id, incoming.occurrence,
+                          incoming.expected_revision_hash, incoming.value_kind, incoming.value_number,
+                          incoming.value_text, incoming.unit, incoming.reason,
+                          CASE
+                            WHEN membership.revision_hash IS NULL THEN 'target_missing'
+                            WHEN membership.revision_hash <> incoming.expected_revision_hash THEN 'revision_changed'
+                            WHEN incoming.expected_value_kind IS NOT NULL AND NOT EXISTS (
+                              SELECT 1 FROM definition_properties property
+                              WHERE property.revision_hash = membership.revision_hash
+                                AND property.field_id = incoming.field_id
+                                AND property.occurrence = COALESCE(incoming.occurrence, 0)
+                                AND property.value_kind = incoming.expected_value_kind
+                                AND property.value_number IS NOT DISTINCT FROM incoming.expected_value_number
+                                AND property.value_text IS NOT DISTINCT FROM incoming.expected_value_text
+                                AND property.unit IS NOT DISTINCT FROM incoming.expected_value_unit
+                            ) THEN 'value_changed'
+                            ELSE NULL
+                          END
+                   FROM incoming_overlay_operations incoming
+                   CROSS JOIN warehouse_metadata metadata
+                   LEFT JOIN catalogue_generation_entities membership
+                     ON membership.generation_id = metadata.current_catalogue_generation_id
+                    AND membership.entity_id = incoming.entity_id
+                   WHERE metadata.singleton_id = 1;
+                   INSERT INTO active_overlay_entities SELECT * FROM incoming_overlay_entities;"#,
+            )?;
             transaction.execute(
                 "UPDATE warehouse_metadata SET active_overlay_profile_id = ?1, \
                  active_overlay_revision = ?2 WHERE singleton_id = 1",
@@ -629,7 +738,9 @@ impl AnalyticalWarehouse {
             "UPDATE warehouse_metadata SET last_projection_ms = ?1 WHERE singleton_id = 1",
             [applied_at_ms],
         )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
         transaction.commit()?;
+        permit.complete();
         Ok(())
     }
 
@@ -640,8 +751,13 @@ impl AnalyticalWarehouse {
     ) -> Result<(), ObservatoryError> {
         let mut connection = self.lock()?;
         if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
             return Ok(());
         }
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::ObservationRebuild, 0)?;
+        permit.progress(WarehouseWriteStage::Rebuilding, 0);
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM observation_metrics", [])?;
         transaction.execute(
@@ -660,7 +776,9 @@ impl AnalyticalWarehouse {
              WHERE singleton_id = 1",
             [applied_at_ms],
         )?;
+        permit.progress(WarehouseWriteStage::Committing, 0);
         transaction.commit()?;
+        permit.complete();
         Ok(())
     }
 
@@ -673,18 +791,12 @@ impl AnalyticalWarehouse {
         rebuilding: bool,
     ) -> Result<WarehouseHealth, ObservatoryError> {
         if !self.available {
-            return Ok(WarehouseHealth {
-                phase: WarehousePhase::Attention,
-                schema_version: WAREHOUSE_SCHEMA_VERSION,
+            return Ok(self.health_shell(
+                WarehousePhase::Attention,
                 pending_jobs,
                 failed_jobs,
                 lag_ms,
-                last_projected_at_ms: None,
-                observation_watermark: None,
-                database_size_bytes: fs::metadata(&self.database_path)
-                    .map(|metadata| metadata.len())
-                    .unwrap_or_default(),
-            });
+            ));
         }
         let connection = self.lock()?;
         let (last_projected_at_ms, observation_watermark) = connection.query_row(
@@ -702,16 +814,9 @@ impl AnalyticalWarehouse {
             WarehousePhase::Ready
         };
         Ok(WarehouseHealth {
-            phase,
-            schema_version: WAREHOUSE_SCHEMA_VERSION,
-            pending_jobs,
-            failed_jobs,
-            lag_ms,
             last_projected_at_ms,
             observation_watermark,
-            database_size_bytes: fs::metadata(&self.database_path)
-                .map(|metadata| metadata.len())
-                .unwrap_or_default(),
+            ..self.health_shell(phase, pending_jobs, failed_jobs, lag_ms)
         })
     }
 
@@ -731,24 +836,15 @@ impl AnalyticalWarehouse {
         } else {
             WarehousePhase::Ready
         };
-        let fallback = WarehouseHealth {
-            phase,
-            schema_version: WAREHOUSE_SCHEMA_VERSION,
-            pending_jobs,
-            failed_jobs,
-            lag_ms,
-            last_projected_at_ms: None,
-            observation_watermark: None,
-            database_size_bytes: fs::metadata(&self.database_path)
-                .map(|metadata| metadata.len())
-                .unwrap_or_default(),
-        };
+        let fallback = self.health_shell(phase, pending_jobs, failed_jobs, lag_ms);
         if !self.available {
             return fallback;
         }
         let Ok(connection) = self.connection.try_lock() else {
             return WarehouseHealth {
-                phase: if rebuilding {
+                phase: if fallback.phase == WarehousePhase::Attention {
+                    WarehousePhase::Attention
+                } else if rebuilding {
                     WarehousePhase::Rebuilding
                 } else {
                     WarehousePhase::Lagging
@@ -767,6 +863,39 @@ impl AnalyticalWarehouse {
             last_projected_at_ms,
             observation_watermark,
             ..fallback
+        }
+    }
+
+    fn health_shell(
+        &self,
+        phase: WarehousePhase,
+        pending_jobs: u32,
+        failed_jobs: u32,
+        lag_ms: Option<i64>,
+    ) -> WarehouseHealth {
+        let WarehouseGovernorSnapshot {
+            active_write,
+            consecutive_failures,
+            retry_after_ms,
+        } = self.governor.snapshot();
+        WarehouseHealth {
+            phase: if consecutive_failures > 0 {
+                WarehousePhase::Attention
+            } else {
+                phase
+            },
+            schema_version: WAREHOUSE_SCHEMA_VERSION,
+            pending_jobs,
+            failed_jobs,
+            lag_ms,
+            last_projected_at_ms: None,
+            observation_watermark: None,
+            database_size_bytes: fs::metadata(&self.database_path)
+                .map(|metadata| metadata.len())
+                .unwrap_or_default(),
+            active_write,
+            consecutive_write_failures: consecutive_failures,
+            retry_after_ms,
         }
     }
 
@@ -1317,62 +1446,6 @@ fn record_receipt(
     Ok(())
 }
 
-fn overlay_conflict(
-    transaction: &duckdb::Transaction<'_>,
-    operation: &crate::planning_overlay::OverlayOperation,
-) -> Result<Option<&'static str>, ObservatoryError> {
-    let current_revision = transaction
-        .query_row(
-            "SELECT membership.revision_hash FROM catalogue_generation_entities membership \
-             JOIN warehouse_metadata metadata ON membership.generation_id = metadata.current_catalogue_generation_id \
-             WHERE metadata.singleton_id = 1 AND membership.entity_id = ?1",
-            [&operation.entity_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()?;
-    let Some(current_revision) = current_revision else {
-        return Ok(Some("target_missing"));
-    };
-    if current_revision != operation.expected_revision_hash {
-        return Ok(Some("revision_changed"));
-    }
-    if let Some(expected) = &operation.expected_value {
-        let current = transaction
-            .query_row(
-                "SELECT value_kind, value_number, value_text, unit FROM definition_properties \
-                 WHERE revision_hash = ?1 AND field_id = ?2 AND occurrence = ?3",
-                params![
-                    current_revision,
-                    operation.field_id,
-                    operation.occurrence.unwrap_or(0)
-                ],
-                |row| {
-                    Ok(DefinitionValue {
-                        value_kind: row.get(0)?,
-                        number: row.get(1)?,
-                        text: row.get(2)?,
-                        unit: row.get(3)?,
-                    })
-                },
-            )
-            .optional()?;
-        if current
-            .as_ref()
-            .is_none_or(|value| !overlay_value_matches(expected, value))
-        {
-            return Ok(Some("value_changed"));
-        }
-    }
-    Ok(None)
-}
-
-fn overlay_value_matches(expected: &OverlayValue, current: &DefinitionValue) -> bool {
-    current.value_kind == expected.kind.as_str()
-        && current.number == expected.number
-        && current.text.as_deref() == expected.text.as_deref()
-        && current.unit.as_deref() == expected.unit.as_deref()
-}
-
 fn overlay_text(value: &OverlayValue) -> Option<&str> {
     match value.kind {
         OverlayValueKind::Text => value.text.as_deref(),
@@ -1403,7 +1476,7 @@ mod tests {
         CatalogueFile, CatalogueSource, ParsedDefinition, ParsedProperty, ParsedRelation,
     };
     use crate::model::{CoverageReport, CoverageStatus, ReceiverHistoryPoint};
-    use crate::planning_overlay::{OverlayOperation, OverlayOperationKind};
+    use crate::planning_overlay::{OverlayOperation, OverlayOperationKind, OverlaySupplement};
     use tempfile::tempdir;
 
     fn observation_dataset(point_count: u32) -> ReceiverDataset {
@@ -1499,6 +1572,11 @@ mod tests {
         let warehouse = AnalyticalWarehouse::initialise(directory.path().join("busy.duckdb"))
             .expect("warehouse");
         let _writer = warehouse.lock().expect("writer lock");
+        let permit = warehouse
+            .governor
+            .begin(WarehouseWriteKind::ObservationProjection, 8_000)
+            .expect("governed write");
+        permit.progress(WarehouseWriteStage::Staging, 2_000);
         let started = Instant::now();
 
         let health = warehouse.health_snapshot(1, 0, Some(10), false);
@@ -1507,8 +1585,16 @@ mod tests {
 
         assert!(started.elapsed() < Duration::from_millis(100));
         assert_eq!(health.phase, WarehousePhase::Lagging);
+        assert_eq!(
+            health
+                .active_write
+                .as_ref()
+                .map(|activity| activity.rows_processed),
+            Some(2_000)
+        );
         assert!(generation.is_none());
         assert!(runtime.is_none());
+        permit.complete();
     }
 
     #[test]
@@ -1744,6 +1830,86 @@ mod tests {
             )
             .expect("effective planning projection");
         assert_eq!(effective, (25.0, "player_override".to_owned()));
+    }
+
+    #[test]
+    fn maximum_overlay_projection_uses_one_bounded_bulk_merge() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("overlay.duckdb"))
+            .expect("warehouse");
+        let document = PlanningOverlayDocument {
+            schema_version: 1,
+            id: "org.example.maximum-overlay".to_owned(),
+            version: "1.0.0".to_owned(),
+            name: "Maximum overlay".to_owned(),
+            author: "Planner".to_owned(),
+            default_locale: "en-AU".to_owned(),
+            description: "Bulk projection regression fixture".to_owned(),
+            target_game_build: None,
+            operations: (0..crate::planning_overlay::MAX_OPERATIONS)
+                .map(|index| OverlayOperation {
+                    operation: OverlayOperationKind::Set,
+                    entity_id: format!("base::building::missing-{index}"),
+                    field_id: "building.workers.required".to_owned(),
+                    occurrence: Some(0),
+                    expected_revision_hash: "a".repeat(64),
+                    expected_value: None,
+                    value: Some(OverlayValue {
+                        kind: OverlayValueKind::Number,
+                        number: Some(index as f64),
+                        text: None,
+                        boolean: None,
+                        unit: Some("workers".to_owned()),
+                    }),
+                    reason: "Maximum-size bulk regression".to_owned(),
+                })
+                .collect(),
+            supplements: (0..crate::planning_overlay::MAX_SUPPLEMENTS)
+                .map(|index| OverlaySupplement {
+                    local_id: format!("supplement-{index}"),
+                    entity_kind: "building".to_owned(),
+                    display_name: format!("Supplement {index}"),
+                    reason: "Maximum-size bulk regression".to_owned(),
+                    properties: Vec::new(),
+                })
+                .collect(),
+        };
+        let started = Instant::now();
+
+        warehouse
+            .project_overlay("overlay:maximum", Some((&document.id, 1, &document)), 20)
+            .expect("maximum overlay projection");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "maximum overlay projection took {:?}",
+            started.elapsed()
+        );
+        let connection = warehouse.lock().expect("connection");
+        let (operation_count, conflict_count, supplement_count) = connection
+            .query_row(
+                "SELECT COUNT(*), COUNT(*) FILTER (WHERE conflict_code = 'target_missing'), \
+                        (SELECT COUNT(*) FROM active_overlay_entities) \
+                 FROM active_overlay_operations",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, u64>(0)?,
+                        row.get::<_, u64>(1)?,
+                        row.get::<_, u64>(2)?,
+                    ))
+                },
+            )
+            .expect("bulk overlay counts");
+        assert_eq!(
+            operation_count,
+            crate::planning_overlay::MAX_OPERATIONS as u64
+        );
+        assert_eq!(conflict_count, operation_count);
+        assert_eq!(
+            supplement_count,
+            crate::planning_overlay::MAX_SUPPLEMENTS as u64
+        );
     }
 
     #[test]
