@@ -59,6 +59,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "historical analytical heads and continuation memberships",
         include_str!("../../migrations/0011_historical_analysis_contexts.sql"),
     ),
+    (
+        12,
+        "first-class attention cues and native research setup",
+        include_str!("../../migrations/0012_attention_and_research_setup.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

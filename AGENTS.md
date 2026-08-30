@@ -92,6 +92,10 @@
 - Contextual help uses the shared keyboard-accessible help primitive and stable
   tutorial topic IDs. Essential instructions and warnings must remain visible
   without opening a tooltip.
+- New or newly enabled actions that need emphasis use the shared AttentionCue
+  primitive. Cues require stable IDs and content revisions, bounded motion,
+  reduced-motion and forced-colour behaviour, persistent dismissal, and replay;
+  they never decide whether a domain action is valid.
 
 ## Localisation
 

@@ -15,6 +15,7 @@ mod language_pack;
 mod model;
 mod planning_overlay;
 mod recorder_service;
+mod research_setup;
 mod save_archive;
 mod stats_parser;
 mod storage;
@@ -30,6 +31,7 @@ use tauri::Manager;
 
 use application::ObservatoryApplication;
 use commands::AppState;
+use research_setup::ResearchSetupService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -54,6 +56,7 @@ pub fn run() {
             );
             app.manage(AppState {
                 application: Arc::clone(&application),
+                research_setup: Arc::new(ResearchSetupService::discover()),
             });
             recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
             compatibility_service::spawn(app.handle().clone(), Arc::clone(&application));
@@ -62,6 +65,14 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::attention_cue_status,
+            commands::dismiss_attention_cue,
+            commands::replay_attention_cue,
+            commands::get_research_setup,
+            commands::set_research_notice_accepted,
+            commands::configure_research_tesmio_checkout,
+            commands::get_research_build_progress,
+            commands::build_research_probe,
             commands::get_setup_state,
             commands::get_latest_receiver_dataset,
             commands::get_archive_overview,

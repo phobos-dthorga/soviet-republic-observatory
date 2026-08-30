@@ -1,5 +1,6 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
+  import AttentionCue from "../attention/AttentionCue.svelte";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
@@ -16,9 +17,11 @@
   let {
     dataset = null,
     desktopAvailable,
+    onopenresearch,
   }: {
     dataset?: PopulationDataset | null;
     desktopAvailable: boolean;
+    onopenresearch: () => void;
   } = $props();
 
   let selectedCityId = $state("");
@@ -216,6 +219,21 @@
         <span class="eyebrow">{$translation("population-no-evidence")}</span>
         <h3>{$translation("population-no-observations")}</h3>
         <p>{$translation("population-no-observations-detail")}</p>
+        <AttentionCue
+          cueId="research.setup.entry"
+          contentRevision={1}
+          heading={$translation("research-setup-entry-cue-title")}
+          detail={$translation("research-setup-entry-cue-detail")}
+          dismissLabel={$translation("attention-dismiss")}
+        >
+          <button
+            type="button"
+            class="population-probe-setup"
+            onclick={onopenresearch}
+          >
+            {$translation("research-setup-open")}
+          </button>
+        </AttentionCue>
       </section>
     {:else}
       <section
@@ -367,6 +385,22 @@
             <span class="status-chip">{probeStateLabel()}</span>
           </header>
           <p>{$translation("population-probe-description")}</p>
+          <AttentionCue
+            cueId="research.setup.entry"
+            contentRevision={1}
+            heading={$translation("research-setup-entry-cue-title")}
+            detail={$translation("research-setup-entry-cue-detail")}
+            dismissLabel={$translation("attention-dismiss")}
+          >
+            <button
+              type="button"
+              class="population-probe-setup"
+              disabled={!desktopAvailable}
+              onclick={onopenresearch}
+            >
+              {$translation("research-setup-open")}
+            </button>
+          </AttentionCue>
           <div class="population-probe-contract">
             <article>
               <strong>{$translation("population-probe-read-only")}</strong>
@@ -634,6 +668,19 @@
     color: var(--colour-muted);
     font-size: var(--type-caption);
     line-height: 1.55;
+  }
+
+  .population-probe-setup {
+    margin-top: 10px;
+    border: 1px solid var(--colour-observed);
+    padding: 8px 11px;
+    color: var(--colour-text);
+    background: var(--colour-observed-soft);
+    cursor: pointer;
+  }
+
+  .population-probe-setup:disabled {
+    cursor: not-allowed;
   }
 
   .population-probe-contract,

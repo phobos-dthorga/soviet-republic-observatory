@@ -16,11 +16,18 @@
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import LegalDialog from "./lib/legal/LegalDialog.svelte";
+  import ResearchSetupDialog from "./lib/research/ResearchSetupDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
   import { notify } from "./lib/notifications/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
+  import {
+    getResearchBuildProgress,
+    listenForResearchBuildProgress,
+  } from "./lib/research/desktopClient";
+  import { researchBuildProgressView } from "./lib/research/progress";
+  import type { ResearchBuildProgress } from "./lib/research/types";
   import {
     clearDiagnosticLog,
     compareArchiveObservations,
@@ -95,12 +102,14 @@
   let observationDialogOpen = $state(false);
   let diagnosticsDialogOpen = $state(false);
   let legalDialogOpen = $state(false);
+  let researchSetupDialogOpen = $state(false);
   let diagnosticsBusy = $state(false);
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
   let catalogueProgress = $state<CatalogueRefreshProgress | null>(null);
   let warehouseStatus = $state<CatalogueStatus | null>(null);
   let reinterpretationProgress = $state<ReinterpretationProgress | null>(null);
+  let researchBuildProgress = $state<ResearchBuildProgress | null>(null);
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -322,6 +331,7 @@
     let stopCatalogueListening: (() => void) | undefined;
     let stopCompatibilityListening: (() => void) | undefined;
     let stopReinterpretationListening: (() => void) | undefined;
+    let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
     void Promise.all([
       getSetupState(),
@@ -380,12 +390,25 @@
       if (disposed) unlisten();
       else stopReinterpretationListening = unlisten;
     });
+    void observeLatestTaskProgress(
+      {
+        listen: listenForResearchBuildProgress,
+        read: getResearchBuildProgress,
+      },
+      (progress) => {
+        if (!disposed) researchBuildProgress = progress;
+      },
+    ).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopResearchBuildListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
       stopCatalogueListening?.();
       stopCompatibilityListening?.();
       stopReinterpretationListening?.();
+      stopResearchBuildListening?.();
       stopWarehouseListening?.();
     };
   });
@@ -508,6 +531,20 @@
           onclick={() => (observationDialogOpen = true)}
         />
       {/if}
+      {#if researchBuildProgress && ["running", "failed"].includes(researchBuildProgress.state)}
+        {@const view = researchBuildProgressView(
+          researchBuildProgress,
+          $translation,
+        )}
+        <TaskProgressIndicator
+          label={$translation("research-setup-progress-eyebrow")}
+          detail={view.heading}
+          percent={view.progressPercent}
+          failed={view.state === "failed"}
+          currentItem={view.currentItem}
+          onclick={() => (researchSetupDialogOpen = true)}
+        />
+      {/if}
       <button
         type="button"
         class="legal-button"
@@ -628,7 +665,11 @@
       gameConfigured={Boolean(setupState?.game_directory)}
     />
   {:else if activeWorkspace === "population"}
-    <PopulationWorkspace dataset={populationDataset} {desktopAvailable} />
+    <PopulationWorkspace
+      dataset={populationDataset}
+      {desktopAvailable}
+      onopenresearch={() => (researchSetupDialogOpen = true)}
+    />
   {:else}
     <ArchiveWorkspace
       archive={archiveOverview}
@@ -679,4 +720,14 @@
   onclear={() => void clearDiagnostics()}
 />
 
-<LegalDialog open={legalDialogOpen} onclose={() => (legalDialogOpen = false)} />
+<LegalDialog
+  open={legalDialogOpen}
+  onclose={() => (legalDialogOpen = false)}
+  onopenresearch={() => (researchSetupDialogOpen = true)}
+/>
+
+<ResearchSetupDialog
+  open={researchSetupDialogOpen}
+  onclose={() => (researchSetupDialogOpen = false)}
+  onopenlegal={() => (legalDialogOpen = true)}
+/>

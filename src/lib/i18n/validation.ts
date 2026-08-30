@@ -8,7 +8,7 @@ import type {
 
 export const LANGUAGE_PACK_SCHEMA_VERSION = 1 as const;
 export const SOURCE_CATALOG_VERSION = 1 as const;
-export const SOURCE_CATALOG_REVISION = 30 as const;
+export const SOURCE_CATALOG_REVISION = 31 as const;
 export const SOURCE_LOCALE = "en-AU" as const;
 export const DEFAULT_LANGUAGE_PACK_ID = "observatory-en-au" as const;
 export const MAX_LANGUAGE_PACK_BYTES = 256 * 1024;
@@ -29,6 +29,8 @@ export const PROTECTED_MESSAGE_PREFIXES = [
   "coverage-",
   "causality-",
   "synthetic-",
+  "research-setup-",
+  "attention-",
 ] as const;
 
 const manifestFields = new Set([

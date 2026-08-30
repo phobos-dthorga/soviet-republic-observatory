@@ -73,6 +73,20 @@ pub enum ObservatoryError {
     BinaryCompatibilityMismatch(&'static str),
     #[error("Another critical task of this type is already running.")]
     CriticalTaskBusy,
+    #[error("That attention cue identity or revision is invalid.")]
+    InvalidAttentionCue,
+    #[error("The experimental research setup request is invalid.")]
+    InvalidResearchSetup,
+    #[error("The selected TesmioLoader checkout does not match the reviewed interface.")]
+    InvalidResearchCheckout,
+    #[error("Review and accept the current native-research notice before building.")]
+    ResearchNoticeRequired,
+    #[error("The reviewed probe source is unavailable in this application checkout.")]
+    ResearchSourceUnavailable,
+    #[error("The required Windows C++ build toolchain is unavailable.")]
+    ResearchToolchainUnavailable,
+    #[error("The bounded research-probe build failed.")]
+    ResearchBuildFailed,
     #[error("That language pack is larger than the 256 KiB safety limit.")]
     LanguageManifestTooLarge,
     #[error("That file does not contain valid JSON.")]
@@ -158,6 +172,13 @@ impl ObservatoryError {
             Self::InvalidCompatibilityProfile(_) => "invalid_compatibility_profile",
             Self::BinaryCompatibilityMismatch(_) => "binary_compatibility_mismatch",
             Self::CriticalTaskBusy => "critical_task_busy",
+            Self::InvalidAttentionCue => "invalid_attention_cue",
+            Self::InvalidResearchSetup => "invalid_research_setup",
+            Self::InvalidResearchCheckout => "invalid_research_checkout",
+            Self::ResearchNoticeRequired => "research_notice_required",
+            Self::ResearchSourceUnavailable => "research_source_unavailable",
+            Self::ResearchToolchainUnavailable => "research_toolchain_unavailable",
+            Self::ResearchBuildFailed => "research_build_failed",
             Self::LanguageManifestTooLarge => "manifest_too_large",
             Self::InvalidLanguageJson => "invalid_json",
             Self::InvalidLanguageManifest => "invalid_manifest",

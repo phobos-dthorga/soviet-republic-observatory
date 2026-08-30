@@ -1,6 +1,7 @@
 mod analysis_context;
 mod analysis_packs;
 mod archive;
+mod attention;
 mod comparison;
 mod compatibility;
 mod connection;
@@ -11,10 +12,13 @@ mod observations;
 mod planning_overlays;
 mod population;
 mod recorder;
+mod research_setup;
 mod settings;
 mod snapshots;
 mod themes;
 mod warehouse_jobs;
+
+pub(crate) use research_setup::StoredResearchSetup;
 
 #[cfg(test)]
 mod tests;

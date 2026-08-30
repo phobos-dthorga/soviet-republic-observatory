@@ -34,6 +34,11 @@ only in a tooltip. New ordinary captions and controls must use the readable
 type tokens rather than introduce microtext below the 12-pixel-equivalent
 default floor.
 
+Use the first-class AttentionCue for important new or newly available actions;
+do not reproduce pulse or glow CSS in a workspace. A cue needs a stable ID and
+content revision, must respect reduced motion, and can explain an already-valid
+action but cannot establish domain availability or safety.
+
 Debuggers, profilers, browser developer tools, database inspection tools, and
 trace captures may be used whenever they are the preferable diagnostic method.
 Keep captures local, bounded, and free of save contents, personal paths, or

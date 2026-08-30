@@ -211,6 +211,7 @@ for (const theme of themes) {
     test("dialogs, tooltips, focus, controls and disabled states remain readable", async ({
       page,
     }, testInfo) => {
+      test.setTimeout(60_000);
       await page.goto("/");
       await applyTheme(page, theme);
       await page.getByRole("button", { name: /^Language/ }).click();
@@ -218,7 +219,7 @@ for (const theme of themes) {
         .getByRole("button", { name: "Community language packs" })
         .focus();
       await audit(page, testInfo, `${theme.name} / Language dialog`);
-      await page.getByRole("button", { name: "Close" }).click();
+      await page.getByRole("button", { name: "Close" }).last().click();
       await page.locator(".theme-button").evaluate((button) => {
         (button as HTMLButtonElement).disabled = false;
       });
@@ -228,6 +229,11 @@ for (const theme of themes) {
       await page.getByRole("button", { name: "Save observer status" }).click();
       await audit(page, testInfo, `${theme.name} / Observation dialog`);
       await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Legal & notices" }).click();
+      await page.getByRole("tab", { name: "Read-only research" }).click();
+      await page.getByRole("button", { name: "Open research setup" }).click();
+      await audit(page, testInfo, `${theme.name} / Research setup dialog`);
+      await page.getByRole("button", { name: "Close" }).last().click();
       await page.keyboard.press("Tab");
       await audit(page, testInfo, `${theme.name} / Keyboard focus`);
       const optionFailures = await page

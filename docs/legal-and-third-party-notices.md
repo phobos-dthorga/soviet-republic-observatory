@@ -39,6 +39,12 @@ including supplying the corresponding source and complete licence text. The
 complete GPL text is included as `research/tesmioloader-probe/COPYING`. The
 companion is not included in the Observatory desktop application binary.
 
+The in-application Experimental Research Setup assistant may compile the
+separately licensed probe from local reviewed sources. It does not obtain or
+install TesmioLoader, inject into the game, launch W&R, or run the probe. A
+successful build records only the bounded artifact identity and must not be
+interpreted as installation, activation, compatibility, or a sandbox claim.
+
 ## Read-only research contract
 
 The reviewed experiment:

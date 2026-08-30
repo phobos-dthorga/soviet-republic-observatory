@@ -4,6 +4,20 @@ Republic Observatory treats accessibility and explanation as application
 infrastructure. They are not workspace-by-workspace decoration to be added
 after the analytical surface has grown.
 
+## Attention cues
+
+Important new or newly enabled actions use the shared `AttentionCue` contract
+instead of workspace-specific glow effects. A cue combines visible localised
+guidance with a bounded three-cycle outline. Reduced-motion users receive the
+same persistent outline and message without animation, and forced-colour mode
+uses the operating-system highlight colour. Dismissal is stored by stable cue
+ID and content revision in SQLite; revised guidance reappears automatically and
+users can explicitly replay existing guidance.
+
+Cues never carry validation or business policy. They render only when the
+owning service has already established that the highlighted action is
+available. Essential warnings remain visible outside the cue.
+
 ## Readable typography
 
 The interface uses named type tokens. Ordinary captions and controls have a

@@ -831,7 +831,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        11
+        12
     );
     assert_eq!(
         migrated
@@ -844,6 +844,68 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
             .expect("compatibility rebuild"),
         1
     );
+}
+
+#[test]
+fn attention_cues_are_revision_specific_and_replayable() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("attention.sqlite3"))
+        .expect("storage");
+
+    assert!(
+        !storage
+            .attention_cue_dismissed("research.setup.entry", 1)
+            .expect("status")
+    );
+    storage
+        .dismiss_attention_cue("research.setup.entry", 1)
+        .expect("dismiss");
+    assert!(
+        storage
+            .attention_cue_dismissed("research.setup.entry", 1)
+            .expect("status")
+    );
+    assert!(
+        !storage
+            .attention_cue_dismissed("research.setup.entry", 2)
+            .expect("new revision")
+    );
+    storage
+        .replay_attention_cue("research.setup.entry", 1)
+        .expect("replay");
+    assert!(
+        !storage
+            .attention_cue_dismissed("research.setup.entry", 1)
+            .expect("replayed")
+    );
+    assert!(storage.dismiss_attention_cue("Unsafe cue", 1).is_err());
+}
+
+#[test]
+fn research_setup_state_persists_consent_checkout_and_build_identity() {
+    let directory = tempdir().expect("temporary directory");
+    let database_path = directory.path().join("research.sqlite3");
+    let checkout = directory.path().join("reviewed-checkout");
+    let storage = ObservatoryStorage::initialise(database_path.clone()).expect("storage");
+    storage.set_research_notice_revision(1).expect("notice");
+    storage
+        .set_research_tesmio_checkout(&checkout)
+        .expect("checkout");
+    let hash = "a".repeat(64);
+    storage
+        .record_research_probe_build(&hash)
+        .expect("build identity");
+    drop(storage);
+
+    let reopened = ObservatoryStorage::initialise(database_path).expect("reopened storage");
+    let setup = reopened.research_setup().expect("setup");
+    assert_eq!(setup.accepted_notice_revision, 1);
+    assert_eq!(
+        setup.tesmio_checkout_path.as_deref(),
+        Some(checkout.as_path())
+    );
+    assert_eq!(setup.last_probe_hash.as_deref(), Some(hash.as_str()));
+    assert!(setup.last_built_at_ms.is_some());
 }
 
 fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {

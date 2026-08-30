@@ -1,5 +1,7 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::analysis_pack::{AnalysisPackContribution, AnalysisPackInspection, AnalysisPackSummary};
@@ -14,11 +16,132 @@ use crate::model::{
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderHealth,
     ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
+use crate::research_setup::{
+    RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
+};
 use crate::theme::{ThemeInspection, ThemeStatus};
 
 #[derive(Debug)]
 pub struct AppState {
     pub application: Arc<ObservatoryApplication>,
+    pub research_setup: Arc<ResearchSetupService>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AttentionCueStatus {
+    pub cue_id: String,
+    pub content_revision: u32,
+    pub dismissed: bool,
+}
+
+#[tauri::command]
+pub fn attention_cue_status(
+    cue_id: String,
+    content_revision: u32,
+    state: State<'_, AppState>,
+) -> Result<AttentionCueStatus, CommandError> {
+    let dismissed = state
+        .application
+        .attention_cue_dismissed(&cue_id, content_revision)?;
+    Ok(AttentionCueStatus {
+        cue_id,
+        content_revision,
+        dismissed,
+    })
+}
+
+#[tauri::command]
+pub fn dismiss_attention_cue(
+    cue_id: String,
+    content_revision: u32,
+    state: State<'_, AppState>,
+) -> Result<AttentionCueStatus, CommandError> {
+    state
+        .application
+        .dismiss_attention_cue(&cue_id, content_revision)?;
+    Ok(AttentionCueStatus {
+        cue_id,
+        content_revision,
+        dismissed: true,
+    })
+}
+
+#[tauri::command]
+pub fn replay_attention_cue(
+    cue_id: String,
+    content_revision: u32,
+    state: State<'_, AppState>,
+) -> Result<AttentionCueStatus, CommandError> {
+    state
+        .application
+        .replay_attention_cue(&cue_id, content_revision)?;
+    Ok(AttentionCueStatus {
+        cue_id,
+        content_revision,
+        dismissed: false,
+    })
+}
+
+#[tauri::command]
+pub fn get_research_setup(state: State<'_, AppState>) -> Result<ResearchSetupStatus, CommandError> {
+    let stored = state.application.research_setup()?;
+    Ok(state.research_setup.status(&stored))
+}
+
+#[tauri::command]
+pub fn set_research_notice_accepted(
+    accepted: bool,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    state
+        .application
+        .set_research_notice_revision(if accepted {
+            RESEARCH_NOTICE_REVISION
+        } else {
+            0
+        })?;
+    let stored = state.application.research_setup()?;
+    Ok(state.research_setup.status(&stored))
+}
+
+#[tauri::command]
+pub fn configure_research_tesmio_checkout(
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    if path.is_empty() || path.len() > 4_096 {
+        return Err(crate::error::ObservatoryError::InvalidResearchSetup.into());
+    }
+    let canonical = state
+        .research_setup
+        .validate_checkout(&PathBuf::from(path))?;
+    state.application.set_research_tesmio_checkout(&canonical)?;
+    let stored = state.application.research_setup()?;
+    Ok(state.research_setup.status(&stored))
+}
+
+#[tauri::command]
+pub fn get_research_build_progress(state: State<'_, AppState>) -> ResearchBuildProgress {
+    state.research_setup.progress()
+}
+
+#[tauri::command]
+pub async fn build_research_probe(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    let application = Arc::clone(&state.application);
+    let service = Arc::clone(&state.research_setup);
+    tauri::async_runtime::spawn_blocking(move || {
+        let stored = application.research_setup()?;
+        let artifact = service.build_probe(&app, &stored)?;
+        application.record_research_probe_build(&artifact.hash)?;
+        let stored = application.research_setup()?;
+        Ok::<ResearchSetupStatus, crate::error::ObservatoryError>(service.status(&stored))
+    })
+    .await
+    .map_err(|_| CommandError::from(crate::error::ObservatoryError::ResearchBuildFailed))?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

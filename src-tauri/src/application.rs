@@ -1159,6 +1159,52 @@ impl ObservatoryApplication {
         self.warehouse.retry_delay()
     }
 
+    pub fn attention_cue_dismissed(
+        &self,
+        cue_id: &str,
+        content_revision: u32,
+    ) -> Result<bool, ObservatoryError> {
+        self.storage
+            .attention_cue_dismissed(cue_id, content_revision)
+    }
+
+    pub fn dismiss_attention_cue(
+        &self,
+        cue_id: &str,
+        content_revision: u32,
+    ) -> Result<(), ObservatoryError> {
+        self.storage.dismiss_attention_cue(cue_id, content_revision)
+    }
+
+    pub fn replay_attention_cue(
+        &self,
+        cue_id: &str,
+        content_revision: u32,
+    ) -> Result<(), ObservatoryError> {
+        self.storage.replay_attention_cue(cue_id, content_revision)
+    }
+
+    pub(crate) fn research_setup(
+        &self,
+    ) -> Result<crate::storage::StoredResearchSetup, ObservatoryError> {
+        self.storage.research_setup()
+    }
+
+    pub fn set_research_notice_revision(&self, revision: u32) -> Result<(), ObservatoryError> {
+        self.storage.set_research_notice_revision(revision)
+    }
+
+    pub fn set_research_tesmio_checkout(&self, path: &Path) -> Result<(), ObservatoryError> {
+        self.storage.set_research_tesmio_checkout(path)
+    }
+
+    pub(crate) fn record_research_probe_build(
+        &self,
+        content_hash: &str,
+    ) -> Result<(), ObservatoryError> {
+        self.storage.record_research_probe_build(content_hash)
+    }
+
     pub(crate) fn catalogue_configuration(&self) -> Result<Option<PathBuf>, ObservatoryError> {
         self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)
     }

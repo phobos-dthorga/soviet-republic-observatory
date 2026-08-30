@@ -5,9 +5,11 @@
   let {
     open,
     onclose,
+    onopenresearch,
   }: {
     open: boolean;
     onclose: () => void;
+    onopenresearch: () => void;
   } = $props();
 
   type LegalTab = "summary" | "research" | "licences";
@@ -116,6 +118,16 @@
               <h3>{$translation("legal-research-evidence-title")}</h3>
               <p>{$translation("legal-research-evidence-detail")}</p>
             </article>
+            <button
+              type="button"
+              class="research-setup-link"
+              onclick={() => {
+                onclose();
+                onopenresearch();
+              }}
+            >
+              {$translation("research-setup-open")}
+            </button>
           </div>
         {:else}
           <div id="legal-licences-panel" role="tabpanel" class="legal-stack">
@@ -261,6 +273,12 @@
   .legal-stack {
     display: grid;
     gap: 9px;
+  }
+
+  .research-setup-link {
+    justify-self: start;
+    border-color: var(--colour-observed);
+    background: var(--colour-observed-soft);
   }
 
   .legal-advice-note {

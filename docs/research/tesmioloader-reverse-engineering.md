@@ -22,6 +22,24 @@ Any distributed companion plugin requires a separate dependency, licensing,
 security, and update-compatibility decision. Republic Observatory remains
 usable without it.
 
+## Experimental Research Setup assistant
+
+The Population workspace now opens a native setup assistant for the optional
+probe. It records explicit acceptance of the current research notice, validates
+an already present local TesmioLoader checkout against the two exact header
+hashes reviewed at commit `3baa141f9f08921aea9c95f0a400289cabd9960a`,
+checks the local Microsoft C++ toolchain, and invokes only the repository-owned
+`research/tesmioloader-probe/build.ps1` recipe. Progress is durable and shown
+through the shared critical-task interface; output is bounded, hashed, and the
+displayed build log redacts both local source roots.
+
+This is a build assistant, not a loader manager. It does not clone or download
+TesmioLoader, install the result, alter loader configuration, elevate, launch
+W&R, inject the probe, or collect telemetry. A source development checkout is
+currently required because the probe source is not embedded in packaged
+applications. Missing prerequisites fail closed and ordinary save analysis is
+unaffected.
+
 ## What the loader provides
 
 TesmioLoader is a native instrumentation and modification host. Its launcher

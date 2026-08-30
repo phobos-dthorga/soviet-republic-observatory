@@ -174,6 +174,10 @@ publishes catalogue metrics.
   companion can be detected and validated without importing its records or
   weakening the stable-identity gate; observation-only use also requires the
   reviewed host configuration and sole-plugin preflight
+- Guided Experimental Research Setup with versioned legal acceptance, exact
+  source-checkout validation, compiler preflight, a bounded local build,
+  sanitised progress ledger, and replayable first-class attention cues; probe
+  installation and execution remain deliberately outside the application
 - Welfare small multiples after field meanings and denominators are validated
 - City heatmap, ranking, weighted dispersion, and intervention queue
 - Annotations and event-time comparisons

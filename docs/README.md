@@ -83,6 +83,8 @@ an engineering requirement.
 - [ADR-0018: evidence-gate individual citizen histories](architecture/decisions/0018-evidence-gated-citizen-histories.md)
 - [ADR-0019: optional read-only native research bridge](architecture/decisions/0019-optional-read-only-native-research-bridge.md)
   — fail-closed same-process observation without a product dependency
+- [ADR-0020: first-class attention cues and bounded research setup](architecture/decisions/0020-first-class-attention-and-research-setup.md)
+  — persistent accessible guidance and an exact-source local build assistant
 
 ## Evidence status vocabulary
 
