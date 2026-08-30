@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { activeLocale, translation } from "../i18n/runtime";
-  import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import { createMaterialFlowPreview } from "../data/materialFlowPreview";
+  import ProductionRouteLaboratory from "./ProductionRouteLaboratory.svelte";
   import {
     activatePlanningOverlay,
     deactivatePlanningOverlay,
@@ -66,7 +65,6 @@
   let supplementId = $state("planning_material");
   let supplementName = $state("Planning material");
   let clockMs = $state(Date.now());
-  const materialFlowPreview = $derived(createMaterialFlowPreview($translation));
   const refreshActive = $derived(
     refreshProgress != null &&
       ["discovering", "scanning", "publishing", "finalising"].includes(
@@ -419,9 +417,12 @@
     {/if}
 
     <div id="material-flow-laboratory" class="flow-laboratory">
-      <ObservatoryChart
-        spec={materialFlowPreview}
-        eyebrow={$translation("catalogue-flow-eyebrow")}
+      <ProductionRouteLaboratory
+        {desktopAvailable}
+        {gameConfigured}
+        generationId={status?.generation?.generation_id ?? null}
+        overlayProfileName={status?.active_overlay?.display_name ?? null}
+        overlayRevision={status?.active_overlay?.active_revision ?? null}
       />
     </div>
 

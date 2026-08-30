@@ -78,14 +78,28 @@ colour is not the sole carrier of meaning. Each diagram has a keyboard-readable
 flow ledger containing source, target, exact value, unit, and evidence. Canvas
 animation is removed when reduced motion is requested.
 
-## Current proof
+## Current implementation
 
-The Materials workspace includes a deliberately synthetic steel allocation
-laboratory. It asks where a 100-unit illustrative supply originates and where it
-is allocated. The diagram reconciles 68 domestic and 32 imported units with 42
-construction, 24 mechanical-component, 18 vehicle, 10 export, and 6 unaccounted
-units. These values prove the visual and accounting contract; they are not read
-from a save, definition catalogue, or personal republic.
+The desktop Materials workspace includes a source-backed Production Route
+Laboratory. It reads one recipe revision from the active DuckDB catalogue,
+selects one output as a target, and scales every recorded input, waste-input,
+and output coefficient by the same factor. The diagram uses an explicitly open
+boundary: definition coefficients do not prove mass conservation, observed
+throughput, rated capacity, or inventory movement.
+
+A route receives ribbons only when it has at least one input and output, all
+quantities are finite and positive, every relation uses the same recorded
+basis, endpoints are unambiguous, and the bounded relation limit is respected.
+Mixed units, missing quantities, invalid quantities, repeated endpoints, and
+larger routes remain in the exact evidence ledger without fabricated ribbon
+widths. Each ribbon carries the directive, source line, mapping identity, scope
+state, and catalogue-generation provenance that produced it.
+
+When the desktop catalogue is unavailable, the interface retains the visibly
+synthetic steel-allocation proof. Its 68 domestic and 32 imported units reconcile
+with 42 construction, 24 mechanical-component, 18 vehicle, 10 export, and 6
+unaccounted units. These preview values are never presented as catalogue or save
+facts.
 
 ## Extension boundary
 

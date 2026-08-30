@@ -81,6 +81,7 @@ pub fn run() {
             commands::rebuild_warehouse,
             commands::search_catalogue,
             commands::get_definition_dossier,
+            commands::get_production_route,
             commands::inspect_planning_overlay,
             commands::import_planning_overlay,
             commands::export_planning_overlay,

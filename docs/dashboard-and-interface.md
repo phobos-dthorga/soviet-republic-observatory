@@ -248,7 +248,8 @@ of Analysis Pack chart schema v1.
 | Plan        | How uncertain is completion?          | fan chart                                      | milestone interval table   |
 | Materials   | Which resources are exposed?          | periodic-table cells and ranked bars           | sortable resource table    |
 | Materials   | Where are resources used?             | heatmap                                        | grouped horizontal bars    |
-| Materials   | Where did one material flow?          | bounded Sankey with explicit residual          | exact source-to-use ledger |
+| Materials   | What coefficients define this route?  | open-boundary production-route Sankey          | exact definition ledger    |
+| Materials   | Where did one material flow?          | conserved Sankey with explicit residual        | exact source-to-use ledger |
 | Laboratory  | What limits output?                   | required-versus-available bars                 | coefficient table          |
 | Population  | Why did population change?            | waterfall                                      | signed component bars      |
 | Population  | Are welfare measures moving together? | aligned small multiples                        | latest values with slopes  |

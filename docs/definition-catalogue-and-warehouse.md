@@ -57,6 +57,19 @@ active planning-overlay profile and revision, observation watermark, warehouse
 schema, and projector version. A model may not combine rows from different
 snapshots.
 
+The bounded `ProductionRouteModel` is the first presentation-facing model over
+catalogue relationships. The Rust host accepts one current recipe identity, an
+optional output resource, and an optional finite positive target. It returns at
+most 63 production-input, waste-input, and production-output relations with
+their exact quantities, basis, directive, line, mapping provenance, and pinned
+snapshot. Presentation code receives neither SQL nor table identities.
+
+The host assigns a route status before geometry is considered. Missing or
+invalid quantities, absent inputs or outputs, mixed bases, duplicate directional
+endpoints, and excessive relation counts are explicit unavailable states. Only
+a `ready` route receives uniformly scaled coefficients; scaling is a
+definition-coefficient calculation, not evidence of capacity or actual flow.
+
 ## Catalogue generations
 
 A refresh discovers the configured base game, `dlc*`/`elc*` packages,
@@ -119,6 +132,11 @@ URLs, markup, renderer options, or executable callbacks.
 presents every affected field as `original → override → effective` and marks the
 evidence `player_override`. Supplemental resources, buildings, vehicles, and
 recipes are `player_definition`, not claims about installed assets.
+
+Overlay schema v1 changes typed properties but does not change definition
+relationships. Production-route results therefore pin and display the active
+overlay revision for reproducibility while making clear that it did not alter
+the recipe coefficients.
 
 Inspect, validate, import, activate, update, roll back, deactivate, export, and
 remove remain distinct operations. Named profiles have immutable revisions and

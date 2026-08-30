@@ -83,6 +83,9 @@ The branch-aware archive slice is complete at its currently documented scope.
   watermark, schema, and projector versions
 - Governed bulk-only variable writes, bounded workload classes, visible active
   stages, and exponential failure backoff across every DuckDB projector
+- Source-backed Production Route Laboratory with bounded Rust query ownership,
+  output-target scaling, per-relation provenance, explicit unavailable states,
+  and an accessible exact ledger
 
 Ignored reference-machine scale and growth benchmarks accompany the automated
 suite. Broader verified directive coverage remains ongoing catalogue hardening.
@@ -146,7 +149,8 @@ publishes catalogue metrics.
 - Currency-specific trade, tourism, debt, and break-even analysis
 - Measurement coverage and accounted-flow residual presentation
 - Source-to-use Sankey views when one compatible material, scope, and planning
-  window can be reconciled; synthetic contract proof precedes observed flows
+  window can be reconciled; the source-backed definition-coefficient laboratory
+  is implemented, while observed flows remain a research boundary
 
 ## Slice 7 — Population and cities
 
@@ -158,7 +162,7 @@ publishes catalogue metrics.
 ## Slice 8 — Industrial Laboratory
 
 - Expanded definition coverage and verified automatic-cost rules
-- Production-chain graph
+- Multi-stage production-chain graph building on the single-recipe laboratory
 - Target propagation and limiting-input analysis
 - Cost sensitivity and scenario engine
 - Linear optimisation after actual capacity evidence is available

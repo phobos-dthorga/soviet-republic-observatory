@@ -13,8 +13,9 @@ use crate::model::{
     CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth, WarehousePhase,
-    WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
+    DefinitionValue, ProductionRouteFlow, ProductionRouteModel, ProductionRouteRequest,
+    ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth, WarehousePhase, WarehouseSnapshot,
+    WarehouseWriteKind, WarehouseWriteStage,
 };
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
@@ -25,6 +26,7 @@ use crate::warehouse_governor::{
 
 pub const WAREHOUSE_SCHEMA_VERSION: u32 = 4;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
+const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
 #[derive(Clone, Debug)]
@@ -1030,6 +1032,226 @@ impl AnalyticalWarehouse {
         })
     }
 
+    pub fn production_route(
+        &self,
+        request: &ProductionRouteRequest,
+    ) -> Result<ProductionRouteModel, ObservatoryError> {
+        if request.entity_id.is_empty()
+            || request.entity_id.len() > 320
+            || request.output_resource_id.as_deref().is_some_and(|value| {
+                value.len() > 160
+                    || !value.starts_with("resource::")
+                    || !value.chars().all(|character| {
+                        character.is_ascii_alphanumeric()
+                            || matches!(character, ':' | '_' | '-' | '.')
+                    })
+            })
+            || request
+                .target_quantity
+                .is_some_and(|value| !value.is_finite() || value <= 0.0 || value > 1_000_000_000.0)
+        {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+
+        let connection = self.lock()?;
+        let (route_id, revision_hash, display_name, package_name, coverage, relation_count) =
+            connection
+                .query_row(
+                    "SELECT membership.entity_id, revisions.revision_hash, revisions.display_name, \
+                            sources.package_name, revisions.coverage, \
+                            (SELECT COUNT(*) FROM definition_relations relations \
+                             WHERE relations.revision_hash = revisions.revision_hash \
+                               AND relations.relation_kind IN \
+                                   ('production_input', 'production_output', 'waste_input')) \
+                     FROM catalogue_generation_entities membership \
+                     JOIN warehouse_metadata metadata \
+                       ON membership.generation_id = metadata.current_catalogue_generation_id \
+                     JOIN definition_entity_revisions revisions USING(revision_hash) \
+                     JOIN catalogue_sources sources ON sources.generation_id = membership.generation_id \
+                          AND sources.source_id = revisions.source_id \
+                     WHERE metadata.singleton_id = 1 AND membership.entity_id = ?1 \
+                       AND revisions.entity_kind = 'recipe'",
+                    [&request.entity_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, u32>(5)?,
+                        ))
+                    },
+                )
+                .optional()?
+                .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+        let building_entity_id = connection
+            .query_row(
+                "SELECT value_text FROM definition_properties \
+                 WHERE revision_hash = ?1 AND field_id = 'recipe.building.entity_id' \
+                   AND occurrence = 0",
+                [&revision_hash],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+
+        let mut statement = connection.prepare(
+            "SELECT relation_kind, occurrence, target_id, quantity, unit, resolution, \
+                    source_directive, source_line, relations.mapping_id, \
+                    relations.catalogue_scope_id, relations.mapping_classification, \
+                    scope.state, scope.update_policy, scope.acknowledged_content_hash, \
+                    scope.current_content_hash \
+             FROM definition_relations relations \
+             JOIN warehouse_metadata metadata ON metadata.singleton_id = 1 \
+             LEFT JOIN catalogue_scope_evaluations scope \
+               ON scope.generation_id = metadata.current_catalogue_generation_id \
+              AND scope.scope_id = relations.catalogue_scope_id \
+             WHERE relations.revision_hash = ?1 \
+               AND relations.relation_kind IN \
+                   ('production_input', 'production_output', 'waste_input') \
+             ORDER BY CASE relation_kind WHEN 'production_input' THEN 0 \
+                       WHEN 'waste_input' THEN 1 ELSE 2 END, occurrence \
+             LIMIT ?2",
+        )?;
+        let mut flows = statement
+            .query_map(
+                params![&revision_hash, MAX_PRODUCTION_ROUTE_RELATIONS as u32],
+                |row| {
+                    let direction = row.get::<_, String>(0)?;
+                    let occurrence = row.get::<_, u32>(1)?;
+                    let resource_id = row.get::<_, String>(2)?;
+                    Ok(ProductionRouteFlow {
+                        id: format!("{direction}-{occurrence}"),
+                        direction,
+                        display_name: production_resource_name(&resource_id),
+                        resource_id,
+                        source_quantity: row.get(3)?,
+                        scaled_quantity: None,
+                        unit: row.get(4)?,
+                        resolution: row.get(5)?,
+                        source_directive: row.get(6)?,
+                        source_line: row.get(7)?,
+                        mapping: DefinitionMappingProvenance {
+                            mapping_id: row.get(8)?,
+                            catalogue_scope_id: row.get(9)?,
+                            mapping_classification: row.get(10)?,
+                            scope_state: parse_scope_state(row.get(11)?),
+                            update_policy: row.get(12)?,
+                            acknowledged_content_hash: row.get(13)?,
+                            current_content_hash: row.get(14)?,
+                        },
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+
+        let outputs = flows
+            .iter()
+            .filter(|flow| flow.direction == "production_output")
+            .collect::<Vec<_>>();
+        let inputs = flows
+            .iter()
+            .filter(|flow| matches!(flow.direction.as_str(), "production_input" | "waste_input"))
+            .collect::<Vec<_>>();
+        let selected_output_resource_id = request
+            .output_resource_id
+            .clone()
+            .or_else(|| outputs.first().map(|flow| flow.resource_id.clone()));
+        if request.output_resource_id.is_some()
+            && !outputs.iter().any(|flow| {
+                Some(flow.resource_id.as_str()) == request.output_resource_id.as_deref()
+            })
+        {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+
+        let mut status = if relation_count as usize > MAX_PRODUCTION_ROUTE_RELATIONS {
+            "too_complex"
+        } else if outputs.is_empty() {
+            "no_output"
+        } else if inputs.is_empty() {
+            "no_input"
+        } else if flows.iter().any(|flow| flow.source_quantity.is_none()) {
+            "missing_quantity"
+        } else if flows.iter().any(|flow| {
+            flow.source_quantity
+                .is_some_and(|value| !value.is_finite() || value <= 0.0)
+        }) {
+            "invalid_quantity"
+        } else if flows.iter().any(|flow| flow.unit.is_none()) {
+            "missing_unit"
+        } else {
+            "ready"
+        };
+        let units = flows
+            .iter()
+            .filter_map(|flow| flow.unit.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        if status == "ready" && units.len() != 1 {
+            status = "mixed_units";
+        }
+        let endpoints = flows
+            .iter()
+            .map(|flow| (flow.direction.clone(), flow.resource_id.clone()))
+            .collect::<std::collections::BTreeSet<_>>();
+        if status == "ready" && endpoints.len() != flows.len() {
+            status = "duplicate_endpoint";
+        }
+
+        let selected_output_quantity =
+            selected_output_resource_id.as_deref().and_then(|selected| {
+                outputs
+                    .iter()
+                    .find(|flow| flow.resource_id == selected)
+                    .and_then(|flow| flow.source_quantity)
+            });
+        let target_quantity = request.target_quantity.or(selected_output_quantity);
+        let scale_factor = if status == "ready" {
+            selected_output_quantity
+                .zip(target_quantity)
+                .map(|(source, target)| target / source)
+        } else {
+            None
+        };
+        if let Some(scale) = scale_factor {
+            for flow in &mut flows {
+                flow.scaled_quantity = flow.source_quantity.map(|quantity| quantity * scale);
+            }
+        }
+        let mapping_classification = if flows
+            .iter()
+            .any(|flow| flow.mapping.mapping_classification == "player_mapped")
+        {
+            "player_mapped"
+        } else {
+            "reviewed_mapping"
+        };
+        let snapshot = snapshot_from(&connection)?;
+
+        Ok(ProductionRouteModel {
+            schema_version: 1,
+            route_id,
+            revision_hash,
+            building_entity_id,
+            display_name,
+            package_name,
+            coverage,
+            status: status.to_owned(),
+            relation_count,
+            unit: (status == "ready")
+                .then(|| units.into_iter().next())
+                .flatten(),
+            selected_output_resource_id,
+            target_quantity,
+            scale_factor,
+            mapping_classification: mapping_classification.to_owned(),
+            flows,
+            snapshot,
+        })
+    }
+
     pub fn dossier(&self, entity_id: &str) -> Result<DefinitionDossier, ObservatoryError> {
         if entity_id.is_empty() || entity_id.len() > 320 {
             return Err(ObservatoryError::InvalidCatalogueRequest);
@@ -1252,35 +1474,8 @@ impl AnalyticalWarehouse {
     }
 
     pub fn snapshot(&self) -> Result<WarehouseSnapshot, ObservatoryError> {
-        self.lock()?
-            .query_row(
-                "SELECT metadata.current_catalogue_generation_id, \
-                    generation.compatibility_profile_id, \
-                    generation.compatibility_profile_version, \
-                    generation.compatibility_profile_hash, generation.mapping_classification, \
-                    metadata.active_overlay_profile_id, metadata.active_overlay_revision, \
-                    metadata.observation_watermark \
-             FROM warehouse_metadata metadata \
-             JOIN catalogue_generations generation \
-               ON generation.generation_id = metadata.current_catalogue_generation_id \
-             WHERE metadata.singleton_id = 1",
-                [],
-                |row| {
-                    Ok(WarehouseSnapshot {
-                        catalogue_generation_id: row.get(0)?,
-                        compatibility_profile_id: row.get(1)?,
-                        compatibility_profile_version: row.get(2)?,
-                        compatibility_profile_hash: row.get(3)?,
-                        mapping_classification: row.get(4)?,
-                        overlay_profile_id: row.get(5)?,
-                        overlay_revision: row.get(6)?,
-                        observation_watermark: row.get(7)?,
-                        warehouse_schema_version: WAREHOUSE_SCHEMA_VERSION,
-                        projector_version: PROJECTOR_VERSION.to_owned(),
-                    })
-                },
-            )
-            .map_err(Into::into)
+        let connection = self.lock()?;
+        snapshot_from(&connection)
     }
 
     #[cfg(test)]
@@ -1298,6 +1493,45 @@ impl AnalyticalWarehouse {
             .lock()
             .map_err(|_| ObservatoryError::WarehouseUnavailable)
     }
+}
+
+fn snapshot_from(connection: &Connection) -> Result<WarehouseSnapshot, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT metadata.current_catalogue_generation_id, \
+                    generation.compatibility_profile_id, \
+                    generation.compatibility_profile_version, \
+                    generation.compatibility_profile_hash, generation.mapping_classification, \
+                    metadata.active_overlay_profile_id, metadata.active_overlay_revision, \
+                    metadata.observation_watermark \
+             FROM warehouse_metadata metadata \
+             JOIN catalogue_generations generation \
+               ON generation.generation_id = metadata.current_catalogue_generation_id \
+             WHERE metadata.singleton_id = 1",
+            [],
+            |row| {
+                Ok(WarehouseSnapshot {
+                    catalogue_generation_id: row.get(0)?,
+                    compatibility_profile_id: row.get(1)?,
+                    compatibility_profile_version: row.get(2)?,
+                    compatibility_profile_hash: row.get(3)?,
+                    mapping_classification: row.get(4)?,
+                    overlay_profile_id: row.get(5)?,
+                    overlay_revision: row.get(6)?,
+                    observation_watermark: row.get(7)?,
+                    warehouse_schema_version: WAREHOUSE_SCHEMA_VERSION,
+                    projector_version: PROJECTOR_VERSION.to_owned(),
+                })
+            },
+        )
+        .map_err(Into::into)
+}
+
+fn production_resource_name(resource_id: &str) -> String {
+    resource_id
+        .strip_prefix("resource::")
+        .unwrap_or(resource_id)
+        .replace('_', " ")
 }
 
 fn migrate(connection: &mut Connection) -> Result<(), ObservatoryError> {
@@ -1830,6 +2064,171 @@ mod tests {
             )
             .expect("effective planning projection");
         assert_eq!(effective, (25.0, "player_override".to_owned()));
+    }
+
+    #[test]
+    fn production_routes_scale_definition_coefficients_and_pin_their_snapshot() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("routes.duckdb"))
+            .expect("warehouse");
+        let compatibility =
+            crate::compatibility_profile::ResolvedCompatibilityProfile::reviewed_builtin()
+                .expect("profile")
+                .provenance();
+        let mapping =
+            |relation_kind: &str, occurrence: u32, resource: &str, quantity: f64, unit: &str| {
+                ParsedRelation {
+                    relation_kind: relation_kind.to_owned(),
+                    occurrence,
+                    target_id: format!("resource::{resource}"),
+                    quantity: Some(quantity),
+                    unit: Some(unit.to_owned()),
+                    phase_id: None,
+                    source_directive: if relation_kind == "production_output" {
+                        "$PRODUCTION"
+                    } else {
+                        "$CONSUMPTION"
+                    }
+                    .to_owned(),
+                    source_line: occurrence + 10,
+                    raw_arguments: format!("{resource} {quantity}"),
+                    resolution: "source_coefficient".to_owned(),
+                    mapping_id: format!("core.definition.{relation_kind}"),
+                    catalogue_scope_id: None,
+                    mapping_classification: "reviewed_mapping".to_owned(),
+                }
+            };
+        let recipe = |entity_id: &str, revision_hash: &str, relations| ParsedDefinition {
+            entity_id: entity_id.to_owned(),
+            revision_hash: revision_hash.to_owned(),
+            entity_kind: "recipe".to_owned(),
+            source_id: "base".to_owned(),
+            source_object_id: entity_id.rsplit("::").next().unwrap_or_default().to_owned(),
+            display_name: "Chemical plant route".to_owned(),
+            coverage: "complete".to_owned(),
+            properties: vec![ParsedProperty {
+                field_id: "recipe.building.entity_id".to_owned(),
+                occurrence: 0,
+                value_kind: "text".to_owned(),
+                value_number: None,
+                value_text: Some("base::building::chemical-plant".to_owned()),
+                unit: None,
+                source_directive: "$TYPE_FACTORY".to_owned(),
+                source_line: 1,
+                raw_arguments: "chemical-plant".to_owned(),
+                resolution: "derived_reference".to_owned(),
+                mapping_id: "core.recipe.building".to_owned(),
+                catalogue_scope_id: None,
+                mapping_classification: "reviewed_mapping".to_owned(),
+            }],
+            relations,
+            unknown_directives: Vec::new(),
+        };
+        let generation = CatalogueGeneration {
+            generation_id: "9".repeat(64),
+            game_build_id: Some("test-build".to_owned()),
+            created_at_ms: 10,
+            compatibility,
+            compatibility_scopes: Vec::new(),
+            sources: vec![CatalogueSource {
+                source_id: "base".to_owned(),
+                source_kind: "base".to_owned(),
+                package_name: "Workers & Resources".to_owned(),
+                package_version: Some("test".to_owned()),
+                content_hash: "8".repeat(64),
+                file_count: 1,
+            }],
+            files: vec![CatalogueFile {
+                source_id: "base".to_owned(),
+                logical_path: "buildings.ini".to_owned(),
+                content_hash: "7".repeat(64),
+                byte_size: 100,
+                warning_count: 0,
+            }],
+            entities: vec![
+                recipe(
+                    "base::recipe::chemical-plant",
+                    &"6".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "oil", 2.0, "source_rate"),
+                        mapping("production_input", 1, "power", 1.0, "source_rate"),
+                        mapping("production_output", 0, "chemicals", 0.5, "source_rate"),
+                    ],
+                ),
+                recipe(
+                    "base::recipe::mixed-units",
+                    &"5".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "oil", 2.0, "source_rate"),
+                        mapping("production_output", 0, "fuel", 1.0, "per_second"),
+                    ],
+                ),
+            ],
+        };
+        assert!(warehouse.publish_catalogue(&generation).expect("publish"));
+
+        let route = warehouse
+            .production_route(&ProductionRouteRequest {
+                entity_id: "base::recipe::chemical-plant".to_owned(),
+                output_resource_id: Some("resource::chemicals".to_owned()),
+                target_quantity: Some(10.0),
+            })
+            .expect("production route");
+        assert_eq!(route.status, "ready");
+        assert_eq!(route.unit.as_deref(), Some("source_rate"));
+        assert_eq!(route.scale_factor, Some(20.0));
+        assert_eq!(route.target_quantity, Some(10.0));
+        assert_eq!(route.mapping_classification, "reviewed_mapping");
+        assert_eq!(
+            route.snapshot.catalogue_generation_id,
+            generation.generation_id
+        );
+        assert_eq!(
+            route.snapshot.warehouse_schema_version,
+            WAREHOUSE_SCHEMA_VERSION
+        );
+        assert_eq!(
+            route
+                .flows
+                .iter()
+                .find(|flow| flow.resource_id == "resource::oil")
+                .and_then(|flow| flow.scaled_quantity),
+            Some(40.0)
+        );
+        assert_eq!(
+            route
+                .flows
+                .iter()
+                .find(|flow| flow.resource_id == "resource::chemicals")
+                .and_then(|flow| flow.scaled_quantity),
+            Some(10.0)
+        );
+
+        let mixed = warehouse
+            .production_route(&ProductionRouteRequest {
+                entity_id: "base::recipe::mixed-units".to_owned(),
+                output_resource_id: None,
+                target_quantity: None,
+            })
+            .expect("mixed-unit route");
+        assert_eq!(mixed.status, "mixed_units");
+        assert_eq!(mixed.unit, None);
+        assert!(
+            mixed
+                .flows
+                .iter()
+                .all(|flow| flow.scaled_quantity.is_none())
+        );
+
+        assert!(
+            warehouse
+                .production_route(&ProductionRouteRequest {
+                    entity_id: "base::recipe::chemical-plant".to_owned(),
+                    output_resource_id: Some("resource::steel".to_owned()),
+                    target_quantity: Some(1.0),
+                })
+                .is_err()
+        );
     }
 
     #[test]

@@ -22,9 +22,9 @@ use crate::model::{
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, ReceiverDataset,
-    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
-    ReinterpretationProgress, SetupState, WarehouseSnapshot,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, ProductionRouteModel,
+    ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource, RecorderHealth,
+    RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -864,6 +864,13 @@ impl ObservatoryApplication {
         entity_id: &str,
     ) -> Result<DefinitionDossier, ObservatoryError> {
         self.warehouse.dossier(entity_id)
+    }
+
+    pub fn production_route(
+        &self,
+        request: &ProductionRouteRequest,
+    ) -> Result<ProductionRouteModel, ObservatoryError> {
+        self.warehouse.production_route(request)
     }
 
     pub fn rebuild_warehouse(&self) -> Result<CatalogueStatus, ObservatoryError> {

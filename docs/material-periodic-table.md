@@ -65,6 +65,14 @@ view can propagate a target upstream, compare alternative routes, and identify
 where imports enter the chain. Recipe coefficients are game-definition facts;
 actual throughput requires republic observations.
 
+The first implemented pathway slice is the **Production Route Laboratory**. It
+selects one current catalogued recipe and output, applies one transparent scale
+factor, and shows comparable input/output coefficients as an open-boundary
+Sankey. An exact row ledger remains authoritative. The view refuses diagram
+geometry when quantities or bases are unavailable, mixed, invalid, ambiguous,
+or outside the bounded contract. It does not yet join routes into a multi-stage
+chain or apply Planning Overlay relationship changes.
+
 ### Stoichiometry and theoretical yield
 
 For recipe coefficient \(a_i\), available input \(x_i\), and output coefficient

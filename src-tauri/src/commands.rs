@@ -10,8 +10,8 @@ use crate::model::{
     ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, ReceiverDataset, RecorderHealth,
-    ReinterpretationProgress, SetupState, WarehouseSnapshot,
+    OverlayInspection, OverlayProfileSummary, ProductionRouteModel, ProductionRouteRequest,
+    ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 
 #[derive(Debug)]
@@ -230,6 +230,17 @@ pub fn get_definition_dossier(
     state
         .application
         .catalogue_dossier(&entity_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_production_route(
+    request: ProductionRouteRequest,
+    state: State<'_, AppState>,
+) -> Result<ProductionRouteModel, CommandError> {
+    state
+        .application
+        .production_route(&request)
         .map_err(Into::into)
 }
 

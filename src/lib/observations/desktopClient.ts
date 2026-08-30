@@ -28,6 +28,8 @@ import type {
   SetupState,
   OverlayInspection,
   OverlayProfileSummary,
+  ProductionRouteModel,
+  ProductionRouteRequest,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -176,6 +178,12 @@ export function getDefinitionDossier(
   entityId: string,
 ): Promise<DefinitionDossier> {
   return invoke<DefinitionDossier>("get_definition_dossier", { entityId });
+}
+
+export function getProductionRoute(
+  request: ProductionRouteRequest,
+): Promise<ProductionRouteModel> {
+  return invoke<ProductionRouteModel>("get_production_route", { request });
 }
 
 export function inspectPlanningOverlay(

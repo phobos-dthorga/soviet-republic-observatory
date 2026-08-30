@@ -885,6 +885,48 @@ pub struct DefinitionDossier {
     pub unknown_directives: Vec<UnknownDirectiveSummary>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ProductionRouteRequest {
+    pub entity_id: String,
+    pub output_resource_id: Option<String>,
+    pub target_quantity: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionRouteFlow {
+    pub id: String,
+    pub direction: String,
+    pub resource_id: String,
+    pub display_name: String,
+    pub source_quantity: Option<f64>,
+    pub scaled_quantity: Option<f64>,
+    pub unit: Option<String>,
+    pub resolution: String,
+    pub source_directive: String,
+    pub source_line: u32,
+    pub mapping: DefinitionMappingProvenance,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionRouteModel {
+    pub schema_version: u32,
+    pub route_id: String,
+    pub revision_hash: String,
+    pub building_entity_id: Option<String>,
+    pub display_name: String,
+    pub package_name: String,
+    pub coverage: String,
+    pub status: String,
+    pub relation_count: u32,
+    pub unit: Option<String>,
+    pub selected_output_resource_id: Option<String>,
+    pub target_quantity: Option<f64>,
+    pub scale_factor: Option<f64>,
+    pub mapping_classification: String,
+    pub flows: Vec<ProductionRouteFlow>,
+    pub snapshot: WarehouseSnapshot,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct UnknownDirectiveSummary {
     pub directive: String,

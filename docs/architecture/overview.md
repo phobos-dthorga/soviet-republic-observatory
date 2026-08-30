@@ -217,6 +217,7 @@ replacement boundary.
 - `GameVocabularyCatalogue`
 - `CompatibilityProfile`, `CompatibilityProvenance`, and `InterpretationIdentity`
 - `CatalogueGeneration`, `DefinitionDossier`, and `PlanningOverlayRevision`
+- `ProductionRouteModel` (bounded source-backed definition coefficients)
 - `ProjectionJob` and `WarehouseSnapshot`
 - `WarehouseWriteActivity` and governed write budget
 - `AppNotification` and contextual `HelpTopic`

@@ -1,0 +1,598 @@
+<script lang="ts">
+  import { activeLocale, translation } from "../i18n/runtime";
+  import { formatNumber } from "../i18n/format";
+  import ObservatoryChart from "../charts/ObservatoryChart.svelte";
+  import { createMaterialFlowPreview } from "../data/materialFlowPreview";
+  import {
+    createProductionRouteChart,
+    productionRouteUnit,
+  } from "../data/productionRoute";
+  import {
+    getProductionRoute,
+    searchCatalogue,
+  } from "../observations/desktopClient";
+  import type {
+    DefinitionSummary,
+    ProductionRouteFlow,
+    ProductionRouteModel,
+    ProductionRouteStatus,
+  } from "../observations/types";
+
+  let {
+    desktopAvailable,
+    gameConfigured,
+    generationId,
+    overlayProfileName,
+    overlayRevision,
+  } = $props<{
+    desktopAvailable: boolean;
+    gameConfigured: boolean;
+    generationId: string | null;
+    overlayProfileName: string | null;
+    overlayRevision: number | null;
+  }>();
+
+  let recipes = $state<DefinitionSummary[]>([]);
+  let route = $state<ProductionRouteModel | null>(null);
+  let selectedRouteId = $state("");
+  let selectedOutputId = $state("");
+  let targetValue = $state("");
+  let query = $state("");
+  let busy = $state(false);
+  let error = $state(false);
+  let loadedSnapshot = $state<string | null>(null);
+  const chart = $derived(
+    route
+      ? createProductionRouteChart(route, $translation, $activeLocale)
+      : null,
+  );
+  const syntheticPreview = $derived(createMaterialFlowPreview($translation));
+  const outputs = $derived(
+    route?.flows.filter((flow) => flow.direction === "production_output") ?? [],
+  );
+
+  $effect(() => {
+    const snapshotIdentity = generationId
+      ? `${generationId}|${overlayProfileName ?? "none"}|${overlayRevision ?? 0}`
+      : null;
+    if (
+      desktopAvailable &&
+      gameConfigured &&
+      snapshotIdentity &&
+      snapshotIdentity !== loadedSnapshot
+    ) {
+      loadedSnapshot = snapshotIdentity;
+      void loadRecipes();
+    }
+  });
+
+  function statusLabel(status: ProductionRouteStatus): string {
+    switch (status) {
+      case "ready":
+        return $translation("production-route-status-ready");
+      case "too_complex":
+        return $translation("production-route-status-too-complex");
+      case "no_output":
+        return $translation("production-route-status-no-output");
+      case "no_input":
+        return $translation("production-route-status-no-input");
+      case "missing_quantity":
+        return $translation("production-route-status-missing-quantity");
+      case "invalid_quantity":
+        return $translation("production-route-status-invalid-quantity");
+      case "missing_unit":
+        return $translation("production-route-status-missing-unit");
+      case "mixed_units":
+        return $translation("production-route-status-mixed-units");
+      case "duplicate_endpoint":
+        return $translation("production-route-status-duplicate-endpoint");
+    }
+  }
+
+  function directionLabel(flow: ProductionRouteFlow): string {
+    if (flow.direction === "production_output")
+      return $translation("production-route-direction-output");
+    if (flow.direction === "waste_input")
+      return $translation("production-route-direction-waste-input");
+    return $translation("production-route-direction-input");
+  }
+
+  function quantity(value: number | null): string {
+    return value == null ? "—" : formatNumber(value, $activeLocale);
+  }
+
+  function unitLabel(unit: string | null): string {
+    return unit ? productionRouteUnit(unit, $translation) : "—";
+  }
+
+  async function loadRecipes(): Promise<void> {
+    if (!desktopAvailable || !generationId) return;
+    busy = true;
+    error = false;
+    try {
+      const page = await searchCatalogue({
+        query: query || undefined,
+        entity_kind: "recipe",
+        limit: 100,
+      });
+      recipes = page.items;
+      if (!recipes.some((item) => item.entity_id === selectedRouteId)) {
+        selectedRouteId = recipes[0]?.entity_id ?? "";
+      }
+      if (selectedRouteId) await loadRoute(false);
+      else route = null;
+    } catch {
+      error = true;
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function loadRoute(useSelection = true): Promise<void> {
+    if (!selectedRouteId) return;
+    busy = true;
+    error = false;
+    try {
+      const target = Number(targetValue);
+      const next = await getProductionRoute({
+        entity_id: selectedRouteId,
+        output_resource_id:
+          useSelection && selectedOutputId ? selectedOutputId : undefined,
+        target_quantity:
+          useSelection && Number.isFinite(target) && target > 0
+            ? target
+            : undefined,
+      });
+      route = next;
+      selectedOutputId = next.selected_output_resource_id ?? "";
+      targetValue = next.target_quantity?.toString() ?? "";
+    } catch {
+      error = true;
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function selectOutput(): Promise<void> {
+    const selected = outputs.find(
+      (flow) => flow.resource_id === selectedOutputId,
+    );
+    targetValue = selected?.source_quantity?.toString() ?? "";
+    await loadRoute(true);
+  }
+</script>
+
+<section class="production-route-laboratory" aria-labelledby="route-title">
+  <header class="laboratory-heading">
+    <div>
+      <span class="eyebrow">{$translation("production-route-eyebrow")}</span>
+      <h2 id="route-title">{$translation("production-route-title")}</h2>
+      <p>{$translation("production-route-description")}</p>
+    </div>
+    {#if route}
+      <span class:attention={route.status !== "ready"} class="route-status">
+        {statusLabel(route.status)}
+      </span>
+    {/if}
+  </header>
+
+  {#if !desktopAvailable || !gameConfigured}
+    <div class="route-notice">
+      {$translation("production-route-synthetic-note")}
+    </div>
+    <ObservatoryChart
+      spec={syntheticPreview}
+      eyebrow={$translation("catalogue-flow-eyebrow")}
+    />
+  {:else if !generationId}
+    <div class="route-empty">
+      {$translation("production-route-no-catalogue")}
+    </div>
+  {:else}
+    <form
+      class="route-search"
+      onsubmit={(event) => {
+        event.preventDefault();
+        void loadRecipes();
+      }}
+    >
+      <label>
+        <span>{$translation("production-route-search-label")}</span>
+        <input
+          bind:value={query}
+          placeholder={$translation("production-route-search-placeholder")}
+          maxlength="120"
+        />
+      </label>
+      <button type="submit" disabled={busy}
+        >{$translation("production-route-search-action")}</button
+      >
+    </form>
+
+    {#if recipes.length}
+      <div class="route-controls">
+        <label>
+          <span>{$translation("production-route-selector")}</span>
+          <select
+            bind:value={selectedRouteId}
+            disabled={busy}
+            onchange={() => void loadRoute(false)}
+          >
+            {#each recipes as recipe}
+              <option value={recipe.entity_id}
+                >{recipe.display_name} · {recipe.package_name}</option
+              >
+            {/each}
+          </select>
+        </label>
+        <label>
+          <span>{$translation("production-route-output")}</span>
+          <select
+            bind:value={selectedOutputId}
+            disabled={busy || outputs.length === 0}
+            onchange={() => void selectOutput()}
+          >
+            {#each outputs as output}
+              <option value={output.resource_id}>{output.display_name}</option>
+            {/each}
+          </select>
+        </label>
+        <label>
+          <span>{$translation("production-route-target")}</span>
+          <input
+            type="number"
+            bind:value={targetValue}
+            min="0.000001"
+            max="1000000000"
+            step="any"
+            disabled={busy || outputs.length === 0}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !selectedOutputId || !targetValue}
+          onclick={() => void loadRoute(true)}
+          >{$translation("production-route-apply")}</button
+        >
+      </div>
+    {/if}
+
+    {#if busy}
+      <div class="route-empty" aria-live="polite">
+        {$translation("production-route-loading")}
+      </div>
+    {:else if error}
+      <div class="route-notice attention" role="alert">
+        {$translation("production-route-error")}
+      </div>
+    {:else if recipes.length === 0}
+      <div class="route-empty">
+        {$translation("production-route-no-routes")}
+      </div>
+    {:else if route}
+      <div class="route-boundary">
+        <strong>{$translation("production-route-boundary-title")}</strong>
+        <span>{$translation("production-route-boundary")}</span>
+        <span>{$translation("production-route-overlay-boundary")}</span>
+      </div>
+
+      <div class="route-snapshot">
+        <span>
+          {$translation("production-route-snapshot", {
+            generation: route.snapshot.catalogue_generation_id.slice(0, 12),
+            profile: route.snapshot.compatibility_profile_id,
+            version: route.snapshot.compatibility_profile_version,
+          })}
+        </span>
+        <span>
+          {overlayProfileName
+            ? $translation("production-route-overlay", {
+                profile: overlayProfileName,
+                revision: overlayRevision ?? 0,
+              })
+            : $translation("production-route-no-overlay")}
+        </span>
+      </div>
+
+      {#if chart}
+        <ObservatoryChart
+          spec={chart}
+          eyebrow={$translation("production-route-chart-eyebrow")}
+        />
+      {:else}
+        <div class="route-notice attention">
+          {statusLabel(route.status)} · {$translation(
+            "production-route-table-fallback",
+          )}
+        </div>
+      {/if}
+
+      <section class="route-evidence" aria-labelledby="route-evidence-title">
+        <header>
+          <div>
+            <span class="eyebrow"
+              >{$translation("production-route-evidence-eyebrow")}</span
+            >
+            <h3 id="route-evidence-title">
+              {$translation("production-route-evidence-heading")}
+            </h3>
+            <p>{$translation("production-route-evidence-description")}</p>
+          </div>
+          <span class="evidence-badge">
+            {route.mapping_classification === "player_mapped"
+              ? $translation("compatibility-player-mapped")
+              : $translation("compatibility-reviewed")}
+          </span>
+        </header>
+        <div class="route-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{$translation("production-route-column-direction")}</th>
+                <th>{$translation("production-route-column-resource")}</th>
+                <th>{$translation("production-route-column-source")}</th>
+                <th>{$translation("production-route-column-scaled")}</th>
+                <th>{$translation("production-route-column-unit")}</th>
+                <th>{$translation("production-route-column-evidence")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each route.flows as flow}
+                <tr>
+                  <td>{directionLabel(flow)}</td>
+                  <th scope="row">{flow.display_name}</th>
+                  <td>{quantity(flow.source_quantity)}</td>
+                  <td>{quantity(flow.scaled_quantity)}</td>
+                  <td>{unitLabel(flow.unit)}</td>
+                  <td>
+                    <strong>{flow.source_directive}</strong>
+                    <span>
+                      {$translation("production-route-line-mapping", {
+                        line: flow.source_line,
+                        mapping: flow.mapping.mapping_id,
+                      })}
+                    </span>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {/if}
+  {/if}
+</section>
+
+<style>
+  .production-route-laboratory {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .laboratory-heading,
+  .route-evidence header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  h2 {
+    margin-top: 0.16rem;
+    font-family: var(--font-display);
+    font-size: clamp(1.12rem, 2vw, 1.55rem);
+    font-weight: 500;
+  }
+
+  h3 {
+    margin-top: 0.14rem;
+    font-family: var(--font-display);
+    font-size: 1.03rem;
+    font-weight: 500;
+  }
+
+  p {
+    margin-top: 0.22rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .eyebrow {
+    color: var(--gold);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .route-status,
+  .evidence-badge {
+    flex: 0 0 auto;
+    border: 1px solid rgba(123, 198, 216, 0.36);
+    padding: 0.24rem 0.42rem;
+    color: var(--cyan);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .route-status.attention,
+  .route-notice.attention {
+    border-color: rgba(216, 184, 106, 0.55);
+    color: var(--gold);
+  }
+
+  .route-search,
+  .route-controls {
+    display: grid;
+    gap: 0.55rem;
+    align-items: end;
+  }
+
+  .route-search {
+    grid-template-columns: minmax(12rem, 1fr) auto;
+  }
+
+  .route-controls {
+    grid-template-columns:
+      minmax(14rem, 1.6fr) minmax(10rem, 1fr) minmax(8rem, 0.55fr)
+      auto;
+    border: 1px solid var(--line);
+    background: rgba(13, 29, 39, 0.72);
+    padding: 0.65rem;
+  }
+
+  label {
+    display: grid;
+    gap: 0.28rem;
+    min-width: 0;
+  }
+
+  label span {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+  }
+
+  input,
+  select,
+  button {
+    min-height: 2.15rem;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: var(--panel-raised);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+  }
+
+  input,
+  select {
+    min-width: 0;
+    padding: 0.38rem 0.48rem;
+  }
+
+  button {
+    padding: 0.38rem 0.72rem;
+    color: var(--gold);
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .route-notice,
+  .route-empty,
+  .route-boundary,
+  .route-snapshot {
+    border: 1px solid var(--line);
+    background: rgba(18, 41, 55, 0.72);
+    padding: 0.6rem 0.7rem;
+    color: var(--muted);
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .route-empty {
+    text-align: center;
+    padding: 1.2rem;
+  }
+
+  .route-boundary,
+  .route-snapshot {
+    display: grid;
+    gap: 0.18rem;
+  }
+
+  .route-boundary strong {
+    color: var(--gold);
+  }
+
+  .route-snapshot {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    background: transparent;
+  }
+
+  .route-evidence {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 0.7rem;
+  }
+
+  .route-table-scroll {
+    overflow-x: auto;
+    margin-top: 0.6rem;
+  }
+
+  table {
+    width: 100%;
+    min-width: 52rem;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+  }
+
+  th,
+  td {
+    border-top: 1px solid var(--line);
+    padding: 0.48rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  thead th {
+    border-top: 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  tbody th {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  td strong,
+  td span {
+    display: block;
+  }
+
+  td span {
+    margin-top: 0.16rem;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+
+  @media (max-width: 920px) {
+    .route-controls {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
+    .laboratory-heading,
+    .route-evidence header {
+      display: grid;
+    }
+
+    .route-search,
+    .route-controls,
+    .route-snapshot {
+      grid-template-columns: 1fr;
+    }
+
+    button {
+      width: 100%;
+    }
+  }
+</style>

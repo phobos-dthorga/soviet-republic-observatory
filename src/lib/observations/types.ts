@@ -539,6 +539,56 @@ export type DefinitionDossier = {
   unknown_directives: Array<{ directive: string; occurrence_count: number }>;
 };
 
+export type ProductionRouteStatus =
+  | "ready"
+  | "too_complex"
+  | "no_output"
+  | "no_input"
+  | "missing_quantity"
+  | "invalid_quantity"
+  | "missing_unit"
+  | "mixed_units"
+  | "duplicate_endpoint";
+
+export type ProductionRouteRequest = {
+  entity_id: string;
+  output_resource_id?: string;
+  target_quantity?: number;
+};
+
+export type ProductionRouteFlow = {
+  id: string;
+  direction: "production_input" | "production_output" | "waste_input";
+  resource_id: string;
+  display_name: string;
+  source_quantity: number | null;
+  scaled_quantity: number | null;
+  unit: string | null;
+  resolution: string;
+  source_directive: string;
+  source_line: number;
+  mapping: DefinitionMappingProvenance;
+};
+
+export type ProductionRouteModel = {
+  schema_version: number;
+  route_id: string;
+  revision_hash: string;
+  building_entity_id: string | null;
+  display_name: string;
+  package_name: string;
+  coverage: string;
+  status: ProductionRouteStatus;
+  relation_count: number;
+  unit: string | null;
+  selected_output_resource_id: string | null;
+  target_quantity: number | null;
+  scale_factor: number | null;
+  mapping_classification: string;
+  flows: ProductionRouteFlow[];
+  snapshot: WarehouseSnapshot;
+};
+
 export type OverlayInspection = {
   valid: boolean;
   code: string | null;
