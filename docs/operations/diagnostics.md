@@ -82,16 +82,22 @@ output. Even with this narrow vocabulary, players should review entries before
 sharing them.
 
 The first implemented producers are application startup, warehouse startup
-degradation, and catalogue refresh start, scan completion, success, and
-failure. Compatibility adds controlled codes for valid/invalid local profiles,
-exact mod-scope conflicts, and tracked unreviewed definition updates; it never
-logs package contents, paths, or profile JSON. Future background services should use the same boundary and add only
+degradation, warehouse projection start/completion/failure, and catalogue
+refresh start, scan completion, success, and failure. Projection diagnostics
+record only the job kind, stable outcome code, and elapsed time; content
+identities and database paths remain private. Compatibility adds controlled
+codes for valid/invalid local profiles, exact mod-scope conflicts, and tracked
+unreviewed definition updates; it never logs package contents, paths, or profile
+JSON. Future background services should use the same boundary and add only
 stable, low-cardinality events that answer a concrete support question.
 
 ## Performance boundary
 
-DuckDB is a bulk analytical engine. Catalogue publication therefore stages
-rows with DuckDB appenders and performs set-oriented insertion of previously
-unseen revisions. A query and prepared statement per entity is prohibited: it
-creates long low-CPU runs and weak progress evidence. Publication remains one
-transaction, so interruption preserves the previously active generation.
+DuckDB is a bulk analytical engine. Catalogue publication and observation
+projection therefore stage rows with DuckDB appenders and perform set-oriented
+insertion. A query or prepared statement per entity, observation, or metric is
+prohibited: it creates long low-CPU runs, excessive memory growth, and weak
+progress evidence. Publication remains one transaction, so interruption
+preserves the previously active generation. Status snapshots use non-blocking
+connection access, keeping setup and progress indicators responsive while a
+writer owns the warehouse.

@@ -33,6 +33,14 @@ is unavailable, the job becomes a visible failure. SQLite save observation,
 Archive, and core receiver charts continue to work. Rebuild clears only derived
 observation projections and redelivers retained SQLite observations.
 
+Observation matrices cross the boundary through a temporary DuckDB staging
+table populated by one bulk appender, followed by one set-oriented idempotent
+merge. Row-at-a-time metric inserts are prohibited. Presentation-facing health
+and catalogue summaries never wait for the single writer connection: while a
+projection owns it, the host returns the durable SQLite queue state and a
+lagging warehouse snapshot so startup and the shared task indicator remain
+responsive.
+
 Every model request must obtain one `WarehouseSnapshot`: catalogue generation,
 compatibility profile ID/version/resolved hash and mapping classification,
 active planning-overlay profile and revision, observation watermark, warehouse

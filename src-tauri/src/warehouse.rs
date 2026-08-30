@@ -116,6 +116,10 @@ impl std::fmt::Debug for AnalyticalWarehouse {
 }
 
 impl AnalyticalWarehouse {
+    pub fn is_available(&self) -> bool {
+        self.available
+    }
+
     pub fn initialise(database_path: PathBuf) -> Result<Self, ObservatoryError> {
         if let Some(parent) = database_path.parent() {
             fs::create_dir_all(parent).map_err(|_| ObservatoryError::WarehouseUnavailable)?;
@@ -485,15 +489,12 @@ impl AnalyticalWarehouse {
             return Ok(());
         }
         let transaction = connection.transaction()?;
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_observation_metrics AS \
+                 SELECT * FROM observation_metrics WHERE FALSE;",
+        )?;
         {
-            let mut statement = transaction.prepare(
-                "INSERT INTO observation_metrics(\
-                     payload_hash, branch_id, record_id, year, day, game_day, metric_id, value,\
-                     interpretation_id, raw_payload_hash, profile_id, profile_version,\
-                     profile_content_hash, resolved_profile_hash, mapping_classification\
-                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
-                 ON CONFLICT DO NOTHING",
-            )?;
+            let mut appender = transaction.appender("incoming_observation_metrics")?;
             for point in &dataset.points {
                 for (metric_id, value) in [
                     ("core.citizens.electronics.none", point.none),
@@ -501,7 +502,7 @@ impl AnalyticalWarehouse {
                     ("core.citizens.electronics.television", point.television),
                     ("core.citizens.electronics.computer", point.computer),
                 ] {
-                    statement.execute(params![
+                    appender.append_row(params![
                         dataset.interpretation_id,
                         dataset.branch_id,
                         point.record_id,
@@ -521,6 +522,10 @@ impl AnalyticalWarehouse {
                 }
             }
         }
+        transaction.execute_batch(
+            "INSERT INTO observation_metrics \
+                 SELECT * FROM incoming_observation_metrics ON CONFLICT DO NOTHING;",
+        )?;
         record_receipt(
             &transaction,
             projection_id,
@@ -659,6 +664,7 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn health(
         &self,
         pending_jobs: u32,
@@ -709,83 +715,93 @@ impl AnalyticalWarehouse {
         })
     }
 
-    pub fn catalogue_generation(
+    pub fn health_snapshot(
         &self,
-    ) -> Result<Option<CatalogueGenerationSummary>, ObservatoryError> {
-        let connection = self.lock()?;
-        connection
-            .query_row(
-                "SELECT generation.generation_id, generation.game_build_id, generation.parser_version, \
-                        generation.created_at_ms, generation.source_count, generation.file_count, \
-                        generation.entity_count, generation.property_count, generation.relation_count, \
-                        generation.warning_count, generation.compatibility_profile_id,\
-                        generation.compatibility_profile_version, generation.compatibility_profile_hash,\
-                        generation.mapping_classification \
-                 FROM catalogue_generations generation JOIN warehouse_metadata metadata \
-                   ON generation.generation_id = metadata.current_catalogue_generation_id \
-                 WHERE metadata.singleton_id = 1",
-                [],
-                |row| {
-                    Ok(CatalogueGenerationSummary {
-                        generation_id: row.get(0)?,
-                        game_build_id: row.get(1)?,
-                        parser_version: row.get(2)?,
-                        created_at_ms: row.get(3)?,
-                        source_count: row.get(4)?,
-                        file_count: row.get(5)?,
-                        entity_count: row.get(6)?,
-                        property_count: row.get(7)?,
-                        relation_count: row.get(8)?,
-                        warning_count: row.get(9)?,
-                        compatibility_profile_id: row.get(10)?,
-                        compatibility_profile_version: row.get(11)?,
-                        compatibility_profile_hash: row.get(12)?,
-                        mapping_classification: row.get(13)?,
-                    })
+        pending_jobs: u32,
+        failed_jobs: u32,
+        lag_ms: Option<i64>,
+        rebuilding: bool,
+    ) -> WarehouseHealth {
+        let phase = if !self.available || failed_jobs > 0 {
+            WarehousePhase::Attention
+        } else if rebuilding {
+            WarehousePhase::Rebuilding
+        } else if pending_jobs > 0 {
+            WarehousePhase::Lagging
+        } else {
+            WarehousePhase::Ready
+        };
+        let fallback = WarehouseHealth {
+            phase,
+            schema_version: WAREHOUSE_SCHEMA_VERSION,
+            pending_jobs,
+            failed_jobs,
+            lag_ms,
+            last_projected_at_ms: None,
+            observation_watermark: None,
+            database_size_bytes: fs::metadata(&self.database_path)
+                .map(|metadata| metadata.len())
+                .unwrap_or_default(),
+        };
+        if !self.available {
+            return fallback;
+        }
+        let Ok(connection) = self.connection.try_lock() else {
+            return WarehouseHealth {
+                phase: if rebuilding {
+                    WarehousePhase::Rebuilding
+                } else {
+                    WarehousePhase::Lagging
                 },
-            )
-            .optional()
-            .map_err(Into::into)
+                ..fallback
+            };
+        };
+        let Ok((last_projected_at_ms, observation_watermark)) = connection.query_row(
+            "SELECT last_projection_ms, observation_watermark FROM warehouse_metadata WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ) else {
+            return fallback;
+        };
+        WarehouseHealth {
+            last_projected_at_ms,
+            observation_watermark,
+            ..fallback
+        }
     }
 
+    pub fn catalogue_generation_if_ready(&self) -> Option<CatalogueGenerationSummary> {
+        if !self.available {
+            return None;
+        }
+        let connection = self.connection.try_lock().ok()?;
+        catalogue_generation_from(&connection).ok().flatten()
+    }
+
+    pub fn catalogue_scope_statuses_if_ready(
+        &self,
+    ) -> Option<Vec<CompatibilityCatalogueScopeStatus>> {
+        if !self.available {
+            return None;
+        }
+        let connection = self.connection.try_lock().ok()?;
+        catalogue_scope_statuses_from(&connection).ok()
+    }
+
+    pub fn catalogue_runtime_if_ready(&self) -> Option<CatalogueRuntime> {
+        if !self.available {
+            return None;
+        }
+        let connection = self.connection.try_lock().ok()?;
+        catalogue_runtime_from(&connection).ok()
+    }
+
+    #[cfg(test)]
     pub fn catalogue_scope_statuses(
         &self,
     ) -> Result<Vec<CompatibilityCatalogueScopeStatus>, ObservatoryError> {
         let connection = self.lock()?;
-        let mut statement = connection.prepare(
-            "SELECT scope.scope_id, scope.source_id, scope.package_name, scope.update_policy, \
-                    scope.acknowledged_content_hash, scope.current_content_hash, \
-                    scope.mapping_count, scope.state \
-             FROM catalogue_scope_evaluations scope \
-             JOIN warehouse_metadata metadata \
-               ON scope.generation_id = metadata.current_catalogue_generation_id \
-             WHERE metadata.singleton_id = 1 ORDER BY scope.scope_id",
-        )?;
-        statement
-            .query_map([], |row| {
-                Ok(CompatibilityCatalogueScopeStatus {
-                    id: row.get(0)?,
-                    source_id: row.get(1)?,
-                    package_name: row.get(2)?,
-                    update_policy: row.get(3)?,
-                    acknowledged_content_hash: row.get(4)?,
-                    current_content_hash: row.get(5)?,
-                    mapping_count: row.get(6)?,
-                    state: parse_scope_state(row.get(7)?)
-                        .unwrap_or(CompatibilityCatalogueScopeState::Conflict),
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(Into::into)
-    }
-
-    pub fn catalogue_runtime(&self) -> Result<CatalogueRuntime, ObservatoryError> {
-        self.lock()?.query_row(
-            "SELECT last_catalogue_check_ms, last_catalogue_refresh_ms, last_catalogue_error_code \
-             FROM warehouse_metadata WHERE singleton_id = 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        ).map_err(Into::into)
+        catalogue_scope_statuses_from(&connection)
     }
 
     pub fn search(
@@ -1090,7 +1106,8 @@ impl AnalyticalWarehouse {
     }
 
     pub fn overlay_conflict_count(&self, profile_id: &str, revision: u32) -> u32 {
-        self.lock()
+        self.connection
+            .try_lock()
             .ok()
             .and_then(|connection| {
                 connection
@@ -1137,6 +1154,13 @@ impl AnalyticalWarehouse {
             .map_err(Into::into)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_writer_lock(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, Connection>, ObservatoryError> {
+        self.lock()
+    }
+
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, ObservatoryError> {
         if !self.available {
             return Err(ObservatoryError::WarehouseUnavailable);
@@ -1173,6 +1197,85 @@ fn migrate(connection: &mut Connection) -> Result<(), ObservatoryError> {
         }
     }
     Ok(())
+}
+
+fn catalogue_generation_from(
+    connection: &Connection,
+) -> Result<Option<CatalogueGenerationSummary>, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT generation.generation_id, generation.game_build_id, generation.parser_version, \
+                    generation.created_at_ms, generation.source_count, generation.file_count, \
+                    generation.entity_count, generation.property_count, generation.relation_count, \
+                    generation.warning_count, generation.compatibility_profile_id,\
+                    generation.compatibility_profile_version, generation.compatibility_profile_hash,\
+                    generation.mapping_classification \
+             FROM catalogue_generations generation JOIN warehouse_metadata metadata \
+               ON generation.generation_id = metadata.current_catalogue_generation_id \
+             WHERE metadata.singleton_id = 1",
+            [],
+            |row| {
+                Ok(CatalogueGenerationSummary {
+                    generation_id: row.get(0)?,
+                    game_build_id: row.get(1)?,
+                    parser_version: row.get(2)?,
+                    created_at_ms: row.get(3)?,
+                    source_count: row.get(4)?,
+                    file_count: row.get(5)?,
+                    entity_count: row.get(6)?,
+                    property_count: row.get(7)?,
+                    relation_count: row.get(8)?,
+                    warning_count: row.get(9)?,
+                    compatibility_profile_id: row.get(10)?,
+                    compatibility_profile_version: row.get(11)?,
+                    compatibility_profile_hash: row.get(12)?,
+                    mapping_classification: row.get(13)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(Into::into)
+}
+
+fn catalogue_scope_statuses_from(
+    connection: &Connection,
+) -> Result<Vec<CompatibilityCatalogueScopeStatus>, ObservatoryError> {
+    let mut statement = connection.prepare(
+        "SELECT scope.scope_id, scope.source_id, scope.package_name, scope.update_policy, \
+                scope.acknowledged_content_hash, scope.current_content_hash, \
+                scope.mapping_count, scope.state \
+         FROM catalogue_scope_evaluations scope \
+         JOIN warehouse_metadata metadata \
+           ON scope.generation_id = metadata.current_catalogue_generation_id \
+         WHERE metadata.singleton_id = 1 ORDER BY scope.scope_id",
+    )?;
+    statement
+        .query_map([], |row| {
+            Ok(CompatibilityCatalogueScopeStatus {
+                id: row.get(0)?,
+                source_id: row.get(1)?,
+                package_name: row.get(2)?,
+                update_policy: row.get(3)?,
+                acknowledged_content_hash: row.get(4)?,
+                current_content_hash: row.get(5)?,
+                mapping_count: row.get(6)?,
+                state: parse_scope_state(row.get(7)?)
+                    .unwrap_or(CompatibilityCatalogueScopeState::Conflict),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(Into::into)
+}
+
+fn catalogue_runtime_from(connection: &Connection) -> Result<CatalogueRuntime, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT last_catalogue_check_ms, last_catalogue_refresh_ms, last_catalogue_error_code \
+             FROM warehouse_metadata WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(Into::into)
 }
 
 fn summary_from_row(row: &duckdb::Row<'_>) -> Result<DefinitionSummary, duckdb::Error> {
@@ -1299,8 +1402,49 @@ mod tests {
     use crate::definition_catalogue::{
         CatalogueFile, CatalogueSource, ParsedDefinition, ParsedProperty, ParsedRelation,
     };
+    use crate::model::{CoverageReport, CoverageStatus, ReceiverHistoryPoint};
     use crate::planning_overlay::{OverlayOperation, OverlayOperationKind};
     use tempfile::tempdir;
+
+    fn observation_dataset(point_count: u32) -> ReceiverDataset {
+        ReceiverDataset {
+            payload_hash: "a".repeat(64),
+            interpretation_id: "b".repeat(64),
+            source_file_name: "synthetic.zip".to_owned(),
+            source_file_size: 1,
+            source_modified_ms: 1,
+            imported_at_ms: 1,
+            parser_version: "test".to_owned(),
+            format_profile: "test".to_owned(),
+            compatibility:
+                crate::compatibility_profile::ResolvedCompatibilityProfile::reviewed_builtin()
+                    .expect("profile")
+                    .provenance(),
+            branch_id: "main".to_owned(),
+            geographic_scope: "republic".to_owned(),
+            coverage: CoverageReport {
+                status: CoverageStatus::Complete,
+                history_records: point_count,
+                chartable_records: point_count,
+                dropped_records: 0,
+                warnings: Vec::new(),
+            },
+            source_fields: Vec::new(),
+            points: (0..point_count)
+                .map(|record_id| ReceiverHistoryPoint {
+                    record_id,
+                    year: 2000 + (record_id / 365) as i32,
+                    day: (record_id % 365) as u16,
+                    game_day: i64::from(record_id),
+                    none: u64::from(record_id) + 10,
+                    radio: u64::from(record_id) + 20,
+                    television: u64::from(record_id) + 30,
+                    computer: u64::from(record_id) + 40,
+                    classified_total: u64::from(record_id) * 4 + 100,
+                })
+                .collect(),
+        }
+    }
 
     #[test]
     fn creates_and_reopens_warehouse() {
@@ -1316,6 +1460,55 @@ mod tests {
         );
         drop(warehouse);
         AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn realistic_observation_projection_completes_as_one_bounded_batch() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse =
+            AnalyticalWarehouse::initialise(directory.path().join("observations.duckdb"))
+                .expect("warehouse");
+        let dataset = observation_dataset(2_000);
+        let started = Instant::now();
+
+        warehouse
+            .project_observation("observation:batch", &dataset, 10)
+            .expect("projection");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "realistic projection took {:?}",
+            started.elapsed()
+        );
+        let row_count = warehouse
+            .lock()
+            .expect("connection")
+            .query_row("SELECT COUNT(*) FROM observation_metrics", [], |row| {
+                row.get::<_, u64>(0)
+            })
+            .expect("observation row count");
+        assert_eq!(row_count, 8_000);
+        warehouse
+            .project_observation("observation:batch", &dataset, 11)
+            .expect("idempotent retry");
+    }
+
+    #[test]
+    fn status_snapshots_do_not_wait_for_an_active_warehouse_writer() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("busy.duckdb"))
+            .expect("warehouse");
+        let _writer = warehouse.lock().expect("writer lock");
+        let started = Instant::now();
+
+        let health = warehouse.health_snapshot(1, 0, Some(10), false);
+        let generation = warehouse.catalogue_generation_if_ready();
+        let runtime = warehouse.catalogue_runtime_if_ready();
+
+        assert!(started.elapsed() < Duration::from_millis(100));
+        assert_eq!(health.phase, WarehousePhase::Lagging);
+        assert!(generation.is_none());
+        assert!(runtime.is_none());
     }
 
     #[test]

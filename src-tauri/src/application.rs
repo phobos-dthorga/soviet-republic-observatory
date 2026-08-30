@@ -168,13 +168,13 @@ impl ObservatoryApplication {
 
     pub fn compatibility_status(&self) -> Result<CompatibilityStatus, ObservatoryError> {
         let mut status = self.compatibility.status()?;
-        if let Ok(Some(generation)) = self.warehouse.catalogue_generation() {
+        if let Some(generation) = self.warehouse.catalogue_generation_if_ready() {
             status.detected_build_id = generation.game_build_id;
             if generation.compatibility_profile_hash == status.active.resolved_hash
                 && status.catalogue_scopes.iter().all(|scope| {
                     scope.state == crate::model::CompatibilityCatalogueScopeState::Dormant
                 })
-                && let Ok(scopes) = self.warehouse.catalogue_scope_statuses()
+                && let Some(scopes) = self.warehouse.catalogue_scope_statuses_if_ready()
                 && !scopes.is_empty()
             {
                 status.catalogue_scopes = scopes;
@@ -566,10 +566,12 @@ impl ObservatoryApplication {
     pub fn catalogue_status(&self) -> Result<CatalogueStatus, ObservatoryError> {
         let queue = self.storage.projection_queue_status()?;
         let rebuilding = self.storage.warehouse_rebuild_running()?;
-        let (last_checked_at_ms, last_refreshed_at_ms, warehouse_error) = self
-            .warehouse
-            .catalogue_runtime()
-            .unwrap_or((None, None, Some("warehouse_unavailable".to_owned())));
+        let (last_checked_at_ms, last_refreshed_at_ms, warehouse_error) =
+            self.warehouse.catalogue_runtime_if_ready().unwrap_or((
+                None,
+                None,
+                (!self.warehouse.is_available()).then(|| "warehouse_unavailable".to_owned()),
+            ));
         let (last_filesystem_event_ms, sqlite_error) = self.storage.catalogue_runtime_state()?;
         let mut active_overlay = self.storage.active_overlay_summary()?;
         if let Some(profile) = &mut active_overlay
@@ -580,15 +582,15 @@ impl ObservatoryApplication {
                 .overlay_conflict_count(&profile.profile_id, revision);
         }
         Ok(CatalogueStatus {
-            warehouse: self.warehouse.health(
+            warehouse: self.warehouse.health_snapshot(
                 queue.pending_jobs,
                 queue.failed_jobs,
                 queue
                     .oldest_unresolved_at_ms
                     .map(|requested_at| now_ms().saturating_sub(requested_at)),
                 rebuilding,
-            )?,
-            generation: self.warehouse.catalogue_generation().unwrap_or(None),
+            ),
+            generation: self.warehouse.catalogue_generation_if_ready(),
             last_checked_at_ms,
             last_refreshed_at_ms,
             last_filesystem_event_ms,
@@ -911,6 +913,16 @@ impl ObservatoryApplication {
         let Some(job) = self.storage.claim_projection_job()? else {
             return Ok(false);
         };
+        let timer = Instant::now();
+        diagnostics::record(
+            "info",
+            "warehouse.projection_started",
+            "project_warehouse",
+            &format!(
+                "Analytical warehouse projection started ({}).",
+                job.projection_kind
+            ),
+        );
         let result = match job.projection_kind.as_str() {
             "observation" => self
                 .storage
@@ -934,10 +946,33 @@ impl ObservatoryApplication {
             _ => Err(ObservatoryError::WarehouseUnavailable),
         };
         match result {
-            Ok(()) => self.storage.complete_projection_job(&job.projection_id)?,
+            Ok(()) => {
+                self.storage.complete_projection_job(&job.projection_id)?;
+                diagnostics::record(
+                    "info",
+                    "warehouse.projection_complete",
+                    "project_warehouse",
+                    &format!(
+                        "Analytical warehouse projection completed ({}) in {} ms.",
+                        job.projection_kind,
+                        timer.elapsed().as_millis()
+                    ),
+                );
+            }
             Err(error) => {
                 self.storage
                     .fail_projection_job(&job.projection_id, error.code())?;
+                diagnostics::record(
+                    "error",
+                    "warehouse.projection_failed",
+                    "project_warehouse",
+                    &format!(
+                        "Analytical warehouse projection failed ({}) with code {} after {} ms.",
+                        job.projection_kind,
+                        error.code(),
+                        timer.elapsed().as_millis()
+                    ),
+                );
                 return Err(error);
             }
         }
@@ -1058,5 +1093,54 @@ mod tests {
         let status = application.catalogue_status().expect("degraded status");
         assert_eq!(status.warehouse.phase, WarehousePhase::Attention);
         assert_eq!(status.error_code.as_deref(), Some("warehouse_unavailable"));
+    }
+
+    #[test]
+    fn active_warehouse_writer_does_not_block_setup_or_status() {
+        let directory = tempdir().expect("temporary directory");
+        let application = ObservatoryApplication::initialise(
+            directory.path().join("operational.sqlite3"),
+            directory.path().join("analytical.duckdb"),
+        )
+        .expect("application");
+        let _writer = application
+            .warehouse
+            .test_writer_lock()
+            .expect("writer lock");
+        let started = std::time::Instant::now();
+
+        application.setup_state().expect("setup state");
+        let status = application.catalogue_status().expect("catalogue status");
+
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        assert_eq!(status.warehouse.phase, WarehousePhase::Lagging);
+    }
+
+    #[test]
+    #[ignore = "requires private copied app-local databases and is a reference-machine benchmark"]
+    fn private_projection_backlog_completes_in_bounded_time() {
+        let sqlite = std::env::var_os("RO_PROJECTION_SQLITE")
+            .expect("set RO_PROJECTION_SQLITE to a disposable database copy");
+        let duckdb = std::env::var_os("RO_PROJECTION_DUCKDB")
+            .expect("set RO_PROJECTION_DUCKDB to a disposable warehouse copy");
+        let application = ObservatoryApplication::initialise(sqlite.into(), duckdb.into())
+            .expect("copied application data");
+        let started = std::time::Instant::now();
+        let mut projected = 0_u32;
+
+        while application
+            .process_next_projection_job()
+            .expect("projection job")
+        {
+            projected = projected.saturating_add(1);
+            assert!(projected <= 1_000, "projection queue did not converge");
+        }
+
+        eprintln!(
+            "projected {projected} copied jobs in {:?}",
+            started.elapsed()
+        );
+        assert!(projected > 0);
+        assert!(started.elapsed() < std::time::Duration::from_secs(30));
     }
 }

@@ -29,11 +29,13 @@
     listenForCatalogueProgress,
     listenForCompatibilityUpdates,
     listenForReinterpretationProgress,
+    listenForWarehouseUpdates,
     selectTimelineBranch,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
     CatalogueRefreshProgress,
+    CatalogueStatus,
     CompatibilityUpdate,
     DiagnosticLogView,
     ReceiverDataset,
@@ -80,6 +82,7 @@
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
   let catalogueProgress = $state<CatalogueRefreshProgress | null>(null);
+  let warehouseStatus = $state<CatalogueStatus | null>(null);
   let reinterpretationProgress = $state<ReinterpretationProgress | null>(null);
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
@@ -196,6 +199,7 @@
     let stopCatalogueListening: (() => void) | undefined;
     let stopCompatibilityListening: (() => void) | undefined;
     let stopReinterpretationListening: (() => void) | undefined;
+    let stopWarehouseListening: (() => void) | undefined;
     void Promise.all([
       getSetupState(),
       getLatestReceiverDataset(),
@@ -218,10 +222,20 @@
         else stopCompatibilityListening = unlisten;
       },
     );
+    void listenForWarehouseUpdates((status) => {
+      if (!disposed) warehouseStatus = status;
+    }).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopWarehouseListening = unlisten;
+    });
     void observeLatestTaskProgress(
       {
         listen: listenForCatalogueProgress,
-        read: async () => (await getCatalogueStatus()).refresh,
+        read: async () => {
+          const status = await getCatalogueStatus();
+          warehouseStatus = status;
+          return status.refresh;
+        },
       },
       (progress) => {
         if (!disposed) catalogueProgress = progress;
@@ -248,6 +262,7 @@
       stopCatalogueListening?.();
       stopCompatibilityListening?.();
       stopReinterpretationListening?.();
+      stopWarehouseListening?.();
     };
   });
 
@@ -329,6 +344,18 @@
     </nav>
 
     <div class="command-actions">
+      {#if warehouseStatus && (warehouseStatus.warehouse.pending_jobs > 0 || warehouseStatus.warehouse.failed_jobs > 0 || warehouseStatus.warehouse.phase === "rebuilding")}
+        <TaskProgressIndicator
+          label={$translation("catalogue-warehouse")}
+          detail={warehouseStatus.warehouse.failed_jobs > 0
+            ? $translation("catalogue-global-attention")
+            : `${warehouseStatus.warehouse.pending_jobs} ${$translation("catalogue-pending-jobs")}`}
+          percent={null}
+          failed={warehouseStatus.warehouse.failed_jobs > 0}
+          currentItem={$translation("catalogue-recorder-independent")}
+          onclick={() => (activeWorkspace = "materials")}
+        />
+      {/if}
       {#if catalogueProgress && ["discovering", "scanning", "publishing", "finalising", "failed"].includes(catalogueProgress.phase)}
         <TaskProgressIndicator
           label={$translation("catalogue-global-progress")}
