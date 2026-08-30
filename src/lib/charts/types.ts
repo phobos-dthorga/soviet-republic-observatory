@@ -1,4 +1,5 @@
 export const CHART_SCHEMA_VERSION = 1 as const;
+export const SANKEY_CHART_SCHEMA_VERSION = 1 as const;
 
 export type EvidenceKind =
   | "save_fact"
@@ -61,6 +62,43 @@ export type ChartSpec = {
   series: ChartSeries[];
   provenance: Provenance;
 };
+
+export type SankeyNodeRole =
+  "source" | "process" | "intermediate" | "sink" | "residual";
+
+export type SankeyNode = {
+  id: string;
+  label: string;
+  role: SankeyNodeRole;
+};
+
+export type SankeyLink = {
+  id: string;
+  source: string;
+  target: string;
+  value: number;
+  provenance?: Provenance;
+};
+
+/**
+ * A bounded, application-owned flow contract. This is deliberately separate
+ * from ChartSpec v1 so Analysis Packs do not gain a new capability by accident.
+ */
+export type SankeyChartSpec = {
+  schema_version: typeof SANKEY_CHART_SCHEMA_VERSION;
+  id: string;
+  title: string;
+  description: string;
+  takeaway: string;
+  kind: "sankey";
+  unit: string;
+  balance: "conserved" | "open_boundary";
+  nodes: SankeyNode[];
+  links: SankeyLink[];
+  provenance: Provenance;
+};
+
+export type ObservatoryChartSpec = ChartSpec | SankeyChartSpec;
 
 export type ChartTheme = {
   palette: string[];

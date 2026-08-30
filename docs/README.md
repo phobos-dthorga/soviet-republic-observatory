@@ -18,6 +18,9 @@ an engineering requirement.
   programme experiments, and deterministic bulletins
 - [Dashboard and interface](dashboard-and-interface.md) — workspace hierarchy,
   interactions, chart contracts, and visual language
+- [Advanced Visual Grammar](advanced-visual-grammar.md) — the exceptional-visual
+  admission test, Sankey flow contract, accessible fallback, and extension
+  boundary
 - [Data sources and limitations](data-sources-and-limitations.md) — observed save
   structure, coverage, and claims the product must not make
 - [Dependency decisions](dependencies.md) — current libraries, licences, and
@@ -59,6 +62,7 @@ an engineering requirement.
 - [ADR-0011: dual-engine definition catalogue and planning warehouse](architecture/decisions/0011-dual-engine-catalogue-and-warehouse.md)
 - [ADR-0012: versioned inert game compatibility profiles](architecture/decisions/0012-versioned-game-compatibility-profiles.md)
 - [ADR-0013: governed DuckDB write boundary](architecture/decisions/0013-governed-duckdb-write-boundary.md)
+- [ADR-0014: exceptional visuals through explicit analytical contracts](architecture/decisions/0014-exceptional-visuals-doctrine.md)
 
 ## Evidence status vocabulary
 

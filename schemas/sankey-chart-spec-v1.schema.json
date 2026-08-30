@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.dev/schemas/sankey-chart-spec-v1.schema.json",
+  "title": "Republic Observatory application-owned Sankey specification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "title",
+    "description",
+    "takeaway",
+    "kind",
+    "unit",
+    "balance",
+    "nodes",
+    "links",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": { "$ref": "#/$defs/localId" },
+    "title": { "$ref": "#/$defs/title" },
+    "description": { "$ref": "#/$defs/description" },
+    "takeaway": { "$ref": "#/$defs/description" },
+    "kind": { "const": "sankey" },
+    "unit": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[^<>\\u0000-\\u001f\\u007f]+$"
+    },
+    "balance": { "enum": ["conserved", "open_boundary"] },
+    "nodes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "links": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/link" }
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "localId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[^<>\\u0000-\\u001f\\u007f]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^<>\\u0000-\\u001f\\u007f]+$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": { "$ref": "#/$defs/title" },
+        "role": {
+          "enum": ["source", "process", "intermediate", "sink", "residual"]
+        }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "value"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "source": { "$ref": "#/$defs/localId" },
+        "target": { "$ref": "#/$defs/localId" },
+        "value": { "type": "number", "exclusiveMinimum": 0 },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "source", "observed_at", "coverage"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "save_fact",
+            "game_definition",
+            "calculation",
+            "extension_calculation",
+            "player_override",
+            "player_definition",
+            "estimate",
+            "recommendation"
+          ]
+        },
+        "source": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "observed_at": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "coverage": { "enum": ["complete", "partial", "experimental"] }
+      }
+    }
+  }
+}

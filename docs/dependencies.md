@@ -3,25 +3,25 @@
 The foundation deliberately reuses WyrmGrid's proven interface stack while
 keeping the Observatory independent and small.
 
-| Dependency       | Licence    | Current role                                          | Boundary                                             |
-| ---------------- | ---------- | ----------------------------------------------------- | ---------------------------------------------------- |
-| Svelte 5         | MIT        | Presentational components and local interaction state | No parsing or analytical business rules              |
-| Apache ECharts   | Apache-2.0 | Canvas chart rendering                                | Used only through `ObservatoryChart` and `ChartSpec` |
-| `@fluent/bundle` | Apache-2.0 | Message parsing, variables, and catalogue fallback    | Data-only host and community message patterns        |
-| `fluent-syntax`  | MIT/Apache | Authoritative Rust Fluent syntax validation           | Parse only; no executable translation modules        |
-| Vite             | MIT        | Local development and production webview build        | Build-time only                                      |
-| TypeScript       | Apache-2.0 | Interface and contract type checking                  | Build-time only                                      |
-| Vitest           | MIT        | Calculation and contract tests                        | Development only                                     |
-| Ajv              | MIT        | Draft 2020-12 schema-conformance proofs               | Development only; Rust host remains authoritative    |
-| Prettier         | MIT        | Deterministic source formatting                       | Development only                                     |
-| Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Thin bounded commands; no file paths reach Svelte    |
-| Dialog plugin    | MIT/Apache | Player-initiated native directory selection           | Directory selection only                             |
-| `notify`         | CC0-1.0    | Native save-directory event wake-ups                  | Hints only; reconciliation remains authoritative     |
-| `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction           |
-| `rusqlite`       | MIT        | App-local observation and settings database           | Bundled unencrypted SQLite; append-only migrations   |
-| `duckdb`         | MIT        | Definition catalogue and analytical warehouse         | Pinned bundled engine; no extension autoload/install |
-| `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation   |
-| `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                 |
+| Dependency       | Licence    | Current role                                          | Boundary                                                              |
+| ---------------- | ---------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
+| Svelte 5         | MIT        | Presentational components and local interaction state | No parsing or analytical business rules                               |
+| Apache ECharts   | Apache-2.0 | Canvas chart rendering                                | Used only through `ObservatoryChart` and bounded host chart contracts |
+| `@fluent/bundle` | Apache-2.0 | Message parsing, variables, and catalogue fallback    | Data-only host and community message patterns                         |
+| `fluent-syntax`  | MIT/Apache | Authoritative Rust Fluent syntax validation           | Parse only; no executable translation modules                         |
+| Vite             | MIT        | Local development and production webview build        | Build-time only                                                       |
+| TypeScript       | Apache-2.0 | Interface and contract type checking                  | Build-time only                                                       |
+| Vitest           | MIT        | Calculation and contract tests                        | Development only                                                      |
+| Ajv              | MIT        | Draft 2020-12 schema-conformance proofs               | Development only; Rust host remains authoritative                     |
+| Prettier         | MIT        | Deterministic source formatting                       | Development only                                                      |
+| Tauri 2          | MIT/Apache | Native desktop/webview boundary                       | Thin bounded commands; no file paths reach Svelte                     |
+| Dialog plugin    | MIT/Apache | Player-initiated native directory selection           | Directory selection only                                              |
+| `notify`         | CC0-1.0    | Native save-directory event wake-ups                  | Hints only; reconciliation remains authoritative                      |
+| `zip`            | MIT        | Streaming read of the selected `stats.ini` entry      | Strict archive/entry limits; no extraction                            |
+| `rusqlite`       | MIT        | App-local observation and settings database           | Bundled unencrypted SQLite; append-only migrations                    |
+| `duckdb`         | MIT        | Definition catalogue and analytical warehouse         | Pinned bundled engine; no extension autoload/install                  |
+| `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation                    |
+| `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                                  |
 
 [OnAir WyrmGrid](https://github.com/phobos-dthorga/onair-wyrmgrid) is a design
 and architectural precedent, not a runtime dependency. Both repositories are

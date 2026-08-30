@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { activeLocale, translation } from "../i18n/runtime";
+  import ObservatoryChart from "../charts/ObservatoryChart.svelte";
+  import { createMaterialFlowPreview } from "../data/materialFlowPreview";
   import {
     activatePlanningOverlay,
     deactivatePlanningOverlay,
@@ -64,6 +66,7 @@
   let supplementId = $state("planning_material");
   let supplementName = $state("Planning material");
   let clockMs = $state(Date.now());
+  const materialFlowPreview = $derived(createMaterialFlowPreview($translation));
   const refreshActive = $derived(
     refreshProgress != null &&
       ["discovering", "scanning", "publishing", "finalising"].includes(
@@ -354,14 +357,17 @@
       </div>
     </div>
     <div class="section-list">
+      <a href="#material-flow-laboratory"
+        ><span>01</span>{$translation("catalogue-flow-laboratory")}</a
+      >
       <a href="#catalogue-browser"
-        ><span>01</span>{$translation("catalogue-browser")}</a
+        ><span>02</span>{$translation("catalogue-browser")}</a
       >
       <a href="#definition-dossier"
-        ><span>02</span>{$translation("catalogue-dossier")}</a
+        ><span>03</span>{$translation("catalogue-dossier")}</a
       >
       <a href="#overlay-laboratory"
-        ><span>03</span>{$translation("catalogue-overlays")}</a
+        ><span>04</span>{$translation("catalogue-overlays")}</a
       >
     </div>
     <div class="sidebar-note">
@@ -411,6 +417,13 @@
         headingId="catalogue-progress-heading"
       />
     {/if}
+
+    <div id="material-flow-laboratory" class="flow-laboratory">
+      <ObservatoryChart
+        spec={materialFlowPreview}
+        eyebrow={$translation("catalogue-flow-eyebrow")}
+      />
+    </div>
 
     {#if !desktopAvailable || !gameConfigured}
       <section class="empty-catalogue">
@@ -903,6 +916,10 @@
     padding: 14px;
     border: 1px solid var(--colour-line-faint);
     background: var(--colour-surface);
+  }
+  .flow-laboratory {
+    margin-bottom: 10px;
+    scroll-margin-top: 18px;
   }
   .catalogue-filter {
     display: grid;

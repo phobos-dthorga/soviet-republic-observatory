@@ -20,6 +20,8 @@ states.
 - The interface foundation initially implements line, area, and bar charts.
 - A new chart family is added only with a documented player question, data
   sufficiency rule, fallback, tests, and visual QA.
+- Advanced families use separate bounded contracts and the admission process in
+  ADR-0014; they are not silently added to an existing public schema version.
 - Analytics services return facts or analytical result models, not raw ECharts
   configuration.
 

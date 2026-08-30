@@ -22,6 +22,8 @@ numbers are assigned only when implementation begins.
 - Initial calculation utilities and unit tests
 - Data limitations, metric contract, architecture decisions, and contributor
   safeguards
+- Exceptional Visuals Doctrine plus the first bounded Sankey contract, semantic
+  validation, reduced-motion rendering, and accessible flow ledger
 
 ## Slice 1 — one save, one trusted chart — completed
 
@@ -143,6 +145,8 @@ publishes catalogue metrics.
 - Resource-use matrix and Pareto
 - Currency-specific trade, tourism, debt, and break-even analysis
 - Measurement coverage and accounted-flow residual presentation
+- Source-to-use Sankey views when one compatible material, scope, and planning
+  window can be reconciled; synthetic contract proof precedes observed flows
 
 ## Slice 7 — Population and cities
 

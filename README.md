@@ -41,6 +41,9 @@ questions:
   trade, price, use, risk, and provenance context.
 - **Industrial Laboratory** — production-chain diagrams, limiting-reagent
   analysis, theoretical yield, sensitivity, and optimisation.
+- **Advanced Visual Grammar** — specialist forms such as Sankey are admitted
+  only when they clarify a real planning relationship and include strict data,
+  evidence, accessibility, and performance contracts.
 - **Broadcast Desk** — receiver adoption, audience research, programme
   formulation, influence assays, intervention notes, and a deterministic
   Evening Bulletin.
@@ -152,6 +155,7 @@ small Tauri command boundary and are unavailable to ordinary browser code.
 - [Dependency decisions](docs/dependencies.md)
 - [Metric definitions](docs/metric-definitions.md)
 - [Material Periodic Table and Industrial Laboratory](docs/material-periodic-table.md)
+- [Advanced Visual Grammar](docs/advanced-visual-grammar.md)
 - [Broadcast Desk](docs/broadcast-desk.md)
 - [Community Extensions](docs/extensions/overview.md)
 - [Localisation and language-pack authoring](docs/localization/README.md)

@@ -231,6 +231,12 @@ becoming the analytical model.
 templates reference metrics only; the host resolves observations into concrete
 points and provenance. Schema version 1 supports line, area, and bar families.
 
+Specialist forms follow the [Advanced Visual Grammar](advanced-visual-grammar.md)
+and use separate bounded contracts. Sankey is the first admitted advanced form:
+it is reserved for compatible source-to-use volume, includes explicit residuals
+and provenance, and always has an exact accessible flow ledger. It is not part
+of Analysis Pack chart schema v1.
+
 ## Chart map
 
 | Workspace   | Question                              | Preferred form                                 | Fallback when sparse       |
@@ -242,6 +248,7 @@ points and provenance. Schema version 1 supports line, area, and bar families.
 | Plan        | How uncertain is completion?          | fan chart                                      | milestone interval table   |
 | Materials   | Which resources are exposed?          | periodic-table cells and ranked bars           | sortable resource table    |
 | Materials   | Where are resources used?             | heatmap                                        | grouped horizontal bars    |
+| Materials   | Where did one material flow?          | bounded Sankey with explicit residual          | exact source-to-use ledger |
 | Laboratory  | What limits output?                   | required-versus-available bars                 | coefficient table          |
 | Population  | Why did population change?            | waterfall                                      | signed component bars      |
 | Population  | Are welfare measures moving together? | aligned small multiples                        | latest values with slopes  |

@@ -210,6 +210,7 @@ replacement boundary.
 - `InterventionAnnotation`
 - `AnalyticalResult`
 - `ChartSpec`
+- `SankeyChartSpec` (application-owned advanced visual contract)
 - `AnalysisPackDeclaration`
 - `ExtensionContentIdentity`
 - `LanguagePackManifest` and `LanguageSelection`
