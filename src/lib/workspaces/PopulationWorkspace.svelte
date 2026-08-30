@@ -73,6 +73,24 @@
       cities: [],
       observation_limit: 256,
       city_limit: 512,
+      tesmio_probe: {
+        state: "not_configured",
+        read_only: true,
+        optional: true,
+        persisted: false,
+        probe_id: null,
+        probe_version: null,
+        loader_api_version: null,
+        target_game_version: null,
+        executable_timestamp: null,
+        content_hash: null,
+        snapshot_count: 0,
+        sample_count: 0,
+        latest_year: null,
+        latest_day: null,
+        latest_population_count: null,
+        warnings: [],
+      },
     };
   }
 
@@ -89,6 +107,21 @@
       year: latest.sampled_year,
       day: String(latest.sampled_day).padStart(3, "0"),
     });
+  }
+
+  function probeStateLabel(): string {
+    switch (dataset?.tesmio_probe.state) {
+      case "available":
+        return $translation("population-probe-state-available");
+      case "warning":
+        return $translation("population-probe-state-warning");
+      case "invalid":
+        return $translation("population-probe-state-invalid");
+      case "missing":
+        return $translation("population-probe-state-missing");
+      default:
+        return $translation("population-probe-state-not-configured");
+    }
   }
 </script>
 
@@ -317,6 +350,83 @@
             <p>{$translation("population-gate-life-events-detail")}</p>
           </article>
         </div>
+        <section
+          class="population-probe-panel"
+          data-state={dataset?.tesmio_probe.state ?? "not_configured"}
+          aria-labelledby="population-probe-title"
+        >
+          <header>
+            <div>
+              <span class="eyebrow"
+                >{$translation("population-probe-eyebrow")}</span
+              >
+              <h3 id="population-probe-title">
+                {$translation("population-probe-title")}
+              </h3>
+            </div>
+            <span class="status-chip">{probeStateLabel()}</span>
+          </header>
+          <p>{$translation("population-probe-description")}</p>
+          <div class="population-probe-contract">
+            <article>
+              <strong>{$translation("population-probe-read-only")}</strong>
+              <span>{$translation("population-probe-read-only-detail")}</span>
+            </article>
+            <article>
+              <strong>{$translation("population-probe-ephemeral")}</strong>
+              <span>{$translation("population-probe-ephemeral-detail")}</span>
+            </article>
+            <article>
+              <strong>{$translation("population-probe-no-identity")}</strong>
+              <span>{$translation("population-probe-no-identity-detail")}</span>
+            </article>
+          </div>
+          {#if dataset?.tesmio_probe.state === "available" || dataset?.tesmio_probe.state === "warning"}
+            <dl class="population-probe-readings">
+              <div>
+                <dt>{$translation("population-probe-snapshots")}</dt>
+                <dd>
+                  {formatNumber(
+                    dataset.tesmio_probe.snapshot_count,
+                    $activeLocale,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>{$translation("population-probe-samples")}</dt>
+                <dd>
+                  {formatNumber(
+                    dataset.tesmio_probe.sample_count,
+                    $activeLocale,
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>{$translation("population-probe-latest-population")}</dt>
+                <dd>
+                  {dataset.tesmio_probe.latest_population_count === null
+                    ? $translation("chart-unavailable")
+                    : formatNumber(
+                        dataset.tesmio_probe.latest_population_count,
+                        $activeLocale,
+                      )}
+                </dd>
+              </div>
+              <div>
+                <dt>{$translation("population-probe-target-build")}</dt>
+                <dd>{dataset.tesmio_probe.target_game_version ?? "—"}</dd>
+              </div>
+            </dl>
+          {:else if dataset?.tesmio_probe.state === "invalid"}
+            <p class="population-probe-warning" role="alert">
+              {$translation("population-probe-invalid-detail")}
+            </p>
+          {:else}
+            <p class="population-probe-note">
+              {$translation("population-probe-missing-detail")}
+            </p>
+          {/if}
+        </section>
       </section>
     {/if}
   </section>
@@ -490,6 +600,91 @@
     display: block;
   }
 
+  .population-probe-panel {
+    margin-top: 12px;
+    border: 1px solid var(--colour-line-faint);
+    border-inline-start: 3px solid var(--colour-observed);
+    padding: 13px;
+    background: var(--colour-surface-raised);
+  }
+
+  .population-probe-panel[data-state="invalid"] {
+    border-inline-start-color: var(--colour-risk);
+  }
+
+  .population-probe-panel[data-state="warning"],
+  .population-probe-panel[data-state="missing"] {
+    border-inline-start-color: var(--colour-gold);
+  }
+
+  .population-probe-panel > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .population-probe-panel h3 {
+    margin-top: 4px;
+    font-size: 1.0625rem;
+  }
+
+  .population-probe-panel > p {
+    margin-top: 8px;
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+    line-height: 1.55;
+  }
+
+  .population-probe-contract,
+  .population-probe-readings {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .population-probe-contract article,
+  .population-probe-readings > div {
+    min-width: 0;
+    border: 1px solid var(--colour-line-faint);
+    padding: 9px;
+    background: var(--colour-surface);
+  }
+
+  .population-probe-contract strong,
+  .population-probe-contract span,
+  .population-probe-readings dt,
+  .population-probe-readings dd {
+    display: block;
+    font-size: var(--type-caption);
+  }
+
+  .population-probe-contract span,
+  .population-probe-readings dt {
+    margin-top: 4px;
+    color: var(--colour-muted);
+    line-height: 1.45;
+  }
+
+  .population-probe-readings {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .population-probe-readings {
+    margin-bottom: 0;
+  }
+
+  .population-probe-readings dd {
+    margin: 5px 0 0;
+    color: var(--colour-observed);
+    font-weight: 700;
+  }
+
+  .population-probe-warning {
+    color: var(--colour-risk) !important;
+  }
+
   .population-gate-grid span {
     color: var(--colour-muted);
     font-size: var(--type-caption);
@@ -538,7 +733,9 @@
 
   @media (max-width: 1180px) {
     .population-kpis,
-    .population-gate-grid {
+    .population-gate-grid,
+    .population-probe-contract,
+    .population-probe-readings {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
@@ -549,7 +746,9 @@
 
   @media (max-width: 760px) {
     .population-kpis,
-    .population-gate-grid {
+    .population-gate-grid,
+    .population-probe-contract,
+    .population-probe-readings {
       grid-template-columns: 1fr;
     }
 

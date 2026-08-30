@@ -18,6 +18,7 @@ mod recorder_service;
 mod save_archive;
 mod stats_parser;
 mod storage;
+mod tesmio_probe;
 mod theme;
 mod warehouse;
 mod warehouse_governor;

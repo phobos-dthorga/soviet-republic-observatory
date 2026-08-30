@@ -1,0 +1,17 @@
+; Republic Observatory observation-only TesmioLoader baseline.
+; Merge these exact settings into TesmioLoader's own tesmioloader.ini.
+; Keep upstream version/game_exe metadata. Do not use this profile with any
+; plugin DLL other than observatory_probe.dll.
+[tesmioloader]
+trace_reads = 0
+log_game = 0
+vfs = 0
+probe_map = 0
+probe_texel = 0
+save_manifest = 0
+plugins = 1
+menu_patch = 0
+version_check = 1
+
+[plugins]
+observatory_probe = 1

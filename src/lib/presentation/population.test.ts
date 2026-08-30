@@ -120,6 +120,24 @@ const dataset: PopulationDataset = {
   ],
   observation_limit: 256,
   city_limit: 512,
+  tesmio_probe: {
+    state: "missing",
+    read_only: true,
+    optional: true,
+    persisted: false,
+    probe_id: null,
+    probe_version: null,
+    loader_api_version: null,
+    target_game_version: null,
+    executable_timestamp: null,
+    content_hash: null,
+    snapshot_count: 0,
+    sample_count: 0,
+    latest_year: null,
+    latest_day: null,
+    latest_population_count: null,
+    warnings: [],
+  },
 };
 
 describe("population presentation", () => {

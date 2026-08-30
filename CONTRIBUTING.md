@@ -128,6 +128,17 @@ policy, and map only to an existing allowlisted host operation. Never use them
 as load-order rules, mod configuration, save-level active-mod evidence, or
 planning-value overrides.
 
+The optional Tesmio research companion is a separately licensed and installed
+exception to the ordinary save-only architecture, not a general plugin host.
+It may use only the reviewed chainable observation hook, fixed bounded output,
+and exact executable gate documented in ADR-0019. Run `npm run
+audit:tesmio-probe` after every change. New hook types, write surfaces, emitted
+identities, paths, database access, network access, or build identities require
+a new security/evidence review and matching Legal & notices update. Never
+commit the built DLL or private telemetry. TesmioLoader's normal defaults are
+outside the read-only contract: preserve the fail-closed observation-only
+configuration and verifier, including its sole-plugin requirement.
+
 The bundled DuckDB build produces long intermediate C++ paths. The npm Rust and
 Tauri scripts select a short operating-system temporary target directory so the
 Windows compiler does not exceed legacy path limits. Do not replace that helper

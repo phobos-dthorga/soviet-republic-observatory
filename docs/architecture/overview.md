@@ -201,6 +201,9 @@ remain distinct contracts.
   explicit decision.
 - **DuckDB** for source-qualified catalogue history and model-ready analytical
   projections, with bundled operation and extension loading disabled.
+- **Optional Tesmio research companion** as separately built GPL source for one
+  exact reviewed W&R executable. It is neither bundled nor required; Rust reads
+  only its fixed bounded JSONL output and never persists the samples.
 
 MapLibre, Three.js, an executable plugin runtime, a hosted service, and a general
 notebook runtime are not foundation dependencies. The Analysis Pack schema is a
@@ -234,6 +237,7 @@ replacement boundary.
 - `ProjectionJob` and `WarehouseSnapshot`
 - `WarehouseWriteActivity` and governed write budget
 - `AppNotification` and contextual `HelpTopic`
+- `TesmioProbeStatus` (aggregate validation status without raw telemetry)
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned
@@ -256,4 +260,6 @@ display catalogue; display text is not the database key.
   Archive, and SQLite-backed charts usable.
 - An invalid compatibility edit leaves the last valid mapping active; a valid
   change creates a new interpretation and never rewrites earlier evidence.
+- A missing, invalid, or incompatible Tesmio probe is ignored without blocking
+  save observation, Archive, or aggregate Population analytics.
 - The interface remains useful offline and when the game is not running.

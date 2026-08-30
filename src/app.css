@@ -304,8 +304,33 @@ h3 {
   margin-inline-start: auto;
 }
 
+@media (min-width: 861px) and (max-width: 1500px) {
+  .command-bar {
+    min-height: 96px;
+    flex-wrap: wrap;
+    padding-block: 8px;
+  }
+
+  .command-bar nav {
+    order: 3;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 0 100%;
+    min-height: 36px;
+    overflow-x: auto;
+  }
+
+  .command-actions {
+    max-width: calc(100% - 270px);
+    gap: 8px;
+    overflow-x: auto;
+  }
+}
+
 .language-button,
 .theme-button,
+.legal-button,
 .diagnostics-button {
   border: 1px solid var(--colour-line-faint);
   padding: 7px 9px;
@@ -322,6 +347,11 @@ h3 {
 .diagnostics-button {
   color: var(--colour-gold);
   background: var(--colour-gold-soft);
+}
+
+.legal-button {
+  color: var(--colour-success);
+  background: var(--colour-surface-raised);
 }
 
 .theme-button {
@@ -3433,6 +3463,12 @@ h3 {
     min-width: 92px;
   }
 
+  .command-actions {
+    max-width: calc(100% - 250px);
+    gap: 8px;
+    overflow-x: auto;
+  }
+
   .observation-actions,
   .observation-copy span:last-child {
     display: none;
@@ -3584,6 +3620,10 @@ h3 {
 
   .scanner-state {
     display: none;
+  }
+
+  .command-actions {
+    max-width: calc(100% - 228px);
   }
 
   .language-backdrop {

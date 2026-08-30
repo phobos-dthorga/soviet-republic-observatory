@@ -30,6 +30,7 @@ use crate::model::{
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
 use crate::storage::{ObservatoryStorage, now_ms};
+use crate::tesmio_probe;
 use crate::theme::{ThemeInspection, ThemeStatus, inspect_theme_document};
 use crate::warehouse::AnalyticalWarehouse;
 
@@ -177,6 +178,8 @@ impl ObservatoryApplication {
             .warehouse
             .catalogue_generation_if_ready()
             .map(|generation| generation.generation_id);
+        let game_media_directory = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
+        dataset.tesmio_probe = tesmio_probe::inspect(game_media_directory.as_deref());
         Ok(dataset)
     }
 

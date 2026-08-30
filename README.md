@@ -26,8 +26,11 @@ questions:
 > It resolves branches, compares states on one branch, and presents Observer
 > Health, Republic Pulse, the Industrial Catalogue, and a branch-aware
 > aggregate Population laboratory. Individual citizen histories remain behind
-> a documented stable-identity evidence gate. Unrelated dashboard values remain
-> visibly synthetic.
+> a documented stable-identity evidence gate. An optional, separately built
+> GPL Tesmio research companion can now supply strictly bounded anonymous live
+> samples; it is never auto-installed, is not persisted into Observatory
+> databases, and is governed by an in-app legal/risk screen. Unrelated dashboard
+> values remain visibly synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -178,4 +181,7 @@ with, endorsed by, or sponsored by 3Division or Hooded Horse. _Workers &
 Resources: Soviet Republic_ and related names may be trademarks of their
 respective owners. No game assets or save data are distributed by this project.
 
-Source code and documentation are available under the [MIT License](LICENSE).
+The main application and documentation are available under the
+[MIT License](LICENSE). The separately built optional Tesmio companion source is
+GPL-3.0-only and includes its own [complete licence text](research/tesmioloader-probe/COPYING).
+See the [legal and third-party notices](docs/legal-and-third-party-notices.md).

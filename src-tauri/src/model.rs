@@ -381,6 +381,60 @@ pub struct PopulationDataset {
     pub cities: Vec<PopulationCitySnapshot>,
     pub observation_limit: u32,
     pub city_limit: u32,
+    pub tesmio_probe: TesmioProbeStatus,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TesmioProbeState {
+    NotConfigured,
+    Missing,
+    Available,
+    Warning,
+    Invalid,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TesmioProbeStatus {
+    pub state: TesmioProbeState,
+    pub read_only: bool,
+    pub optional: bool,
+    pub persisted: bool,
+    pub probe_id: Option<String>,
+    pub probe_version: Option<String>,
+    pub loader_api_version: Option<u32>,
+    pub target_game_version: Option<String>,
+    pub executable_timestamp: Option<u64>,
+    pub content_hash: Option<String>,
+    pub snapshot_count: u32,
+    pub sample_count: u32,
+    pub latest_year: Option<i32>,
+    pub latest_day: Option<u16>,
+    pub latest_population_count: Option<u32>,
+    pub warnings: Vec<String>,
+}
+
+impl TesmioProbeStatus {
+    pub fn not_configured() -> Self {
+        Self {
+            state: TesmioProbeState::NotConfigured,
+            read_only: true,
+            optional: true,
+            persisted: false,
+            probe_id: None,
+            probe_version: None,
+            loader_api_version: None,
+            target_game_version: None,
+            executable_timestamp: None,
+            content_hash: None,
+            snapshot_count: 0,
+            sample_count: 0,
+            latest_year: None,
+            latest_day: None,
+            latest_population_count: None,
+            warnings: Vec::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

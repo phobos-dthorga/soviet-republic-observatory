@@ -146,33 +146,47 @@ That is the correct precedent for `workers.bin`: identify the serializer,
 observe the live object and record together, preserve unknown regions, and
 publish only independently reproduced fields.
 
-## Proposed Observatory research bridge
+## Implemented bounded research bridge
 
-If adopted, TesmioLoader integration should be an optional, separately
-installed **Observatory Research Probe**, not part of the normal desktop
-application and not required to view any save-derived feature.
+The first bridge is now implemented as an optional, separately built
+**Observatory Research Probe**. It is not part of the normal desktop application
+and is not required to view any save-derived feature. No loader or DLL is
+installed automatically.
 
-The first probe should be read-only and provide no gameplay modification. It
-should:
+TesmioLoader itself is a general modding platform, not a read-only dependency.
+Its upstream defaults can redirect reads, write save manifests, and load
+gameplay-changing plugins. The Observatory experiment therefore also requires
+the supplied observation-only host settings, the companion as the sole plugin
+DLL, and a passing preflight verifier before launch.
+
+The probe is read-only in its data behaviour and provides no gameplay
+modification. It:
 
 - refuse any executable except an exact reviewed build identity;
-- compare every hook site against expected bytes and fail closed;
+- pins the reviewed executable's PE timestamp and size and fails closed before
+  installing its single chained IAT observation hook;
 - observe a bounded number of people and events;
-- use session-local pseudonyms rather than addresses or names in ordinary logs;
+- emits no address, name, pseudonymous subject key, or full object dump;
 - emit a versioned, bounded, local JSON Lines research stream;
-- include game build identity, TesmioLoader/API version, probe version, game
-  date, hook identity, source offset, primitive interpretation, and evidence
-  status on every record;
+- includes a strict session contract plus sequence, game date, population count,
+  and bounded candidate-field samples;
 - exclude complete object dumps, raw saves, filesystem paths, and network
   access by default;
 - never open Republic Observatory's SQLite or DuckDB databases; and
 - never write to a game object, serializer, or save entry.
 
-Republic Observatory would import that stream through a distinct research
-command and store it separately from reviewed facts. Only after a controlled
-fixture proves a mapping should the stable save-side interpretation be promoted
-into a reviewed `.rocompat.json` profile. The production parser remains the
-authority for normal observation.
+Republic Observatory derives one fixed telemetry location from the configured
+game directory and validates the stream through Rust. It caps the file at 4
+MiB, 8,192 lines, and 16 KiB per line; rejects unknown fields, path escapes,
+links, inconsistent samples, and any claimed write/network capability; and
+returns aggregate status only. The records are **not imported into SQLite or
+DuckDB** in this slice. The production save parser remains the authority for
+normal observation.
+
+The GPL companion source and build instructions are in
+[`research/tesmioloader-probe`](../../research/tesmioloader-probe/README.md).
+The app exposes a first-class Legal & notices screen covering ownership,
+licensing, same-process risk, the no-sandbox caveat, and evidence limits.
 
 ## Priority experiments
 

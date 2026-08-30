@@ -19,6 +19,7 @@ Thumbs.db
 *.duckdb.wal
 /observations/
 /captures/
+/research/tesmioloader-probe/build/
 
 # Rust and desktop-shell build output.
 src-tauri/target/

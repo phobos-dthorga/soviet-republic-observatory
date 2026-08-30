@@ -168,6 +168,29 @@ export type PopulationDataset = {
   cities: PopulationCitySnapshot[];
   observation_limit: number;
   city_limit: number;
+  tesmio_probe: TesmioProbeStatus;
+};
+
+export type TesmioProbeState =
+  "not_configured" | "missing" | "available" | "warning" | "invalid";
+
+export type TesmioProbeStatus = {
+  state: TesmioProbeState;
+  read_only: boolean;
+  optional: boolean;
+  persisted: boolean;
+  probe_id: string | null;
+  probe_version: string | null;
+  loader_api_version: number | null;
+  target_game_version: string | null;
+  executable_timestamp: number | null;
+  content_hash: string | null;
+  snapshot_count: number;
+  sample_count: number;
+  latest_year: number | null;
+  latest_day: number | null;
+  latest_population_count: number | null;
+  warnings: string[];
 };
 
 export type BranchSelectionResult = AnalysisContextResult;

@@ -11,6 +11,13 @@
   calculations, forecasts, and recommendations using provenance metadata.
 - Unsupported or incomplete fields must remain visibly unavailable. Never infer
   a value merely to keep a chart populated.
+- Optional same-process research companions remain separately built and
+  installed, fail closed on unreviewed executable identities, and cannot become
+  dependencies of normal save observation. “Read-only” describes their data
+  behaviour; never call process instrumentation an operating-system sandbox.
+- Changes to native research, third-party licensing, affiliation, local-data
+  handling, or warranty boundaries must update the first-class Legal & notices
+  screen and the repository legal notice in the same slice.
 
 ## Architecture
 

@@ -4,7 +4,7 @@ use super::{ObservatoryStorage, from_sql_integer};
 use crate::error::ObservatoryError;
 use crate::model::{
     CoverageStatus, PopulationCitySnapshot, PopulationDataset, PopulationFact,
-    PopulationObservation,
+    PopulationObservation, TesmioProbeStatus,
 };
 
 const POPULATION_OBSERVATION_LIMIT: u32 = 256;
@@ -21,6 +21,7 @@ impl ObservatoryStorage {
                 cities: Vec::new(),
                 observation_limit: POPULATION_OBSERVATION_LIMIT,
                 city_limit: POPULATION_CITY_LIMIT,
+                tesmio_probe: TesmioProbeStatus::not_configured(),
             });
         };
         let head_revision = connection
@@ -45,6 +46,7 @@ impl ObservatoryStorage {
             cities,
             observation_limit: POPULATION_OBSERVATION_LIMIT,
             city_limit: POPULATION_CITY_LIMIT,
+            tesmio_probe: TesmioProbeStatus::not_configured(),
         })
     }
 }

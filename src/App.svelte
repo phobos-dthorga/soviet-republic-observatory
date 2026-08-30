@@ -15,6 +15,7 @@
   import { formatNumber } from "./lib/i18n/format";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
+  import LegalDialog from "./lib/legal/LegalDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
   import { notify } from "./lib/notifications/service";
@@ -93,6 +94,7 @@
   let themeDialogOpen = $state(false);
   let observationDialogOpen = $state(false);
   let diagnosticsDialogOpen = $state(false);
+  let legalDialogOpen = $state(false);
   let diagnosticsBusy = $state(false);
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
@@ -508,6 +510,13 @@
       {/if}
       <button
         type="button"
+        class="legal-button"
+        onclick={() => (legalDialogOpen = true)}
+      >
+        {$translation("legal-open")}
+      </button>
+      <button
+        type="button"
         class="diagnostics-button"
         disabled={!desktopAvailable}
         onclick={openDiagnostics}
@@ -669,3 +678,5 @@
   onrefresh={() => void refreshDiagnostics()}
   onclear={() => void clearDiagnostics()}
 />
+
+<LegalDialog open={legalDialogOpen} onclose={() => (legalDialogOpen = false)} />

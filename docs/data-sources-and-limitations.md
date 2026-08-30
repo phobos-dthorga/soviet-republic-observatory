@@ -283,6 +283,27 @@ listeners or viewers, rating, recording budget, and actual staffing remain
 binary-research candidates. Synthetic interface values must never be presented
 as decoded telemetry.
 
+### Optional live research telemetry
+
+The optional Tesmio companion is a reverse-engineering instrument, not a new
+source of reviewed facts. Rust accepts only the fixed file derived from the
+configured game directory, rejects unknown or capability-expanding records,
+and returns aggregate probe health. Raw records are not projected into SQLite
+or DuckDB. Their vector positions are ephemeral sample locations—not citizen
+identifiers—and cannot be joined into biographies or family histories.
+
+The first companion is pinned to one executable timestamp and size. A mismatch
+fails closed and ordinary save observation continues. “Read-only” means the
+companion does not write game state, saves, game files, Observatory databases,
+or the network. It still runs inside and instruments the game process, so it is
+not an operating-system sandbox.
+
+That establishes the probe-record contract, not the safety of an arbitrary
+TesmioLoader installation. A research run must use the documented
+observation-only host settings, contain no other plugin DLL, and pass the
+supplied preflight verifier. TesmioLoader's standard modding defaults and
+gameplay plugins remain outside the Observatory evidence boundary.
+
 ### Extension data boundary
 
 Analysis Packs reference published normalised metrics and never read saves.

@@ -23,6 +23,14 @@ keeping the Observatory independent and small.
 | `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation                    |
 | `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                                  |
 
+TesmioLoader is **not** an application dependency. The repository contains one
+optional GPL-3.0-only companion source experiment that compiles against a
+separately obtained TesmioLoader checkout. No TesmioLoader source, header,
+binary, installer, or plugin DLL is bundled in the desktop application. The
+main application remains MIT licensed and fully functional without it. See the
+[legal and third-party notice](legal-and-third-party-notices.md) and
+[ADR-0019](architecture/decisions/0019-optional-read-only-native-research-bridge.md).
+
 [OnAir WyrmGrid](https://github.com/phobos-dthorga/onair-wyrmgrid) is a design
 and architectural precedent, not a runtime dependency. Both repositories are
 MIT-licensed, but shared packages are intentionally deferred until two current

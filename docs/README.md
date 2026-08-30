@@ -29,6 +29,8 @@ an engineering requirement.
 - [TesmioLoader reverse-engineering assessment](research/tesmioloader-reverse-engineering.md)
   — live instrumentation, binary-serializer research, upstream citizen-field
   candidates, safety boundaries, and the proposed read-only research bridge
+- [Legal and third-party notices](legal-and-third-party-notices.md) — project
+  independence, local data, licensing, read-only native risk, and evidence limits
 - [Dependency decisions](dependencies.md) — current libraries, licences, and
   complexity budget
 - [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)
@@ -79,6 +81,8 @@ an engineering requirement.
 - [ADR-0016: enforce the domain and presentation boundary](architecture/decisions/0016-domain-presentation-boundary.md)
 - [ADR-0017: exact analytical heads and evidence-backed continuations](architecture/decisions/0017-historical-heads-and-continuations.md)
 - [ADR-0018: evidence-gate individual citizen histories](architecture/decisions/0018-evidence-gated-citizen-histories.md)
+- [ADR-0019: optional read-only native research bridge](architecture/decisions/0019-optional-read-only-native-research-bridge.md)
+  — fail-closed same-process observation without a product dependency
 
 ## Evidence status vocabulary
 

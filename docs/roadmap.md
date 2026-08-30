@@ -170,6 +170,10 @@ publishes catalogue metrics.
 - Exact-head numeric city-source assays with source-field and line evidence
 - Citizen Lives feasibility gate: worker-table research is documented, while
   stable identity, family links, and individual events remain unavailable
+- Optional Tesmio research status: a separately built, exact-build sample
+  companion can be detected and validated without importing its records or
+  weakening the stable-identity gate; observation-only use also requires the
+  reviewed host configuration and sole-plugin preflight
 - Welfare small multiples after field meanings and denominators are validated
 - City heatmap, ranking, weighted dispersion, and intervention queue
 - Annotations and event-time comparisons
@@ -195,6 +199,9 @@ publishes catalogue metrics.
   telemetry
 - Stable citizen identity, family relationships, household/residence, prison,
   orphanage, workplace, education, migration, escape, and death fields
+- Controlled Tesmio experiments correlating live candidate fields with exact
+  save records; the bounded anonymous sampling bridge is implemented, while
+  field promotion and stable identity remain unproven
 
 Research findings do not become product claims until they have versioned
 fixtures, compatibility limits, and a safe unavailable-data path.
