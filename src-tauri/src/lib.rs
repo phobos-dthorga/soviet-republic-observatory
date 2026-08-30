@@ -64,6 +64,7 @@ pub fn run() {
             commands::get_setup_state,
             commands::get_latest_receiver_dataset,
             commands::get_archive_overview,
+            commands::get_population_dataset,
             commands::get_recorder_health,
             commands::configure_directory,
             commands::observe_latest_save,

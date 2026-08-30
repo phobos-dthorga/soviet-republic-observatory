@@ -340,6 +340,49 @@ pub struct AnalysisContextResult {
     pub dataset: Option<ReceiverDataset>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct PopulationFact {
+    pub fact_id: String,
+    pub value: u64,
+    pub source_field: String,
+    pub source_line: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PopulationObservation {
+    pub interpretation_id: String,
+    pub source_file_name: String,
+    pub membership_revision: u32,
+    pub sampled_year: i32,
+    pub sampled_day: u16,
+    pub sampled_game_day: i64,
+    pub coverage_status: CoverageStatus,
+    pub mapping_classification: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
+    pub facts: Vec<PopulationFact>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PopulationCitySnapshot {
+    pub scope_id: String,
+    pub sampled_year: i32,
+    pub sampled_day: u16,
+    pub sampled_game_day: i64,
+    pub coverage_status: CoverageStatus,
+    pub facts: Vec<PopulationFact>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PopulationDataset {
+    pub analysis_context: AnalysisContext,
+    pub observations: Vec<PopulationObservation>,
+    pub cities: Vec<PopulationCitySnapshot>,
+    pub observation_limit: u32,
+    pub city_limit: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct BranchMembershipProjection {
     pub branch_id: String,

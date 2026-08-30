@@ -161,9 +161,16 @@ publishes catalogue metrics.
   window can be reconciled; the source-backed definition-coefficient laboratory
   is implemented, while observed flows remain a research boundary
 
-## Slice 7 — Population and cities
+## Slice 7 — Population and cities — aggregate foundation implemented
 
-- Welfare small multiples from observed snapshots
+- Branch-aware, exact-head republic status and education views from supported
+  save snapshots
+- Recorded movement-counter trends with unverified-window and no-interpolation
+  warnings
+- Exact-head numeric city-source assays with source-field and line evidence
+- Citizen Lives feasibility gate: worker-table research is documented, while
+  stable identity, family links, and individual events remain unavailable
+- Welfare small multiples after field meanings and denominators are validated
 - City heatmap, ranking, weighted dispersion, and intervention queue
 - Annotations and event-time comparisons
 - Experimental control charts with baseline diagnostics
@@ -186,6 +193,8 @@ publishes catalogue metrics.
 - Waste treatment and recovery coverage
 - Radio and television identity, staffing, programme, reach, rating, and budget
   telemetry
+- Stable citizen identity, family relationships, household/residence, prison,
+  orphanage, workplace, education, migration, escape, and death fields
 
 Research findings do not become product claims until they have versioned
 fixtures, compatibility limits, and a safe unavailable-data path.

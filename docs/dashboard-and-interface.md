@@ -45,10 +45,10 @@ changing their semantic order.
   coverage.
 
 The current application enables Briefing, Monitor, Broadcast, Extensions,
-Materials, and Archive in primary navigation. The other buttons remain visibly disabled until their
-analytical vertical slices exist. The shell owns only global navigation and
-observation context; each enabled destination is a presentational workspace
-component.
+Materials, Population, and Archive in primary navigation. The other buttons
+remain visibly disabled until their analytical vertical slices exist. The shell
+owns only global navigation and observation context; each enabled destination
+is a presentational workspace component.
 
 ### Observation archive
 
@@ -268,8 +268,11 @@ of Analysis Pack chart schema v1.
 | Materials   | What coefficients define this route?  | open-boundary production-route Sankey          | exact definition ledger    |
 | Materials   | Where did one material flow?          | conserved Sankey with explicit residual        | exact source-to-use ledger |
 | Laboratory  | What limits output?                   | required-versus-available bars                 | coefficient table          |
-| Population  | Why did population change?            | waterfall                                      | signed component bars      |
-| Population  | Are welfare measures moving together? | aligned small multiples                        | latest values with slopes  |
+| Population  | What source counts changed?           | exact save-sampled lines                       | latest direct values       |
+| Population  | What education counts were recorded?  | horizontal bars at exact head                  | exact source ledger        |
+| Population  | What did one city source record?      | exact-head movement-counter bars               | exact source ledger        |
+| Population  | Why did population change?            | unavailable until flow windows reconcile       | recorded counters only     |
+| Population  | Are welfare measures moving together? | aligned small multiples after field validation | latest direct values       |
 | Cities      | Where is distress concentrated?       | city-by-metric heatmap                         | ranked dot plots           |
 | Markets     | How concentrated are exports?         | Pareto                                         | sorted bars plus top share |
 | Markets     | Are prices unstable?                  | indexed line with control band                 | discrete period bars       |

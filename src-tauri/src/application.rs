@@ -22,10 +22,10 @@ use crate::model::{
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
-    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, SetupState,
-    WarehouseSnapshot,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
+    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, ReceiverDataset,
+    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
+    ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -169,6 +169,15 @@ impl ObservatoryApplication {
 
     pub fn latest_receiver_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
         self.storage.load_latest_dataset()
+    }
+
+    pub fn population_dataset(&self) -> Result<PopulationDataset, ObservatoryError> {
+        let mut dataset = self.storage.load_population_dataset()?;
+        dataset.analysis_context.catalogue_generation_id = self
+            .warehouse
+            .catalogue_generation_if_ready()
+            .map(|generation| generation.generation_id);
+        Ok(dataset)
     }
 
     pub fn language_status(&self) -> Result<LanguageStatus, ObservatoryError> {

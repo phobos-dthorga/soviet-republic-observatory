@@ -9,6 +9,7 @@ mod language_packs;
 mod migrations;
 mod observations;
 mod planning_overlays;
+mod population;
 mod recorder;
 mod settings;
 mod snapshots;

@@ -131,6 +131,45 @@ export type AnalysisContextResult = {
   dataset: ReceiverDataset | null;
 };
 
+export type PopulationFact = {
+  fact_id: string;
+  value: number;
+  source_field: string;
+  source_line: number;
+};
+
+export type PopulationObservation = {
+  interpretation_id: string;
+  source_file_name: string;
+  membership_revision: number;
+  sampled_year: number;
+  sampled_day: number;
+  sampled_game_day: number;
+  coverage_status: CoverageStatus;
+  mapping_classification: string;
+  profile_id: string;
+  profile_version: string;
+  resolved_profile_hash: string;
+  facts: PopulationFact[];
+};
+
+export type PopulationCitySnapshot = {
+  scope_id: string;
+  sampled_year: number;
+  sampled_day: number;
+  sampled_game_day: number;
+  coverage_status: CoverageStatus;
+  facts: PopulationFact[];
+};
+
+export type PopulationDataset = {
+  analysis_context: AnalysisContext;
+  observations: PopulationObservation[];
+  cities: PopulationCitySnapshot[];
+  observation_limit: number;
+  city_limit: number;
+};
+
 export type BranchSelectionResult = AnalysisContextResult;
 
 export type ComparisonObservation = {

@@ -10,9 +10,9 @@ use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, ProductionRouteCoverage, ProductionRouteModel,
-    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState,
-    WarehouseSnapshot,
+    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderHealth,
+    ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 use crate::theme::{ThemeInspection, ThemeStatus};
 
@@ -39,6 +39,13 @@ pub fn get_latest_receiver_dataset(
 #[tauri::command]
 pub fn get_archive_overview(state: State<'_, AppState>) -> Result<ArchiveOverview, CommandError> {
     state.application.archive_overview().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_population_dataset(
+    state: State<'_, AppState>,
+) -> Result<PopulationDataset, CommandError> {
+    state.application.population_dataset().map_err(Into::into)
 }
 
 #[tauri::command]

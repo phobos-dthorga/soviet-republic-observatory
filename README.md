@@ -24,8 +24,10 @@ questions:
 > profiles, with one watched app-local repair file and immutable
 > reviewed-versus-player-mapped provenance.
 > It resolves branches, compares states on one branch, and presents Observer
-> Health, Republic Pulse, and the Industrial Catalogue. Unrelated dashboard
-> values remain visibly synthetic.
+> Health, Republic Pulse, the Industrial Catalogue, and a branch-aware
+> aggregate Population laboratory. Individual citizen histories remain behind
+> a documented stable-identity evidence gate. Unrelated dashboard values remain
+> visibly synthetic.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
@@ -104,7 +106,9 @@ Use **Monitor** to inspect recorder health and Republic Pulse, and **Archive** t
 inspect ancestry, select a timeline branch, and
 compare two distinct states on that branch. Archive can also pin an exact older
 save or create a durable continuation from it without deleting the later
-future. Configure the game installation
+future. **Population** shows exact-head republic and numeric city snapshots,
+including their direct source fields, while refusing unsupported individual
+biographies or unverified rates. Configure the game installation
 folder to build the Industrial Catalogue from local base, DLC, subscribed
 Workshop, and WIP definitions. A separate Workshop-folder selector is available
 when Steam discovery cannot resolve external Workshop content. The header shows
@@ -154,6 +158,7 @@ small Tauri command boundary and are unavailable to ordinary browser code.
 
 - [Documentation index](docs/README.md)
 - [Data sources and limitations](docs/data-sources-and-limitations.md)
+- [Citizen Lives feasibility](docs/citizen-lives-feasibility.md)
 - [Dependency decisions](docs/dependencies.md)
 - [Metric definitions](docs/metric-definitions.md)
 - [Material Periodic Table and Industrial Laboratory](docs/material-periodic-table.md)

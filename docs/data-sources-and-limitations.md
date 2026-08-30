@@ -162,6 +162,25 @@ City identifiers are not assumed to be display names. Until names and
 coordinates are established by a supported source, the interface must use a
 stable neutral label and explain the limitation.
 
+The implemented Population workspace queries these facts from SQLite through a
+bounded application-owned model. It follows the exact selected analytical head
+and refuses to join the unrelated histories that may coexist in the special
+unassigned bucket. Source counters are displayed as sampled values; their
+accumulation window is not yet validated into interval flows or rates.
+
+## Individual citizen binary research
+
+Representative saves contain a large candidate worker-record table, but row
+position changes across saves and visible names are not unique persistent
+identifiers. No parent/child, household, residence, orphanage, prison,
+sentence, workplace, education, migration, escape, or death field has yet
+passed the compatibility evidence gate for person-level use. The screenshot
+that motivated the feature is gameplay inspiration, not binary evidence.
+
+The full result, future contract, scale analysis, and privacy boundary are in
+[Citizen Lives and Family Trajectories feasibility](citizen-lives-feasibility.md).
+The application must remain aggregate-only unless stable identity is proved.
+
 ## Game definitions
 
 The implemented catalogue indexes locally available base-game, DLC, subscribed

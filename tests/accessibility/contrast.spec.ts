@@ -29,6 +29,7 @@ const workspaces = [
   "Broadcast",
   "Extensions",
   "Materials",
+  "Population",
   "Archive",
 ];
 

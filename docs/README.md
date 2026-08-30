@@ -23,6 +23,9 @@ an engineering requirement.
   boundary
 - [Data sources and limitations](data-sources-and-limitations.md) — observed save
   structure, coverage, and claims the product must not make
+- [Citizen Lives and Family Trajectories feasibility](citizen-lives-feasibility.md)
+  — worker-table research, stable-identity gate, aggregate vertical slice,
+  future data contract, scale, and privacy boundary
 - [Dependency decisions](dependencies.md) — current libraries, licences, and
   complexity budget
 - [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)
@@ -72,6 +75,7 @@ an engineering requirement.
 - [ADR-0015: inert community themes with native validation](architecture/decisions/0015-inert-community-themes.md)
 - [ADR-0016: enforce the domain and presentation boundary](architecture/decisions/0016-domain-presentation-boundary.md)
 - [ADR-0017: exact analytical heads and evidence-backed continuations](architecture/decisions/0017-historical-heads-and-continuations.md)
+- [ADR-0018: evidence-gate individual citizen histories](architecture/decisions/0018-evidence-gated-citizen-histories.md)
 
 ## Evidence status vocabulary
 

@@ -63,6 +63,121 @@ fn exact_historical_preview_excludes_later_states_and_returns_to_the_proven_tip(
 }
 
 #[test]
+fn population_dataset_is_bounded_to_the_exact_analysis_head_and_keeps_source_evidence() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("population.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&population_inspection(
+            "population-anchor",
+            "anchor.zip",
+            &[1, 2],
+            120,
+            7,
+        ))
+        .expect("anchor");
+    storage
+        .save_inspection(&population_inspection(
+            "population-later",
+            "later.zip",
+            &[1, 2, 3],
+            135,
+            11,
+        ))
+        .expect("later");
+
+    let latest = storage
+        .load_population_dataset()
+        .expect("latest population");
+    assert_eq!(latest.observations.len(), 2);
+    assert_eq!(latest.cities.len(), 1);
+    assert_eq!(latest.cities[0].scope_id, "17");
+    assert_eq!(latest.cities[0].facts[0].source_line, 211);
+    assert_eq!(
+        latest.observations[1]
+            .facts
+            .iter()
+            .find(|fact| fact.fact_id == "source.stats.citizens.small_children")
+            .map(|fact| fact.value),
+        Some(135)
+    );
+
+    storage
+        .inspect_observation("population-anchor")
+        .expect("inspect anchor");
+    let preview = storage
+        .load_population_dataset()
+        .expect("historical population");
+    assert_eq!(
+        preview.analysis_context.mode,
+        AnalysisContextMode::HistoricalPreview
+    );
+    assert_eq!(preview.observations.len(), 1);
+    assert_eq!(
+        preview.observations[0].interpretation_id,
+        "population-anchor"
+    );
+    assert_eq!(
+        preview.cities[0]
+            .facts
+            .iter()
+            .find(|fact| fact.fact_id == "source.stats.citizens.born")
+            .map(|fact| fact.value),
+        Some(7)
+    );
+}
+
+#[test]
+fn population_dataset_never_splices_unrelated_unassigned_histories() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("unassigned-population.sqlite3"))
+            .expect("storage");
+    storage
+        .save_inspection(&population_inspection(
+            "main-population",
+            "main.zip",
+            &[1, 2],
+            120,
+            7,
+        ))
+        .expect("main");
+    storage
+        .save_inspection(&population_inspection(
+            "unrelated-population-a",
+            "unrelated-a.zip",
+            &[90, 91],
+            900,
+            70,
+        ))
+        .expect("first unrelated");
+    storage
+        .save_inspection(&population_inspection(
+            "unrelated-population-b",
+            "unrelated-b.zip",
+            &[80, 81],
+            800,
+            60,
+        ))
+        .expect("second unrelated");
+
+    storage
+        .select_branch("unassigned")
+        .expect("select unresolved histories");
+    let dataset = storage.load_population_dataset().expect("population");
+    assert_eq!(dataset.analysis_context.selected_branch_id, "unassigned");
+    assert_eq!(dataset.observations.len(), 1);
+    assert_eq!(
+        dataset.observations[0].interpretation_id,
+        dataset
+            .analysis_context
+            .head_interpretation_id
+            .as_deref()
+            .expect("selected head")
+    );
+}
+
+#[test]
 fn continuations_are_durable_reusable_forks_and_only_strict_descendants_advance_them() {
     let directory = tempdir().expect("temporary directory");
     let path = directory.path().join("continuations.sqlite3");
@@ -793,6 +908,49 @@ fn snapshot_fact(fact_id: &'static str, source_field: &'static str, value: u64) 
         value,
         source_line: 100,
     }
+}
+
+fn population_inspection(
+    hash: &str,
+    file_name: &str,
+    history: &[u64],
+    small_children: u64,
+    city_births: u64,
+) -> SaveInspection {
+    let mut result = inspection(hash, file_name, history);
+    result.snapshots = vec![
+        SaveSnapshot {
+            scope_kind: SnapshotScopeKind::Republic,
+            scope_id: "republic".to_owned(),
+            facts: vec![
+                snapshot_fact(
+                    "source.stats.citizens.small_children",
+                    "$Citizens_SmallChilds",
+                    small_children,
+                ),
+                snapshot_fact(
+                    "source.stats.citizens.unemployed",
+                    "$Citizens_Unemployed",
+                    small_children / 2,
+                ),
+            ],
+            expected_fact_count: 18,
+            coverage: CoverageStatus::Partial,
+        },
+        SaveSnapshot {
+            scope_kind: SnapshotScopeKind::City,
+            scope_id: "17".to_owned(),
+            facts: vec![SnapshotFact {
+                fact_id: "source.stats.citizens.born".to_owned(),
+                source_field: "$Citizens_Born".to_owned(),
+                value: city_births,
+                source_line: 211,
+            }],
+            expected_fact_count: 5,
+            coverage: CoverageStatus::Partial,
+        },
+    ];
+    result
 }
 
 #[test]

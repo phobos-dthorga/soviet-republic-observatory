@@ -6,6 +6,7 @@
   import ArchiveWorkspace from "./lib/workspaces/ArchiveWorkspace.svelte";
   import MonitorWorkspace from "./lib/workspaces/MonitorWorkspace.svelte";
   import MaterialsWorkspace from "./lib/workspaces/MaterialsWorkspace.svelte";
+  import PopulationWorkspace from "./lib/workspaces/PopulationWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
   import { initialiseThemes } from "./lib/theme/service";
@@ -28,6 +29,7 @@
     getCatalogueStatus,
     getDiagnosticLog,
     getLatestReceiverDataset,
+    getPopulationDataset,
     getReinterpretationProgress,
     getRecorderHealth,
     getSetupState,
@@ -48,6 +50,7 @@
     CompatibilityUpdate,
     DiagnosticLogView,
     ReceiverDataset,
+    PopulationDataset,
     RecorderHealth,
     RecorderUpdate,
     ReinterpretationProgress,
@@ -61,6 +64,7 @@
     | "broadcast"
     | "extensions"
     | "materials"
+    | "population"
     | "archive";
   const workspaces: Array<{
     id:
@@ -79,7 +83,7 @@
     { id: "extensions", label: "nav-extensions", enabled: true },
     { id: "plan", label: "nav-plan", enabled: false },
     { id: "materials", label: "nav-materials", enabled: true },
-    { id: "population", label: "nav-population", enabled: false },
+    { id: "population", label: "nav-population", enabled: true },
     { id: "markets", label: "nav-markets", enabled: false },
     { id: "archive", label: "nav-archive", enabled: true },
   ];
@@ -98,6 +102,7 @@
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
+  let populationDataset = $state<PopulationDataset | null>(null);
   let archiveOverview = $state<ArchiveOverview | null>(null);
   let recorderHealth = $state<RecorderHealth | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
@@ -169,6 +174,16 @@
   }): void {
     archiveOverview = result.archive;
     receiverDataset = result.dataset;
+    void refreshPopulationDataset();
+  }
+
+  async function refreshPopulationDataset(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      populationDataset = await getPopulationDataset();
+    } catch {
+      populationDataset = null;
+    }
   }
 
   async function inspectObservation(interpretationId: string): Promise<void> {
@@ -206,6 +221,7 @@
       recorderHealth = health;
       setupState = setup;
     });
+    void refreshPopulationDataset();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -224,6 +240,7 @@
           archiveOverview = archive;
         },
       );
+      void refreshPopulationDataset();
     }
   }
 
@@ -316,6 +333,7 @@
       archiveOverview = archive;
       recorderHealth = health;
     });
+    void refreshPopulationDataset();
     void listenForRecorderUpdates(acceptRecorderUpdate).then((unlisten) => {
       if (disposed) unlisten();
       else stopListening = unlisten;
@@ -600,6 +618,8 @@
       {desktopAvailable}
       gameConfigured={Boolean(setupState?.game_directory)}
     />
+  {:else if activeWorkspace === "population"}
+    <PopulationWorkspace dataset={populationDataset} {desktopAvailable} />
   {:else}
     <ArchiveWorkspace
       archive={archiveOverview}

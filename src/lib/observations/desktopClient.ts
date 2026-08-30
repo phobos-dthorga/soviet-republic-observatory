@@ -31,6 +31,7 @@ import type {
   ProductionRouteModel,
   ProductionRouteCoverage,
   ProductionRouteRequest,
+  PopulationDataset,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -60,6 +61,10 @@ export function getLatestReceiverDataset(): Promise<ReceiverDataset | null> {
 
 export function getArchiveOverview(): Promise<ArchiveOverview> {
   return invoke<ArchiveOverview>("get_archive_overview");
+}
+
+export function getPopulationDataset(): Promise<PopulationDataset> {
+  return invoke<PopulationDataset>("get_population_dataset");
 }
 
 export function getRecorderHealth(): Promise<RecorderHealth> {

@@ -126,6 +126,13 @@ extended through small multiples, rate normalisation, demographic
 decomposition, control limits, city comparisons, and save-annotated
 interventions. National averages must not conceal a failing settlement.
 
+The first implemented Population slice is deliberately narrower: direct
+republic status and education counts, recorded movement counters, and one
+numeric city-source assay at the exact selected save. It does not infer source
+windows, denominators, city names, or individual lives. Citizen and family
+histories remain behind a documented stable-identity evidence gate rather than
+being approximated from row position or names.
+
 ### Trade, Markets, Debt, and Tourism
 
 The Observatory separates quantity, value, currency, price, concentration, and

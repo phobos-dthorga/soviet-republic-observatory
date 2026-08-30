@@ -99,6 +99,11 @@ strict supported-history descendant advances the selected continuation.
 DuckDB receives versioned membership generations through the governed outbox;
 it does not decide branch membership.
 
+The Population query is a bounded SQLite read model over the same context. It
+returns at most 256 included republic snapshots and 512 city scopes with direct
+field/line evidence. An unassigned context returns its exact head only because
+that bucket may contain unrelated histories. The query never waits for DuckDB.
+
 ### Storage
 
 The first append-only SQLite migration stores observation sources, embedded
