@@ -57,18 +57,33 @@ active planning-overlay profile and revision, observation watermark, warehouse
 schema, and projector version. A model may not combine rows from different
 snapshots.
 
-The bounded `ProductionRouteModel` is the first presentation-facing model over
+The bounded `ProductionRouteModel` v2 is the first presentation-facing model over
 catalogue relationships. The Rust host accepts one current recipe identity, an
 optional output resource, and an optional finite positive target. It returns at
 most 63 production-input, waste-input, and production-output relations with
 their exact quantities, basis, directive, line, mapping provenance, and pinned
 snapshot. Presentation code receives neither SQL nor table identities.
 
-The host assigns a route status before geometry is considered. Missing or
-invalid quantities, absent inputs or outputs, mixed bases, duplicate directional
-endpoints, and excessive relation counts are explicit unavailable states. Only
-a `ready` route receives uniformly scaled coefficients; scaling is a
-definition-coefficient calculation, not evidence of capacity or actual flow.
+The selected output establishes the primary route basis before geometry is
+considered. Relations sharing that basis may enter the Sankey; relations using
+a different or unavailable basis are classified as auxiliary requirements and
+remain outside ribbon widths. A route can therefore be `ready_with_auxiliary`
+without comparing electricity, material, time, or unknown coefficients as if
+they shared one unit. Missing or invalid primary quantities, absent inputs or
+outputs, no comparable input, duplicate primary endpoints, and excessive
+relation counts remain explicit unavailable states.
+
+One dimensionless recipe scale factor is applied to every well-formed recorded
+coefficient, including auxiliary requirements, so the exact ledger remains
+useful at the selected output target. This is proportional
+definition-coefficient scaling, not unit conversion, rated capacity, observed
+throughput, inventory movement, or a mass-balance claim. Every returned row
+states whether it entered the primary geometry and why it was excluded.
+
+The route coverage query reports catalogue-wide route, diagrammable,
+auxiliary-requirement, unresolved-basis, and unquantified-relation counts from
+the same host-owned rules. It is a bounded summary over the current generation,
+not a promise that every supported directive has a verified physical unit.
 
 ## Catalogue generations
 
@@ -106,6 +121,15 @@ coefficients, construction nodes, keywords, and phases. Automatic coefficients
 are unresolved rules until their game conversion is verified. Repair and
 maintenance enter the catalogue only when an explicit directive or reviewed
 rule exists.
+
+Original source identifiers are immutable evidence. A source token such as
+`resource::eletric` remains visible in the route ledger and is never silently
+corrected in storage, joins, exports, or provenance. The interface may attach a
+translated presentation alias such as “Electricity” to an exact reviewed token,
+but that alias changes neither identity nor meaning. Unknown mod vocabulary
+falls back to a bounded human-readable rendering of the original token. This
+keeps misspellings and legacy identifiers available to mod authors while
+allowing language packs to improve the player-facing label.
 
 An optional compatibility mapping may target one exact `workshop.*` or `wip.*`
 source. The warehouse records the mapping ID, scope ID, reviewed/player origin,

@@ -84,8 +84,10 @@ The branch-aware archive slice is complete at its currently documented scope.
 - Governed bulk-only variable writes, bounded workload classes, visible active
   stages, and exponential failure backoff across every DuckDB projector
 - Source-backed Production Route Laboratory with bounded Rust query ownership,
-  output-target scaling, per-relation provenance, explicit unavailable states,
-  and an accessible exact ledger
+  output-target scaling, selected-basis Sankey geometry, separate auxiliary
+  requirements, catalogue-wide eligibility counts, exact source identifiers,
+  translated presentation aliases, per-relation provenance, explicit
+  unavailable states, and an accessible exact ledger
 
 Ignored reference-machine scale and growth benchmarks accompany the automated
 suite. Broader verified directive coverage remains ongoing catalogue hardening.

@@ -82,6 +82,7 @@ pub fn run() {
             commands::search_catalogue,
             commands::get_definition_dossier,
             commands::get_production_route,
+            commands::get_production_route_coverage,
             commands::inspect_planning_overlay,
             commands::import_planning_overlay,
             commands::export_planning_overlay,

@@ -541,13 +541,14 @@ export type DefinitionDossier = {
 
 export type ProductionRouteStatus =
   | "ready"
+  | "ready_with_auxiliary"
   | "too_complex"
   | "no_output"
   | "no_input"
   | "missing_quantity"
   | "invalid_quantity"
   | "missing_unit"
-  | "mixed_units"
+  | "no_comparable_input"
   | "duplicate_endpoint";
 
 export type ProductionRouteRequest = {
@@ -564,6 +565,8 @@ export type ProductionRouteFlow = {
   source_quantity: number | null;
   scaled_quantity: number | null;
   unit: string | null;
+  basis_role: "primary" | "auxiliary";
+  basis_exclusion: "different_unit" | "missing_unit" | null;
   resolution: string;
   source_directive: string;
   source_line: number;
@@ -580,12 +583,27 @@ export type ProductionRouteModel = {
   coverage: string;
   status: ProductionRouteStatus;
   relation_count: number;
+  primary_flow_count: number;
+  auxiliary_flow_count: number;
   unit: string | null;
   selected_output_resource_id: string | null;
   target_quantity: number | null;
   scale_factor: number | null;
   mapping_classification: string;
   flows: ProductionRouteFlow[];
+  snapshot: WarehouseSnapshot;
+};
+
+export type ProductionRouteCoverage = {
+  schema_version: number;
+  route_count: number;
+  diagrammable_count: number;
+  routes_with_auxiliary: number;
+  unavailable_count: number;
+  relation_count: number;
+  auxiliary_relation_count: number;
+  unresolved_basis_relation_count: number;
+  unquantified_relation_count: number;
   snapshot: WarehouseSnapshot;
 };
 

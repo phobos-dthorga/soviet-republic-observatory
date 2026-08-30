@@ -189,6 +189,13 @@ translation catalogue is committed or redistributed by this repository.
 Changing display language cannot change observation identity, metric
 references, joins, or calculations.
 
+Until that broader game vocabulary is decoded, the Production Route Laboratory
+uses a deliberately small reviewed presentation-alias list for exact resource
+tokens already encountered in supported definitions. The exact token remains
+visible beside the alias. These labels are interface translations only: they do
+not merge two catalogue resources, rewrite mod content, or claim that similarly
+spelled tokens are equivalent.
+
 For version 1.1.1.9, reviewed station definitions provide nominal radio capacity
 of 100 workers and 50 professors, and television capacity of 120 workers and 70
 professors. These are game-definition facts, not evidence of staffing in a

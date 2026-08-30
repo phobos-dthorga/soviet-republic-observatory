@@ -13,6 +13,7 @@
   import { translation } from "../i18n/runtime";
   import { notify, type NotificationTone } from "../notifications/service";
   import ContextHelp from "../ui/ContextHelp.svelte";
+  import FilePicker from "../ui/FilePicker.svelte";
   import {
     disableAnalysisPack,
     enableAnalysisPack,
@@ -34,7 +35,6 @@
   let inspection = $state<AnalysisPackInspection | null>(null);
   let inspectedJson = $state("");
   let busy = $state(false);
-  let fileInput = $state<HTMLInputElement>();
   let loadedObservationContext = $state("");
   let runtimeInitialised = $state(false);
 
@@ -137,10 +137,7 @@
     });
   }
 
-  async function choosePack(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
+  async function choosePack(file: File | null): Promise<void> {
     if (!file) return;
     if (file.size > 512 * 1024) {
       reportAction($translation("extensions-file-too-large"), "error");
@@ -374,19 +371,14 @@
       class="extension-actions"
       aria-label={$translation("extensions-import-controls")}
     >
-      <input
-        bind:this={fileInput}
-        class="visually-hidden"
-        type="file"
+      <FilePicker
+        id="analysis-pack-file-input"
         accept=".json,.roanalysis.json,application/json"
-        onchange={(event) => void choosePack(event)}
-      />
-      <button
-        type="button"
         disabled={!desktopAvailable || busy}
-        onclick={() => fileInput?.click()}
-        >{$translation("extensions-choose-file")}</button
-      >
+        label={$translation("extensions-choose-file")}
+        showFileName={false}
+        onselect={choosePack}
+      />
       <button
         type="button"
         disabled={!desktopAvailable || busy}

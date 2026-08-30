@@ -10,8 +10,9 @@ use crate::model::{
     ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, ProductionRouteModel, ProductionRouteRequest,
-    ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState, WarehouseSnapshot,
+    OverlayInspection, OverlayProfileSummary, ProductionRouteCoverage, ProductionRouteModel,
+    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState,
+    WarehouseSnapshot,
 };
 
 #[derive(Debug)]
@@ -241,6 +242,16 @@ pub fn get_production_route(
     state
         .application
         .production_route(&request)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_production_route_coverage(
+    state: State<'_, AppState>,
+) -> Result<ProductionRouteCoverage, CommandError> {
+    state
+        .application
+        .production_route_coverage()
         .map_err(Into::into)
 }
 

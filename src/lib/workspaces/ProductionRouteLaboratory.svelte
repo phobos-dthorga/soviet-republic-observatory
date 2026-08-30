@@ -5,15 +5,18 @@
   import { createMaterialFlowPreview } from "../data/materialFlowPreview";
   import {
     createProductionRouteChart,
+    productionResourceLabel,
     productionRouteUnit,
   } from "../data/productionRoute";
   import {
     getProductionRoute,
+    getProductionRouteCoverage,
     searchCatalogue,
   } from "../observations/desktopClient";
   import type {
     DefinitionSummary,
     ProductionRouteFlow,
+    ProductionRouteCoverage,
     ProductionRouteModel,
     ProductionRouteStatus,
   } from "../observations/types";
@@ -34,6 +37,7 @@
 
   let recipes = $state<DefinitionSummary[]>([]);
   let route = $state<ProductionRouteModel | null>(null);
+  let coverage = $state<ProductionRouteCoverage | null>(null);
   let selectedRouteId = $state("");
   let selectedOutputId = $state("");
   let targetValue = $state("");
@@ -49,6 +53,9 @@
   const syntheticPreview = $derived(createMaterialFlowPreview($translation));
   const outputs = $derived(
     route?.flows.filter((flow) => flow.direction === "production_output") ?? [],
+  );
+  const auxiliaryFlows = $derived(
+    route?.flows.filter((flow) => flow.basis_role === "auxiliary") ?? [],
   );
 
   $effect(() => {
@@ -70,6 +77,8 @@
     switch (status) {
       case "ready":
         return $translation("production-route-status-ready");
+      case "ready_with_auxiliary":
+        return $translation("production-route-status-ready-with-auxiliary");
       case "too_complex":
         return $translation("production-route-status-too-complex");
       case "no_output":
@@ -82,8 +91,8 @@
         return $translation("production-route-status-invalid-quantity");
       case "missing_unit":
         return $translation("production-route-status-missing-unit");
-      case "mixed_units":
-        return $translation("production-route-status-mixed-units");
+      case "no_comparable_input":
+        return $translation("production-route-status-no-comparable-input");
       case "duplicate_endpoint":
         return $translation("production-route-status-duplicate-endpoint");
     }
@@ -105,16 +114,42 @@
     return unit ? productionRouteUnit(unit, $translation) : "—";
   }
 
+  function resourceLabel(flow: ProductionRouteFlow): string {
+    return productionResourceLabel(
+      flow.resource_id,
+      flow.display_name,
+      $translation,
+    );
+  }
+
+  function basisLabel(flow: ProductionRouteFlow): string {
+    return flow.basis_role === "primary"
+      ? $translation("production-route-basis-primary")
+      : $translation("production-route-basis-auxiliary");
+  }
+
+  function basisReason(flow: ProductionRouteFlow): string {
+    if (flow.basis_role === "primary")
+      return $translation("production-route-basis-primary-reason");
+    return flow.basis_exclusion === "missing_unit"
+      ? $translation("production-route-basis-missing-unit")
+      : $translation("production-route-basis-different-unit");
+  }
+
   async function loadRecipes(): Promise<void> {
     if (!desktopAvailable || !generationId) return;
     busy = true;
     error = false;
     try {
-      const page = await searchCatalogue({
-        query: query || undefined,
-        entity_kind: "recipe",
-        limit: 100,
-      });
+      const [page, nextCoverage] = await Promise.all([
+        searchCatalogue({
+          query: query || undefined,
+          entity_kind: "recipe",
+          limit: 100,
+        }),
+        getProductionRouteCoverage(),
+      ]);
+      coverage = nextCoverage;
       recipes = page.items;
       if (!recipes.some((item) => item.entity_id === selectedRouteId)) {
         selectedRouteId = recipes[0]?.entity_id ?? "";
@@ -170,7 +205,12 @@
       <p>{$translation("production-route-description")}</p>
     </div>
     {#if route}
-      <span class:attention={route.status !== "ready"} class="route-status">
+      <span
+        class:attention={!["ready", "ready_with_auxiliary"].includes(
+          route.status,
+        )}
+        class="route-status"
+      >
         {statusLabel(route.status)}
       </span>
     {/if}
@@ -209,6 +249,32 @@
       >
     </form>
 
+    {#if coverage}
+      <div
+        class="route-coverage"
+        aria-label={$translation("production-route-coverage-label")}
+      >
+        <article>
+          <span>{$translation("production-route-coverage-routes")}</span>
+          <strong>{coverage.route_count}</strong>
+        </article>
+        <article>
+          <span>{$translation("production-route-coverage-diagrammable")}</span>
+          <strong>{coverage.diagrammable_count}</strong>
+        </article>
+        <article>
+          <span>{$translation("production-route-coverage-auxiliary")}</span>
+          <strong>{coverage.routes_with_auxiliary}</strong>
+        </article>
+        <article>
+          <span>{$translation("production-route-coverage-unresolved")}</span>
+          <strong
+            >{coverage.unresolved_basis_relation_count} / {coverage.unquantified_relation_count}</strong
+          >
+        </article>
+      </div>
+    {/if}
+
     {#if recipes.length}
       <div class="route-controls">
         <label>
@@ -233,7 +299,8 @@
             onchange={() => void selectOutput()}
           >
             {#each outputs as output}
-              <option value={output.resource_id}>{output.display_name}</option>
+              <option value={output.resource_id}>{resourceLabel(output)}</option
+              >
             {/each}
           </select>
         </label>
@@ -307,6 +374,41 @@
         </div>
       {/if}
 
+      {#if auxiliaryFlows.length}
+        <section
+          class="auxiliary-requirements"
+          aria-labelledby="route-auxiliary-title"
+        >
+          <header>
+            <div>
+              <span class="eyebrow"
+                >{$translation("production-route-auxiliary-eyebrow")}</span
+              >
+              <h3 id="route-auxiliary-title">
+                {$translation("production-route-auxiliary-heading")}
+              </h3>
+              <p>{$translation("production-route-auxiliary-description")}</p>
+            </div>
+            <span class="evidence-badge">{auxiliaryFlows.length}</span>
+          </header>
+          <div class="auxiliary-grid">
+            {#each auxiliaryFlows as flow}
+              <article>
+                <div>
+                  <strong>{resourceLabel(flow)}</strong>
+                  <code>{flow.resource_id}</code>
+                </div>
+                <span
+                  >{quantity(flow.scaled_quantity ?? flow.source_quantity)}
+                  {unitLabel(flow.unit)}</span
+                >
+                <small>{basisReason(flow)}</small>
+              </article>
+            {/each}
+          </div>
+        </section>
+      {/if}
+
       <section class="route-evidence" aria-labelledby="route-evidence-title">
         <header>
           <div>
@@ -333,6 +435,7 @@
                 <th>{$translation("production-route-column-source")}</th>
                 <th>{$translation("production-route-column-scaled")}</th>
                 <th>{$translation("production-route-column-unit")}</th>
+                <th>{$translation("production-route-column-basis-role")}</th>
                 <th>{$translation("production-route-column-evidence")}</th>
               </tr>
             </thead>
@@ -340,10 +443,17 @@
               {#each route.flows as flow}
                 <tr>
                   <td>{directionLabel(flow)}</td>
-                  <th scope="row">{flow.display_name}</th>
+                  <th scope="row">
+                    <strong>{resourceLabel(flow)}</strong>
+                    <code>{flow.resource_id}</code>
+                  </th>
                   <td>{quantity(flow.source_quantity)}</td>
                   <td>{quantity(flow.scaled_quantity)}</td>
                   <td>{unitLabel(flow.unit)}</td>
+                  <td>
+                    <strong>{basisLabel(flow)}</strong>
+                    <span>{basisReason(flow)}</span>
+                  </td>
                   <td>
                     <strong>{flow.source_directive}</strong>
                     <span>
@@ -437,7 +547,9 @@
   }
 
   .route-search {
-    grid-template-columns: minmax(12rem, 1fr) auto;
+    grid-template-columns: minmax(12rem, 52rem) auto;
+    justify-content: start;
+    width: min(100%, 64rem);
   }
 
   .route-controls {
@@ -447,6 +559,37 @@
     border: 1px solid var(--line);
     background: rgba(13, 29, 39, 0.72);
     padding: 0.65rem;
+    width: min(100%, 96rem);
+  }
+
+  .route-coverage {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(8rem, 1fr));
+    gap: 0.45rem;
+  }
+
+  .route-coverage article {
+    border: 1px solid var(--line);
+    background: rgba(18, 41, 55, 0.72);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .route-coverage span,
+  .route-coverage strong {
+    display: block;
+  }
+
+  .route-coverage span {
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  .route-coverage strong {
+    margin-top: 0.18rem;
+    color: var(--cyan);
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 500;
   }
 
   label {
@@ -523,10 +666,54 @@
     background: transparent;
   }
 
-  .route-evidence {
+  .route-evidence,
+  .auxiliary-requirements {
     border: 1px solid var(--line);
     background: var(--panel);
     padding: 0.7rem;
+  }
+
+  .auxiliary-requirements header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .auxiliary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.45rem;
+    margin-top: 0.6rem;
+  }
+
+  .auxiliary-grid article {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.2rem 0.8rem;
+    border-inline-start: 2px solid var(--gold);
+    background: var(--panel-raised);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .auxiliary-grid div,
+  .auxiliary-grid strong,
+  .auxiliary-grid code,
+  .auxiliary-grid small {
+    display: block;
+  }
+
+  .auxiliary-grid code,
+  tbody th code,
+  .auxiliary-grid small {
+    margin-top: 0.12rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    overflow-wrap: anywhere;
+  }
+
+  .auxiliary-grid small {
+    grid-column: 1 / -1;
   }
 
   .route-table-scroll {
@@ -562,6 +749,11 @@
     font-weight: 600;
   }
 
+  tbody th strong,
+  tbody th code {
+    display: block;
+  }
+
   td strong,
   td span {
     display: block;
@@ -577,6 +769,10 @@
     .route-controls {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .route-coverage {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   @media (max-width: 620px) {
@@ -587,7 +783,8 @@
 
     .route-search,
     .route-controls,
-    .route-snapshot {
+    .route-snapshot,
+    .route-coverage {
       grid-template-columns: 1fr;
     }
 

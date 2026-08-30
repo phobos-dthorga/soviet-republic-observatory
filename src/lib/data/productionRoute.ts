@@ -26,13 +26,42 @@ export function productionRouteUnit(unit: string, t: Translator): string {
   return boundedPlainText(unit, 32);
 }
 
+/**
+ * Presentation aliases are deliberately keyed by the exact source identifier.
+ * They improve readability without rewriting or claiming a new semantic ID.
+ */
+export function productionResourceLabel(
+  resourceId: string,
+  fallback: string,
+  t: Translator,
+): string {
+  switch (resourceId) {
+    case "resource::eletric":
+    case "resource::electric":
+    case "resource::power":
+      return boundedPlainText(t("production-resource-electricity"), 100);
+    case "resource::water":
+      return boundedPlainText(t("production-resource-water"), 100);
+    case "resource::plants":
+      return boundedPlainText(t("production-resource-plants"), 100);
+    case "resource::oil":
+      return boundedPlainText(t("production-resource-oil"), 100);
+    case "resource::chemicals":
+      return boundedPlainText(t("production-resource-chemicals"), 100);
+    default:
+      return boundedPlainText(fallback, 100);
+  }
+}
+
 function coverageFor(route: ProductionRouteModel): EvidenceCoverage {
   return route.coverage === "complete" &&
-    route.flows.every(
-      (flow) =>
-        flow.mapping.scope_state == null ||
-        flow.mapping.scope_state === "matched",
-    )
+    route.flows
+      .filter((flow) => flow.basis_role === "primary")
+      .every(
+        (flow) =>
+          flow.mapping.scope_state == null ||
+          flow.mapping.scope_state === "matched",
+      )
     ? "complete"
     : "partial";
 }
@@ -78,11 +107,19 @@ export function createProductionRouteChart(
   locale: string,
 ): SankeyChartSpec | null {
   if (
-    route.status !== "ready" ||
+    !["ready", "ready_with_auxiliary"].includes(route.status) ||
     route.unit == null ||
     route.target_quantity == null ||
-    route.scale_factor == null ||
-    route.flows.some(
+    route.scale_factor == null
+  ) {
+    return null;
+  }
+  const primaryFlows = route.flows.filter(
+    (flow) => flow.basis_role === "primary",
+  );
+  if (
+    primaryFlows.length === 0 ||
+    primaryFlows.some(
       (flow) => flow.scaled_quantity == null || flow.scaled_quantity <= 0,
     )
   ) {
@@ -91,7 +128,7 @@ export function createProductionRouteChart(
 
   const unit = productionRouteUnit(route.unit, t);
   const displayName = boundedPlainText(route.display_name, 100);
-  const inputs = route.flows.filter(
+  const inputs = primaryFlows.filter(
     (flow) => flow.direction !== "production_output",
   );
   const largestInput = inputs.reduce<ProductionRouteFlow | null>(
@@ -102,9 +139,9 @@ export function createProductionRouteChart(
     null,
   );
   const nodes = [
-    ...route.flows.map((flow, index) => ({
+    ...primaryFlows.map((flow, index) => ({
       id: `resource-${index}`,
-      label: boundedPlainText(flow.display_name, 100),
+      label: productionResourceLabel(flow.resource_id, flow.display_name, t),
       role:
         flow.direction === "production_output"
           ? ("sink" as const)
@@ -112,7 +149,7 @@ export function createProductionRouteChart(
     })),
     { id: "production-process", label: displayName, role: "process" as const },
   ];
-  const links = route.flows.map((flow, index) => ({
+  const links = primaryFlows.map((flow, index) => ({
     id: `flow-${index}`,
     source:
       flow.direction === "production_output"
@@ -148,7 +185,11 @@ export function createProductionRouteChart(
     takeaway: boundedPlainText(
       largestInput
         ? t("production-route-chart-takeaway", {
-            resource: boundedPlainText(largestInput.display_name, 100),
+            resource: productionResourceLabel(
+              largestInput.resource_id,
+              largestInput.display_name,
+              t,
+            ),
             quantity: formatNumber(largestInput.scaled_quantity ?? 0, locale),
             unit,
           })

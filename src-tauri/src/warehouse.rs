@@ -13,9 +13,9 @@ use crate::model::{
     CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, ProductionRouteFlow, ProductionRouteModel, ProductionRouteRequest,
-    ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth, WarehousePhase, WarehouseSnapshot,
-    WarehouseWriteKind, WarehouseWriteStage,
+    DefinitionValue, ProductionRouteCoverage, ProductionRouteFlow, ProductionRouteModel,
+    ProductionRouteRequest, ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth,
+    WarehousePhase, WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
 };
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
@@ -1129,6 +1129,8 @@ impl AnalyticalWarehouse {
                         source_quantity: row.get(3)?,
                         scaled_quantity: None,
                         unit: row.get(4)?,
+                        basis_role: String::new(),
+                        basis_exclusion: None,
                         resolution: row.get(5)?,
                         source_directive: row.get(6)?,
                         source_line: row.get(7)?,
@@ -1147,68 +1149,112 @@ impl AnalyticalWarehouse {
             .collect::<Result<Vec<_>, _>>()?;
         drop(statement);
 
-        let outputs = flows
+        let output_count = flows
             .iter()
             .filter(|flow| flow.direction == "production_output")
-            .collect::<Vec<_>>();
-        let inputs = flows
+            .count();
+        let input_count = flows
             .iter()
             .filter(|flow| matches!(flow.direction.as_str(), "production_input" | "waste_input"))
-            .collect::<Vec<_>>();
-        let selected_output_resource_id = request
-            .output_resource_id
-            .clone()
-            .or_else(|| outputs.first().map(|flow| flow.resource_id.clone()));
+            .count();
+        let selected_output_resource_id = request.output_resource_id.clone().or_else(|| {
+            flows
+                .iter()
+                .find(|flow| flow.direction == "production_output")
+                .map(|flow| flow.resource_id.clone())
+        });
         if request.output_resource_id.is_some()
-            && !outputs.iter().any(|flow| {
-                Some(flow.resource_id.as_str()) == request.output_resource_id.as_deref()
+            && !flows.iter().any(|flow| {
+                flow.direction == "production_output"
+                    && Some(flow.resource_id.as_str()) == request.output_resource_id.as_deref()
             })
         {
             return Err(ObservatoryError::InvalidCatalogueRequest);
         }
 
-        let mut status = if relation_count as usize > MAX_PRODUCTION_ROUTE_RELATIONS {
+        let selected_output = selected_output_resource_id.as_deref().and_then(|selected| {
+            flows
+                .iter()
+                .find(|flow| flow.direction == "production_output" && flow.resource_id == selected)
+        });
+        let selected_output_match_count = selected_output_resource_id
+            .as_deref()
+            .map(|selected| {
+                flows
+                    .iter()
+                    .filter(|flow| {
+                        flow.direction == "production_output" && flow.resource_id == selected
+                    })
+                    .count()
+            })
+            .unwrap_or_default();
+        let primary_unit = selected_output.and_then(|flow| flow.unit.clone());
+        let selected_output_quantity = selected_output.and_then(|flow| flow.source_quantity);
+        for flow in &mut flows {
+            if primary_unit.is_some() && flow.unit == primary_unit {
+                flow.basis_role = "primary".to_owned();
+            } else {
+                flow.basis_role = "auxiliary".to_owned();
+                flow.basis_exclusion = Some(
+                    if flow.unit.is_none() {
+                        "missing_unit"
+                    } else {
+                        "different_unit"
+                    }
+                    .to_owned(),
+                );
+            }
+        }
+        let primary_flows = flows
+            .iter()
+            .filter(|flow| flow.basis_role == "primary")
+            .collect::<Vec<_>>();
+        let primary_inputs = primary_flows
+            .iter()
+            .filter(|flow| matches!(flow.direction.as_str(), "production_input" | "waste_input"))
+            .count();
+        let primary_flow_count = primary_flows.len();
+        let auxiliary_flow_count = flows
+            .iter()
+            .filter(|flow| flow.basis_role == "auxiliary")
+            .count();
+        let primary_endpoints = primary_flows
+            .iter()
+            .map(|flow| (flow.direction.clone(), flow.resource_id.clone()))
+            .collect::<std::collections::BTreeSet<_>>();
+
+        let status = if relation_count as usize > MAX_PRODUCTION_ROUTE_RELATIONS {
             "too_complex"
-        } else if outputs.is_empty() {
+        } else if output_count == 0 {
             "no_output"
-        } else if inputs.is_empty() {
+        } else if input_count == 0 {
             "no_input"
-        } else if flows.iter().any(|flow| flow.source_quantity.is_none()) {
+        } else if selected_output_match_count != 1 {
+            "duplicate_endpoint"
+        } else if primary_unit.is_none() {
+            "missing_unit"
+        } else if primary_inputs == 0 {
+            "no_comparable_input"
+        } else if primary_flows
+            .iter()
+            .any(|flow| flow.source_quantity.is_none())
+        {
             "missing_quantity"
-        } else if flows.iter().any(|flow| {
+        } else if primary_flows.iter().any(|flow| {
             flow.source_quantity
                 .is_some_and(|value| !value.is_finite() || value <= 0.0)
         }) {
             "invalid_quantity"
-        } else if flows.iter().any(|flow| flow.unit.is_none()) {
-            "missing_unit"
+        } else if primary_endpoints.len() != primary_flows.len() {
+            "duplicate_endpoint"
+        } else if auxiliary_flow_count > 0 {
+            "ready_with_auxiliary"
         } else {
             "ready"
         };
-        let units = flows
-            .iter()
-            .filter_map(|flow| flow.unit.clone())
-            .collect::<std::collections::BTreeSet<_>>();
-        if status == "ready" && units.len() != 1 {
-            status = "mixed_units";
-        }
-        let endpoints = flows
-            .iter()
-            .map(|flow| (flow.direction.clone(), flow.resource_id.clone()))
-            .collect::<std::collections::BTreeSet<_>>();
-        if status == "ready" && endpoints.len() != flows.len() {
-            status = "duplicate_endpoint";
-        }
-
-        let selected_output_quantity =
-            selected_output_resource_id.as_deref().and_then(|selected| {
-                outputs
-                    .iter()
-                    .find(|flow| flow.resource_id == selected)
-                    .and_then(|flow| flow.source_quantity)
-            });
         let target_quantity = request.target_quantity.or(selected_output_quantity);
-        let scale_factor = if status == "ready" {
+        let diagrammable = matches!(status, "ready" | "ready_with_auxiliary");
+        let scale_factor = if diagrammable {
             selected_output_quantity
                 .zip(target_quantity)
                 .map(|(source, target)| target / source)
@@ -1217,7 +1263,10 @@ impl AnalyticalWarehouse {
         };
         if let Some(scale) = scale_factor {
             for flow in &mut flows {
-                flow.scaled_quantity = flow.source_quantity.map(|quantity| quantity * scale);
+                flow.scaled_quantity = flow
+                    .source_quantity
+                    .filter(|quantity| quantity.is_finite() && *quantity > 0.0)
+                    .map(|quantity| quantity * scale);
             }
         }
         let mapping_classification = if flows
@@ -1231,7 +1280,7 @@ impl AnalyticalWarehouse {
         let snapshot = snapshot_from(&connection)?;
 
         Ok(ProductionRouteModel {
-            schema_version: 1,
+            schema_version: 2,
             route_id,
             revision_hash,
             building_entity_id,
@@ -1240,14 +1289,133 @@ impl AnalyticalWarehouse {
             coverage,
             status: status.to_owned(),
             relation_count,
-            unit: (status == "ready")
-                .then(|| units.into_iter().next())
-                .flatten(),
+            primary_flow_count: primary_flow_count.min(u32::MAX as usize) as u32,
+            auxiliary_flow_count: auxiliary_flow_count.min(u32::MAX as usize) as u32,
+            unit: primary_unit,
             selected_output_resource_id,
             target_quantity,
             scale_factor,
             mapping_classification: mapping_classification.to_owned(),
             flows,
+            snapshot,
+        })
+    }
+
+    pub fn production_route_coverage(&self) -> Result<ProductionRouteCoverage, ObservatoryError> {
+        let connection = self.lock()?;
+        let (
+            route_count,
+            diagrammable_count,
+            routes_with_auxiliary,
+            relation_count,
+            auxiliary_relation_count,
+            unresolved_basis_relation_count,
+            unquantified_relation_count,
+        ) = connection.query_row(
+            "WITH route_relations AS (\
+                 SELECT membership.entity_id, revisions.revision_hash, relations.relation_kind, \
+                        relations.occurrence, relations.target_id, relations.quantity, \
+                        relations.unit \
+                 FROM catalogue_generation_entities membership \
+                 JOIN warehouse_metadata metadata \
+                   ON membership.generation_id = metadata.current_catalogue_generation_id \
+                 JOIN definition_entity_revisions revisions USING(revision_hash) \
+                 JOIN definition_relations relations USING(revision_hash) \
+                 WHERE metadata.singleton_id = 1 \
+                   AND revisions.entity_kind = 'recipe' \
+                   AND relations.relation_kind IN \
+                       ('production_input', 'production_output', 'waste_input')\
+             ), selected_outputs AS (\
+                 SELECT entity_id, revision_hash, target_id AS selected_target, \
+                        unit AS selected_unit, quantity AS selected_quantity \
+                 FROM (\
+                     SELECT route_relations.*, \
+                            ROW_NUMBER() OVER (PARTITION BY entity_id ORDER BY occurrence) AS rank \
+                     FROM route_relations \
+                     WHERE relation_kind = 'production_output'\
+                 ) ranked \
+                 WHERE rank = 1\
+             ), route_stats AS (\
+                 SELECT relations.entity_id, relations.revision_hash, outputs.selected_unit, \
+                        outputs.selected_quantity, COUNT(*) AS relation_count, \
+                        SUM(CASE WHEN relations.relation_kind IN \
+                                      ('production_input', 'waste_input') \
+                                 THEN 1 ELSE 0 END) AS input_count, \
+                        SUM(CASE WHEN relations.relation_kind = 'production_output' \
+                                 THEN 1 ELSE 0 END) AS output_count, \
+                        SUM(CASE WHEN relations.relation_kind = 'production_output' \
+                                      AND relations.target_id = outputs.selected_target \
+                                 THEN 1 ELSE 0 END) AS selected_output_match_count, \
+                        SUM(CASE WHEN outputs.selected_unit IS NOT NULL \
+                                      AND relations.unit = outputs.selected_unit \
+                                      AND relations.relation_kind IN \
+                                          ('production_input', 'waste_input') \
+                                 THEN 1 ELSE 0 END) AS primary_input_count, \
+                        SUM(CASE WHEN outputs.selected_unit IS NOT NULL \
+                                      AND relations.unit = outputs.selected_unit \
+                                 THEN 1 ELSE 0 END) AS primary_relation_count, \
+                        SUM(CASE WHEN outputs.selected_unit IS NOT NULL \
+                                      AND relations.unit = outputs.selected_unit \
+                                      AND (relations.quantity IS NULL OR relations.quantity <= 0) \
+                                 THEN 1 ELSE 0 END) AS invalid_primary_count, \
+                        COUNT(DISTINCT CASE WHEN outputs.selected_unit IS NOT NULL \
+                                                 AND relations.unit = outputs.selected_unit \
+                                            THEN relations.relation_kind || CHR(31) || relations.target_id \
+                                       END) AS primary_endpoint_count, \
+                        SUM(CASE WHEN outputs.selected_unit IS NOT NULL \
+                                      AND relations.unit IS DISTINCT FROM outputs.selected_unit \
+                                 THEN 1 ELSE 0 END) AS auxiliary_count, \
+                        SUM(CASE WHEN relations.unit IS NULL THEN 1 ELSE 0 END) \
+                            AS unresolved_basis_count, \
+                        SUM(CASE WHEN relations.quantity IS NULL OR relations.quantity <= 0 \
+                                 THEN 1 ELSE 0 END) AS unquantified_count \
+                 FROM route_relations relations \
+                 LEFT JOIN selected_outputs outputs USING(entity_id, revision_hash) \
+                 GROUP BY relations.entity_id, relations.revision_hash, outputs.selected_target, outputs.selected_unit, \
+                          outputs.selected_quantity\
+             ), classified AS (\
+                 SELECT *, relation_count <= ?1 \
+                        AND output_count > 0 AND input_count > 0 \
+                        AND selected_output_match_count = 1 \
+                        AND selected_unit IS NOT NULL \
+                        AND selected_quantity IS NOT NULL AND selected_quantity > 0 \
+                        AND primary_input_count > 0 AND invalid_primary_count = 0 \
+                        AND primary_relation_count = primary_endpoint_count AS diagrammable \
+                 FROM route_stats\
+             ) \
+             SELECT CAST(COUNT(*) AS INTEGER), \
+                    CAST(COALESCE(SUM(CASE WHEN diagrammable THEN 1 ELSE 0 END), 0) AS INTEGER), \
+                    CAST(COALESCE(SUM(CASE WHEN diagrammable AND auxiliary_count > 0 \
+                                           THEN 1 ELSE 0 END), 0) AS INTEGER), \
+                    CAST(COALESCE(SUM(relation_count), 0) AS INTEGER), \
+                    CAST(COALESCE(SUM(CASE WHEN diagrammable THEN auxiliary_count ELSE 0 END), 0) AS INTEGER), \
+                    CAST(COALESCE(SUM(unresolved_basis_count), 0) AS INTEGER), \
+                    CAST(COALESCE(SUM(unquantified_count), 0) AS INTEGER) \
+             FROM classified",
+            [MAX_PRODUCTION_ROUTE_RELATIONS as u32],
+            |row| {
+                Ok((
+                    row.get::<_, u32>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, u32>(2)?,
+                    row.get::<_, u32>(3)?,
+                    row.get::<_, u32>(4)?,
+                    row.get::<_, u32>(5)?,
+                    row.get::<_, u32>(6)?,
+                ))
+            },
+        )?;
+        let snapshot = snapshot_from(&connection)?;
+        Ok(ProductionRouteCoverage {
+            schema_version: 1,
+            route_count,
+            diagrammable_count,
+            routes_with_auxiliary,
+            unavailable_count: route_count.saturating_sub(diagrammable_count),
+            relation_count,
+            auxiliary_relation_count,
+            unresolved_basis_relation_count,
+            unquantified_relation_count,
             snapshot,
         })
     }
@@ -2160,6 +2328,15 @@ mod tests {
                     &"5".repeat(64),
                     vec![
                         mapping("production_input", 0, "oil", 2.0, "source_rate"),
+                        mapping("production_input", 1, "eletric", 0.01, "per_second"),
+                        mapping("production_output", 0, "fuel", 1.0, "source_rate"),
+                    ],
+                ),
+                recipe(
+                    "base::recipe::no-comparable-input",
+                    &"4".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "oil", 2.0, "source_rate"),
                         mapping("production_output", 0, "fuel", 1.0, "per_second"),
                     ],
                 ),
@@ -2211,14 +2388,41 @@ mod tests {
                 target_quantity: None,
             })
             .expect("mixed-unit route");
-        assert_eq!(mixed.status, "mixed_units");
-        assert_eq!(mixed.unit, None);
-        assert!(
-            mixed
-                .flows
-                .iter()
-                .all(|flow| flow.scaled_quantity.is_none())
+        assert_eq!(mixed.status, "ready_with_auxiliary");
+        assert_eq!(mixed.unit.as_deref(), Some("source_rate"));
+        assert_eq!(mixed.primary_flow_count, 2);
+        assert_eq!(mixed.auxiliary_flow_count, 1);
+        let electricity = mixed
+            .flows
+            .iter()
+            .find(|flow| flow.resource_id == "resource::eletric")
+            .expect("auxiliary electricity requirement");
+        assert_eq!(electricity.basis_role, "auxiliary");
+        assert_eq!(
+            electricity.basis_exclusion.as_deref(),
+            Some("different_unit")
         );
+        assert_eq!(electricity.scaled_quantity, Some(0.01));
+
+        let no_comparable = warehouse
+            .production_route(&ProductionRouteRequest {
+                entity_id: "base::recipe::no-comparable-input".to_owned(),
+                output_resource_id: None,
+                target_quantity: None,
+            })
+            .expect("route without a comparable input");
+        assert_eq!(no_comparable.status, "no_comparable_input");
+        assert_eq!(no_comparable.scale_factor, None);
+
+        let coverage = warehouse
+            .production_route_coverage()
+            .expect("route coverage");
+        assert_eq!(coverage.route_count, 3);
+        assert_eq!(coverage.diagrammable_count, 2);
+        assert_eq!(coverage.routes_with_auxiliary, 1);
+        assert_eq!(coverage.unavailable_count, 1);
+        assert_eq!(coverage.relation_count, 8);
+        assert_eq!(coverage.auxiliary_relation_count, 1);
 
         assert!(
             warehouse

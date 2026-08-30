@@ -29,6 +29,7 @@ import type {
   OverlayInspection,
   OverlayProfileSummary,
   ProductionRouteModel,
+  ProductionRouteCoverage,
   ProductionRouteRequest,
 } from "./types";
 
@@ -184,6 +185,10 @@ export function getProductionRoute(
   request: ProductionRouteRequest,
 ): Promise<ProductionRouteModel> {
   return invoke<ProductionRouteModel>("get_production_route", { request });
+}
+
+export function getProductionRouteCoverage(): Promise<ProductionRouteCoverage> {
+  return invoke<ProductionRouteCoverage>("get_production_route_coverage");
 }
 
 export function inspectPlanningOverlay(

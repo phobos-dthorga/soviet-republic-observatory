@@ -1,6 +1,7 @@
 <script lang="ts">
   import { modalFocus } from "../ui/modalFocus";
   import ContextHelp from "../ui/ContextHelp.svelte";
+  import FilePicker from "../ui/FilePicker.svelte";
   import { notify } from "../notifications/service";
   import { translation } from "./runtime";
   import type { LanguageStatus } from "./types";
@@ -17,7 +18,6 @@
   } from "./service";
 
   let { open, onclose }: { open: boolean; onclose: () => void } = $props();
-  let fileInput = $state<HTMLInputElement>();
   let busy = $state(false);
   let errorMessage = $state("");
   const MAX_MANIFEST_READ_BYTES = 256 * 1024 + 1;
@@ -46,10 +46,7 @@
     errorMessage = $translation(key);
   }
 
-  async function handleFile(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
+  async function handleFile(file: File | null): Promise<void> {
     if (!file) return;
     busy = true;
     errorMessage = "";
@@ -279,25 +276,16 @@
           <strong>{$translation("language-community-files")}</strong>
           <span>{$translation("language-community-files-detail")}</span>
         </div>
-        <input
-          bind:this={fileInput}
-          hidden
-          aria-hidden="true"
-          tabindex="-1"
-          class="language-file-input"
-          type="file"
+        <FilePicker
+          id="language-pack-file-input"
           accept="application/json,.json,.rolanguage.json"
-          onchange={(event) => void handleFile(event)}
-        />
-        <button
-          type="button"
           disabled={busy}
-          onclick={() => fileInput?.click()}
-        >
-          {busy
+          label={busy
             ? $translation("language-installing")
             : $translation("language-choose")}
-        </button>
+          showFileName={false}
+          onselect={handleFile}
+        />
       </footer>
     </dialog>
   </div>

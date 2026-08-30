@@ -64,7 +64,7 @@ describe("language pack v1", () => {
     ],
     [
       "future revision",
-      (pack: Record<string, unknown>) => (pack.source_catalog_revision = 24),
+      (pack: Record<string, unknown>) => (pack.source_catalog_revision = 25),
       "unsupported_version",
     ],
     [

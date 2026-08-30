@@ -32,6 +32,7 @@
   } from "../observations/types";
   import { formatDate, formatNumber } from "../i18n/format";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
+  import FilePicker from "../ui/FilePicker.svelte";
   import { catalogueProgressView } from "../tasks/catalogueProgress";
   import {
     observeLatestTaskProgress,
@@ -243,9 +244,7 @@
     await runAction(() => importPlanningOverlay(overlayText));
   }
 
-  async function loadOverlayFile(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
+  async function loadOverlayFile(file: File | null): Promise<void> {
     if (!file || file.size > 1024 * 1024) return;
     overlayText = await file.text();
     inspection = null;
@@ -748,11 +747,16 @@
           </section>
           <section>
             <h3>{$translation("catalogue-json-workbench")}</h3>
-            <input
-              type="file"
-              accept=".json,.rooverlay.json,application/json"
-              onchange={loadOverlayFile}
-            /><textarea
+            <div class="file-picker-row">
+              <FilePicker
+                id="overlay-file-input"
+                accept=".json,.rooverlay.json,application/json"
+                label={$translation("catalogue-choose-overlay-file")}
+                emptyLabel={$translation("catalogue-no-file-selected")}
+                onselect={loadOverlayFile}
+              />
+            </div>
+            <textarea
               bind:value={overlayText}
               spellcheck="false"
               aria-label={$translation("catalogue-json-workbench")}></textarea>
@@ -1089,6 +1093,13 @@
     font-size: var(--type-caption);
     text-transform: uppercase;
   }
+  .file-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 10px 0 8px;
+    min-width: 0;
+  }
   textarea {
     width: 100%;
     height: 220px;
@@ -1096,7 +1107,7 @@
     padding: 9px;
     resize: vertical;
     font:
-      10px ui-monospace,
+      12px ui-monospace,
       monospace;
   }
   .overlay-editor p {

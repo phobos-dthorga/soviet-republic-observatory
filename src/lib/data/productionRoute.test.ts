@@ -12,7 +12,7 @@ const t = ((key: string, values: Record<string, unknown> = {}) => {
 }) as Translator;
 
 const route: ProductionRouteModel = {
-  schema_version: 1,
+  schema_version: 2,
   route_id: "base::recipe::chemicals",
   revision_hash: "a".repeat(64),
   building_entity_id: "base::building::chemical-plant",
@@ -21,6 +21,8 @@ const route: ProductionRouteModel = {
   coverage: "complete",
   status: "ready",
   relation_count: 3,
+  primary_flow_count: 3,
+  auxiliary_flow_count: 0,
   unit: "source_rate",
   selected_output_resource_id: "resource::chemicals",
   target_quantity: 10,
@@ -35,6 +37,8 @@ const route: ProductionRouteModel = {
       source_quantity: 2,
       scaled_quantity: 40,
       unit: "source_rate",
+      basis_role: "primary",
+      basis_exclusion: null,
       resolution: "source_coefficient",
       source_directive: "$CONSUMPTION",
       source_line: 10,
@@ -56,6 +60,8 @@ const route: ProductionRouteModel = {
       source_quantity: 1,
       scaled_quantity: 20,
       unit: "source_rate",
+      basis_role: "primary",
+      basis_exclusion: null,
       resolution: "source_coefficient",
       source_directive: "$CONSUMPTION",
       source_line: 11,
@@ -77,6 +83,8 @@ const route: ProductionRouteModel = {
       source_quantity: 0.5,
       scaled_quantity: 10,
       unit: "source_rate",
+      basis_role: "primary",
+      basis_exclusion: null,
       resolution: "source_coefficient",
       source_directive: "$PRODUCTION",
       source_line: 12,
@@ -121,10 +129,15 @@ describe("production route Sankey transformation", () => {
     expect(validateSankeySpec(chart!)).toEqual({ valid: true, errors: [] });
   });
 
-  it("keeps mixed or unavailable relations out of ribbon geometry", () => {
+  it("keeps unavailable primary relations out of ribbon geometry", () => {
     expect(
       createProductionRouteChart(
-        { ...route, status: "mixed_units", unit: null, scale_factor: null },
+        {
+          ...route,
+          status: "no_comparable_input",
+          unit: null,
+          scale_factor: null,
+        },
         t,
         "en-AU",
       ),
@@ -141,6 +154,27 @@ describe("production route Sankey transformation", () => {
         "en-AU",
       ),
     ).toBeNull();
+  });
+
+  it("draws the selected basis while preserving auxiliary requirements outside the ribbons", () => {
+    const mixed = structuredClone(route);
+    mixed.status = "ready_with_auxiliary";
+    mixed.primary_flow_count = 2;
+    mixed.auxiliary_flow_count = 1;
+    mixed.flows[1] = {
+      ...mixed.flows[1],
+      resource_id: "resource::eletric",
+      display_name: "eletric",
+      unit: "per_second",
+      basis_role: "auxiliary",
+      basis_exclusion: "different_unit",
+    };
+
+    const chart = createProductionRouteChart(mixed, t, "en-AU");
+
+    expect(chart?.links.map((link) => link.value)).toEqual([40, 10]);
+    expect(chart?.nodes.map((node) => node.label)).not.toContain("eletric");
+    expect(validateSankeySpec(chart!)).toEqual({ valid: true, errors: [] });
   });
 
   it("marks tracked mod updates as partial evidence", () => {

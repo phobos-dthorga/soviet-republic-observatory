@@ -901,6 +901,8 @@ pub struct ProductionRouteFlow {
     pub source_quantity: Option<f64>,
     pub scaled_quantity: Option<f64>,
     pub unit: Option<String>,
+    pub basis_role: String,
+    pub basis_exclusion: Option<String>,
     pub resolution: String,
     pub source_directive: String,
     pub source_line: u32,
@@ -918,12 +920,28 @@ pub struct ProductionRouteModel {
     pub coverage: String,
     pub status: String,
     pub relation_count: u32,
+    pub primary_flow_count: u32,
+    pub auxiliary_flow_count: u32,
     pub unit: Option<String>,
     pub selected_output_resource_id: Option<String>,
     pub target_quantity: Option<f64>,
     pub scale_factor: Option<f64>,
     pub mapping_classification: String,
     pub flows: Vec<ProductionRouteFlow>,
+    pub snapshot: WarehouseSnapshot,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionRouteCoverage {
+    pub schema_version: u32,
+    pub route_count: u32,
+    pub diagrammable_count: u32,
+    pub routes_with_auxiliary: u32,
+    pub unavailable_count: u32,
+    pub relation_count: u32,
+    pub auxiliary_relation_count: u32,
+    pub unresolved_basis_relation_count: u32,
+    pub unquantified_relation_count: u32,
     pub snapshot: WarehouseSnapshot,
 }
 

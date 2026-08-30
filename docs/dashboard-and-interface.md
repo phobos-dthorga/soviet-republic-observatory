@@ -132,10 +132,22 @@ Buildings, and Vehicles and preserves source/package identity. The dossier
 separates typed facts, repeatable production/construction/capability relations,
 unknown-directive diagnostics, and unresolved automatic-cost coefficients.
 
+The Production Route Laboratory selects one output-defined coefficient basis
+for Sankey geometry. Differently based electricity, utility, waste, or mod
+relations appear in a separate Auxiliary Requirements group and in the exact
+ledger; the interface never gives them comparable ribbon widths. A coverage
+strip reports how many routes in the current catalogue are diagrammable, how
+many retain auxiliaries, and where basis or quantity evidence is missing.
+Friendly translated resource labels are paired with exact source identifiers so
+mod authors can still see tokens such as `resource::eletric`.
+
 The planning-overlay laboratory keeps inspect, validate, import, activate,
 rollback, deactivate, export, and remove distinct. Affected fields display
 `original → override → effective`; conflicts never silently replace installed
 facts. Guided supplemental definitions are explicitly player-authored.
+The strict JSON workbench uses an application-styled, keyboard-focusable file
+control rather than inheriting a platform-white control that conflicts with the
+dark workspace.
 
 ## Briefing hierarchy
 
