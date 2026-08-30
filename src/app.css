@@ -233,33 +233,6 @@ h3 {
   opacity: 0.45;
 }
 
-.catalogue-state {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(128, 198, 216, 0.32);
-  padding: 7px 9px;
-  color: var(--colour-muted);
-  background: var(--colour-observed-soft);
-  cursor: pointer;
-  font-size: 8px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.catalogue-state strong {
-  color: var(--colour-observed);
-}
-
-.catalogue-state.attention {
-  border-color: rgba(216, 132, 116, 0.5);
-  background: var(--colour-risk-soft);
-}
-
-.catalogue-state.attention strong {
-  color: var(--colour-risk);
-}
-
 .scanner-state {
   min-width: 150px;
   display: flex;

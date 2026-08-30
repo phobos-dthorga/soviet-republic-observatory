@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
@@ -11,6 +12,7 @@ const MAX_FILES: usize = 100_000;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 4_096;
+const PROGRESS_REPORT_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Clone, Debug)]
 pub struct CatalogueReuseEntry {
@@ -41,6 +43,8 @@ pub enum CatalogueDiscoveryPhase {
 pub struct CatalogueDiscoveryProgress {
     pub phase: CatalogueDiscoveryPhase,
     pub current_source: Option<String>,
+    pub current_file: Option<String>,
+    pub current_file_index: Option<u32>,
     pub sources_discovered: u32,
     pub sources_total: u32,
     pub files_discovered: u32,
@@ -171,6 +175,8 @@ pub fn discover_catalogue_with_reuse_and_progress(
     report(CatalogueDiscoveryProgress {
         phase: CatalogueDiscoveryPhase::Discovering,
         current_source: None,
+        current_file: None,
+        current_file_index: None,
         sources_discovered: 0,
         sources_total,
         files_discovered: 0,
@@ -180,8 +186,42 @@ pub fn discover_catalogue_with_reuse_and_progress(
         entities_prepared: 0,
     });
 
+    let mut last_discovery_report = Instant::now() - PROGRESS_REPORT_INTERVAL;
     for (source_index, source) in roots.iter().enumerate() {
-        let candidates = candidate_files(source)?;
+        let source_name = bounded_source_name(&source.package_name);
+        report(CatalogueDiscoveryProgress {
+            phase: CatalogueDiscoveryPhase::Discovering,
+            current_source: Some(source_name.clone()),
+            current_file: None,
+            current_file_index: None,
+            sources_discovered: source_index.min(u32::MAX as usize) as u32,
+            sources_total,
+            files_discovered,
+            files_processed: 0,
+            files_reused: 0,
+            files_parsed: 0,
+            entities_prepared: 0,
+        });
+        let previously_discovered = files_discovered;
+        let candidates = candidate_files(source, |path, source_file_count| {
+            if last_discovery_report.elapsed() < PROGRESS_REPORT_INTERVAL {
+                return;
+            }
+            last_discovery_report = Instant::now();
+            report(CatalogueDiscoveryProgress {
+                phase: CatalogueDiscoveryPhase::Discovering,
+                current_source: Some(source_name.clone()),
+                current_file: Some(bounded_file_label(&source.root, path)),
+                current_file_index: None,
+                sources_discovered: source_index.min(u32::MAX as usize) as u32,
+                sources_total,
+                files_discovered: previously_discovered.saturating_add(source_file_count),
+                files_processed: 0,
+                files_reused: 0,
+                files_parsed: 0,
+                entities_prepared: 0,
+            });
+        })?;
         files_discovered =
             files_discovered.saturating_add(candidates.len().min(u32::MAX as usize) as u32);
         if files_discovered as usize > MAX_FILES {
@@ -189,7 +229,11 @@ pub fn discover_catalogue_with_reuse_and_progress(
         }
         report(CatalogueDiscoveryProgress {
             phase: CatalogueDiscoveryPhase::Discovering,
-            current_source: Some(bounded_source_name(&source.package_name)),
+            current_source: Some(source_name),
+            current_file: candidates
+                .last()
+                .map(|path| bounded_file_label(&source.root, path)),
+            current_file_index: None,
             sources_discovered: (source_index + 1).min(u32::MAX as usize) as u32,
             sources_total,
             files_discovered,
@@ -204,10 +248,29 @@ pub fn discover_catalogue_with_reuse_and_progress(
     let mut files_processed = 0_u32;
     let mut files_reused = 0_u32;
     let mut files_parsed = 0_u32;
+    let mut last_scan_report = Instant::now() - PROGRESS_REPORT_INTERVAL;
     for (source, candidates) in source_candidates {
         for candidate in candidates {
             if files_processed as usize >= MAX_FILES {
                 return Err(ObservatoryError::InvalidCatalogueRequest);
+            }
+            let file_label = bounded_file_label(&source.root, &candidate);
+            let current_file_index = files_processed.saturating_add(1);
+            if last_scan_report.elapsed() >= PROGRESS_REPORT_INTERVAL {
+                last_scan_report = Instant::now();
+                report(CatalogueDiscoveryProgress {
+                    phase: CatalogueDiscoveryPhase::Scanning,
+                    current_source: Some(bounded_source_name(&source.package_name)),
+                    current_file: Some(file_label.clone()),
+                    current_file_index: Some(current_file_index),
+                    sources_discovered: sources_total,
+                    sources_total,
+                    files_discovered,
+                    files_processed,
+                    files_reused,
+                    files_parsed,
+                    entities_prepared: entities.len().min(u32::MAX as usize) as u32,
+                });
             }
             let metadata = fs::symlink_metadata(&candidate)
                 .map_err(|_| ObservatoryError::InvalidGameDirectory)?;
@@ -260,10 +323,15 @@ pub fn discover_catalogue_with_reuse_and_progress(
             });
             entities.push(definition);
             files_processed = files_processed.saturating_add(1);
-            if files_processed == files_discovered || files_processed.is_multiple_of(32) {
+            if files_processed == files_discovered
+                || last_scan_report.elapsed() >= PROGRESS_REPORT_INTERVAL
+            {
+                last_scan_report = Instant::now();
                 report(CatalogueDiscoveryProgress {
                     phase: CatalogueDiscoveryPhase::Scanning,
                     current_source: Some(bounded_source_name(&source.package_name)),
+                    current_file: Some(file_label),
+                    current_file_index: Some(files_processed),
                     sources_discovered: sources_total,
                     sources_total,
                     files_discovered,
@@ -347,6 +415,8 @@ pub fn discover_catalogue_with_reuse_and_progress(
     report(CatalogueDiscoveryProgress {
         phase: CatalogueDiscoveryPhase::Complete,
         current_source: None,
+        current_file: None,
+        current_file_index: None,
         sources_discovered: sources_total,
         sources_total,
         files_discovered,
@@ -371,6 +441,21 @@ fn bounded_source_name(value: &str) -> String {
         .chars()
         .filter(|character| !character.is_control())
         .take(120)
+        .collect()
+}
+
+fn bounded_file_label(root: &Path, path: &Path) -> String {
+    logical_path(root, path)
+        .ok()
+        .or_else(|| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_owned)
+        })
+        .unwrap_or_default()
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(180)
         .collect()
 }
 
@@ -522,7 +607,10 @@ fn external_workshop_root(media_directory: &Path) -> Option<PathBuf> {
     workshop.is_dir().then_some(workshop)
 }
 
-fn candidate_files(source: &SourceRoot) -> Result<Vec<PathBuf>, ObservatoryError> {
+fn candidate_files(
+    source: &SourceRoot,
+    mut observe: impl FnMut(&Path, u32),
+) -> Result<Vec<PathBuf>, ObservatoryError> {
     let mut files = Vec::new();
     walk_directory(&source.root, &mut |path| {
         let file_name = path
@@ -542,6 +630,7 @@ fn candidate_files(source: &SourceRoot) -> Result<Vec<PathBuf>, ObservatoryError
         if matches {
             files.push(path.to_path_buf());
         }
+        observe(path, files.len().min(u32::MAX as usize) as u32);
     })?;
     files.sort();
     Ok(files)
@@ -1684,6 +1773,40 @@ mod tests {
                 .iter()
                 .all(|property| property.raw_arguments.len() <= 1_024)
         );
+    }
+
+    #[test]
+    fn progress_reports_bounded_source_relative_files() {
+        let directory = tempdir().expect("temporary directory");
+        let media = directory.path().join("media_soviet");
+        let buildings = media.join("buildings_types").join("district");
+        fs::create_dir_all(&buildings).expect("buildings");
+        fs::create_dir_all(media.join("vehicles")).expect("vehicles");
+        fs::write(
+            buildings.join("plant.ini"),
+            b"$NAME_STR Plant\n$TYPE_FACTORY\n",
+        )
+        .expect("definition");
+        let mut updates = Vec::new();
+
+        discover_catalogue_with_reuse_and_progress(&media, None, 1, &HashMap::new(), |progress| {
+            updates.push(progress)
+        })
+        .expect("catalogue");
+
+        let scanning = updates
+            .iter()
+            .find(|progress| progress.phase == CatalogueDiscoveryPhase::Scanning)
+            .expect("scanning progress");
+        assert_eq!(scanning.current_file.as_deref(), Some("district/plant.ini"));
+        assert_eq!(scanning.current_file_index, Some(1));
+        assert!(updates.iter().all(|progress| {
+            progress.current_file.as_ref().is_none_or(|file| {
+                !file.contains(directory.path().to_string_lossy().as_ref())
+                    && !file.contains('\\')
+                    && file.len() <= 180
+            })
+        }));
     }
 
     #[test]

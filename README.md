@@ -99,9 +99,10 @@ compare two distinct states on that branch. Configure the game installation
 folder to build the Industrial Catalogue from local base, DLC, subscribed
 Workshop, and WIP definitions. A separate Workshop-folder selector is available
 when Steam discovery cannot resolve external Workshop content. The header shows
-active Catalogue work; **Materials** provides the detailed progress ledger, and
-**Diagnostics** exposes the bounded local operational record when a run needs
-investigation.
+active critical work; **Materials** provides the staged Catalogue ledger with
+bounded per-file detail, and **Diagnostics** exposes the local operational
+record when a run needs investigation. Startup work is recovered from a durable
+native snapshot, so mounting the interface late does not hide an active task.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.

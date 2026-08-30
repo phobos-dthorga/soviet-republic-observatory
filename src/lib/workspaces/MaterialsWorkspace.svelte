@@ -29,6 +29,12 @@
     OverlayProfileSummary,
   } from "../observations/types";
   import { formatDate } from "../i18n/format";
+  import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
+  import { catalogueProgressView } from "../tasks/catalogueProgress";
+  import {
+    observeLatestTaskProgress,
+    selectLatestTaskProgress,
+  } from "../tasks/progress";
 
   let { desktopAvailable, gameConfigured } = $props<{
     desktopAvailable: boolean;
@@ -63,10 +69,10 @@
         refreshProgress.phase,
       ),
   );
-  const refreshStalled = $derived(
-    refreshActive &&
-      refreshProgress?.updated_at_ms != null &&
-      clockMs - refreshProgress.updated_at_ms > 15_000,
+  const progressView = $derived(
+    refreshProgress
+      ? catalogueProgressView(refreshProgress, $translation, clockMs)
+      : null,
   );
   const hasRepairFacts = $derived(
     dossier?.facts.some((fact) =>
@@ -103,57 +109,15 @@
 
   async function loadStatus(): Promise<void> {
     if (!desktopAvailable) return;
-    status = await getCatalogueStatus();
-    refreshProgress = status.refresh;
+    const nextStatus = await getCatalogueStatus();
+    status = nextStatus;
+    acceptRefreshProgress(nextStatus.refresh);
     profiles = await listPlanningOverlays();
     if (status.generation) await runSearch();
   }
 
-  function progressHeading(progress: CatalogueRefreshProgress): string {
-    switch (progress.phase) {
-      case "discovering":
-        return $translation("catalogue-progress-discovering");
-      case "scanning":
-        return $translation("catalogue-progress-scanning");
-      case "publishing":
-        return $translation("catalogue-progress-publishing");
-      case "finalising":
-        return $translation("catalogue-progress-finalising");
-      case "complete":
-        return $translation("catalogue-progress-complete");
-      case "failed":
-        return $translation("catalogue-progress-failed");
-      default:
-        return $translation("catalogue-progress-idle");
-    }
-  }
-
-  function triggerLabel(progress: CatalogueRefreshProgress): string {
-    if (progress.trigger === "manual")
-      return $translation("catalogue-trigger-manual");
-    if (progress.trigger === "filesystem")
-      return $translation("catalogue-trigger-filesystem");
-    return $translation("catalogue-trigger-startup");
-  }
-
-  function elapsedLabel(progress: CatalogueRefreshProgress): string {
-    if (progress.started_at_ms == null) return "—";
-    const endedAt =
-      progress.phase === "complete" || progress.phase === "failed"
-        ? (progress.updated_at_ms ?? clockMs)
-        : clockMs;
-    const elapsedSeconds = Math.max(
-      0,
-      Math.round((endedAt - progress.started_at_ms) / 1_000),
-    );
-    if (elapsedSeconds < 60)
-      return $translation("catalogue-duration-seconds", {
-        count: elapsedSeconds,
-      });
-    return $translation("catalogue-duration-minutes", {
-      count: Math.floor(elapsedSeconds / 60),
-      seconds: elapsedSeconds % 60,
-    });
+  function acceptRefreshProgress(next: CatalogueRefreshProgress): void {
+    refreshProgress = selectLatestTaskProgress(refreshProgress, next);
   }
 
   async function runSearch(): Promise<void> {
@@ -270,7 +234,6 @@
     let disposed = false;
     const stops: Array<() => void> = [];
     const clock = window.setInterval(() => (clockMs = Date.now()), 1_000);
-    void loadStatus();
     for (const listen of [
       listenForCatalogueUpdates,
       listenForWarehouseUpdates,
@@ -278,17 +241,31 @@
       void listen((next) => {
         if (!disposed) {
           status = next;
+          acceptRefreshProgress(next.refresh);
           void runSearch();
         }
       }).then((stop) => (disposed ? stop() : stops.push(stop)));
     }
-    void listenForCatalogueProgress((next) => {
-      if (disposed) return;
-      refreshProgress = next;
-      if (next.phase === "complete" || next.phase === "failed") {
-        void loadStatus();
+    void (async () => {
+      const stop = await observeLatestTaskProgress(
+        {
+          listen: listenForCatalogueProgress,
+          read: async () => (await getCatalogueStatus()).refresh,
+        },
+        (next) => {
+          if (disposed) return;
+          acceptRefreshProgress(next);
+          if (next.phase === "complete" || next.phase === "failed") {
+            void loadStatus();
+          }
+        },
+      );
+      if (disposed) stop();
+      else {
+        stops.push(stop);
+        await loadStatus();
       }
-    }).then((stop) => (disposed ? stop() : stops.push(stop)));
+    })();
     return () => {
       disposed = true;
       window.clearInterval(clock);
@@ -379,84 +356,11 @@
       </div>
     </header>
 
-    {#if refreshProgress && refreshProgress.phase !== "idle"}
-      <section
-        class="catalogue-progress"
-        class:active={refreshActive}
-        class:stalled={refreshStalled}
-        class:failed={refreshProgress.phase === "failed"}
-        aria-live="polite"
-        aria-labelledby="catalogue-progress-heading"
-      >
-        <header>
-          <div>
-            <span class="eyebrow">{triggerLabel(refreshProgress)}</span>
-            <h3 id="catalogue-progress-heading">
-              {progressHeading(refreshProgress)}
-            </h3>
-          </div>
-          <strong>{refreshProgress.progress_percent ?? "—"}%</strong>
-        </header>
-        <progress
-          max="100"
-          value={refreshProgress.progress_percent ?? undefined}
-          aria-label={progressHeading(refreshProgress)}
-        ></progress>
-        <div class="progress-ledger">
-          <span
-            >{$translation("catalogue-progress-elapsed")}<strong
-              >{elapsedLabel(refreshProgress)}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-sources")}<strong
-              >{refreshProgress.sources_discovered} / {refreshProgress.sources_total}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-files")}<strong
-              >{refreshProgress.files_processed} / {refreshProgress.files_discovered}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-reused")}<strong
-              >{refreshProgress.files_reused}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-parsed")}<strong
-              >{refreshProgress.files_parsed}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-entities")}<strong
-              >{refreshProgress.entities_prepared}</strong
-            ></span
-          >
-          <span
-            >{$translation("catalogue-progress-warehouse-rows")}<strong
-              >{refreshProgress.rows_written} / {refreshProgress.rows_total}</strong
-            ></span
-          >
-        </div>
-        {#if refreshProgress.current_source}
-          <p>
-            {$translation("catalogue-progress-current-source")}
-            <strong>{refreshProgress.current_source}</strong>
-          </p>
-        {/if}
-        {#if refreshStalled}
-          <p class="stall-warning" role="alert">
-            {$translation("catalogue-progress-stalled")}
-          </p>
-        {:else if refreshProgress.phase === "failed"}
-          <p class="stall-warning" role="alert">
-            {$translation("catalogue-progress-error-code", {
-              code: refreshProgress.error_code ?? "unknown",
-            })}
-          </p>
-        {/if}
-      </section>
+    {#if progressView && refreshProgress?.phase !== "idle"}
+      <TaskProgressPanel
+        view={progressView}
+        headingId="catalogue-progress-heading"
+      />
     {/if}
 
     {#if !desktopAvailable || !gameConfigured}
@@ -879,74 +783,6 @@
     gap: 8px;
     margin-bottom: 10px;
   }
-  .catalogue-progress {
-    margin-bottom: 10px;
-    padding: 13px;
-    border: 1px solid var(--colour-line-faint);
-    background: var(--colour-surface);
-  }
-  .catalogue-progress.active {
-    border-color: rgba(128, 198, 216, 0.5);
-  }
-  .catalogue-progress.stalled,
-  .catalogue-progress.failed {
-    border-color: var(--colour-risk);
-  }
-  .catalogue-progress header,
-  .catalogue-progress p {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-  .catalogue-progress h3 {
-    margin-top: 4px;
-    font-size: 18px;
-  }
-  .catalogue-progress header > strong {
-    color: var(--colour-observed);
-    font-family: Georgia, serif;
-    font-size: 22px;
-  }
-  .catalogue-progress progress {
-    width: 100%;
-    height: 9px;
-    margin: 11px 0;
-    accent-color: var(--colour-observed);
-  }
-  .progress-ledger {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(100px, 1fr));
-    gap: 6px;
-  }
-  .progress-ledger span {
-    padding: 7px;
-    color: var(--colour-muted);
-    background: var(--colour-surface-raised);
-    font-size: 8px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .progress-ledger strong {
-    display: block;
-    margin-top: 3px;
-    color: var(--colour-text);
-    font-size: 10px;
-  }
-  .catalogue-progress p {
-    justify-content: flex-start;
-    margin-top: 9px;
-    color: var(--colour-muted);
-    font-size: 9px;
-  }
-  .catalogue-progress p strong {
-    color: var(--colour-text);
-  }
-  .catalogue-progress .stall-warning {
-    padding: 8px;
-    color: var(--colour-risk);
-    background: var(--colour-risk-soft);
-  }
   .catalogue-health article {
     padding: 12px;
     border: 1px solid var(--colour-line-faint);
@@ -1181,9 +1017,6 @@
     .relation-ledger {
       grid-template-columns: repeat(2, 1fr);
     }
-    .progress-ledger {
-      grid-template-columns: repeat(2, 1fr);
-    }
   }
   @media (max-width: 760px) {
     .catalogue-filter,
@@ -1192,7 +1025,6 @@
       grid-template-columns: 1fr;
     }
     .catalogue-health,
-    .progress-ledger,
     .relation-ledger,
     .overlay-fields {
       grid-template-columns: 1fr;

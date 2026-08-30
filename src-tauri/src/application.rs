@@ -513,6 +513,8 @@ impl ObservatoryApplication {
                     };
                     progress.updated_at_ms = Some(now_ms());
                     progress.current_source = discovery.current_source;
+                    progress.current_file = discovery.current_file;
+                    progress.current_file_index = discovery.current_file_index;
                     progress.sources_discovered = discovery.sources_discovered;
                     progress.sources_total = discovery.sources_total;
                     progress.files_discovered = discovery.files_discovered;
@@ -539,6 +541,8 @@ impl ObservatoryApplication {
             progress.phase = CatalogueRefreshPhase::Publishing;
             progress.progress_percent = Some(55);
             progress.current_source = None;
+            progress.current_file = None;
+            progress.current_file_index = None;
             progress.updated_at_ms = Some(now_ms());
             self.report_catalogue_progress(&progress, &mut notify);
             let changed =
@@ -573,6 +577,8 @@ impl ObservatoryApplication {
             progress.phase = CatalogueRefreshPhase::Failed;
             progress.progress_percent = None;
             progress.current_source = None;
+            progress.current_file = None;
+            progress.current_file_index = None;
             progress.updated_at_ms = Some(now_ms());
             progress.error_code = Some(error.code().to_owned());
             self.report_catalogue_progress(&progress, &mut notify);
@@ -591,6 +597,8 @@ impl ObservatoryApplication {
         progress.phase = CatalogueRefreshPhase::Complete;
         progress.progress_percent = Some(100);
         progress.current_source = None;
+        progress.current_file = None;
+        progress.current_file_index = None;
         progress.updated_at_ms = Some(now_ms());
         self.report_catalogue_progress(&progress, &mut notify);
         diagnostics::record(

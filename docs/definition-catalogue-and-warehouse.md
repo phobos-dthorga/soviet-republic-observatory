@@ -54,13 +54,16 @@ Native file events are hints collected into five-second batches. Startup and
 manual refresh perform a manifest/fingerprint reconciliation so missed events
 do not become silent staleness.
 
-The interface reports discovery, scanning, publication, and finalisation as
-live bounded progress. It exposes aggregate counts and the current source, not
-paths or source contents. A 15-second absence of progress is labelled as a
-possible storage stall and linked conceptually to the local Diagnostics log;
-it is not silently treated as success or failure. Concurrent refresh requests
-return the active status instead of forming an invisible queue behind a long
-operation.
+The interface reports discovery, scanning, publication, and finalisation
+through the application-wide critical-task progress contract. It exposes
+aggregate counts, the current source, and a bounded source-relative current
+file, never an absolute path or source contents. Traversal and parsing updates
+are time-coalesced to protect the webview while exact totals continue to
+advance. A listener-first durable-snapshot hand-off prevents startup races. A
+15-second absence of progress is labelled as a possible storage stall and
+linked conceptually to the local Diagnostics log; it is not silently treated as
+success or failure. Concurrent refresh requests return the active status
+instead of forming an invisible queue behind a long operation.
 
 The parser retains typed fields, repeatable relations, units, bounded directive
 arguments, line numbers, coverage, and unknown-directive counts. It does not

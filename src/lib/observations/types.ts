@@ -291,6 +291,8 @@ export type CatalogueRefreshProgress = {
   started_at_ms: number | null;
   updated_at_ms: number | null;
   current_source: string | null;
+  current_file: string | null;
+  current_file_index: number | null;
   sources_discovered: number;
   sources_total: number;
   files_discovered: number;

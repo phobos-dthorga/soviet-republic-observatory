@@ -11,6 +11,8 @@
   import type { TranslationKey } from "./lib/i18n/catalog";
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
+  import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
+  import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import {
     clearDiagnosticLog,
     compareArchiveObservations,
@@ -184,22 +186,26 @@
       getLatestReceiverDataset(),
       getArchiveOverview(),
       getRecorderHealth(),
-      getCatalogueStatus(),
-    ]).then(([setup, dataset, archive, health, catalogue]) => {
+    ]).then(([setup, dataset, archive, health]) => {
       if (disposed) return;
       setupState = setup;
       receiverDataset = dataset;
       archiveOverview = archive;
       recorderHealth = health;
-      catalogueProgress = catalogue.refresh;
     });
     void listenForRecorderUpdates(acceptRecorderUpdate).then((unlisten) => {
       if (disposed) unlisten();
       else stopListening = unlisten;
     });
-    void listenForCatalogueProgress((progress) => {
-      if (!disposed) catalogueProgress = progress;
-    }).then((unlisten) => {
+    void observeLatestTaskProgress(
+      {
+        listen: listenForCatalogueProgress,
+        read: async () => (await getCatalogueStatus()).refresh,
+      },
+      (progress) => {
+        if (!disposed) catalogueProgress = progress;
+      },
+    ).then((unlisten) => {
       if (disposed) unlisten();
       else stopCatalogueListening = unlisten;
     });
@@ -242,6 +248,18 @@
       count: setupState?.save_candidates ?? 0,
     });
   }
+
+  function catalogueProgressDetail(progress: CatalogueRefreshProgress): string {
+    if (progress.phase === "failed")
+      return $translation("catalogue-global-attention");
+    if (progress.progress_percent != null)
+      return `${progress.progress_percent}%`;
+    if (progress.files_discovered > 0)
+      return $translation("catalogue-global-files-found", {
+        count: progress.files_discovered,
+      });
+    return $translation("task-progress-working");
+  }
 </script>
 
 <svelte:head>
@@ -277,19 +295,15 @@
 
     <div class="command-actions">
       {#if catalogueProgress && ["discovering", "scanning", "publishing", "finalising", "failed"].includes(catalogueProgress.phase)}
-        <button
-          type="button"
-          class="catalogue-state"
-          class:attention={catalogueProgress.phase === "failed"}
+        <TaskProgressIndicator
+          label={$translation("catalogue-global-progress")}
+          detail={catalogueProgressDetail(catalogueProgress)}
+          percent={catalogueProgress.progress_percent}
+          failed={catalogueProgress.phase === "failed"}
+          currentItem={catalogueProgress.current_file ??
+            catalogueProgress.current_source}
           onclick={() => (activeWorkspace = "materials")}
-        >
-          <span>{$translation("catalogue-global-progress")}</span>
-          <strong
-            >{catalogueProgress.phase === "failed"
-              ? $translation("catalogue-global-attention")
-              : `${catalogueProgress.progress_percent ?? "—"}%`}</strong
-          >
-        </button>
+        />
       {/if}
       <button
         type="button"

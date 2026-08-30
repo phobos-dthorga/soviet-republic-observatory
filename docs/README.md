@@ -24,8 +24,9 @@ an engineering requirement.
   complexity budget
 - [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)
   — dual-engine ownership, projection recovery, generations, and overlays
-- [Local diagnostics and long-running work](operations/diagnostics.md) — live
-  catalogue progress, stall visibility, bounded local logging, and privacy
+- [Local diagnostics and long-running work](operations/diagnostics.md) — shared
+  critical-task progress, startup recovery, stall visibility, bounded local
+  logging, and privacy
 - [Roadmap](roadmap.md) — vertical slices from synthetic preview to advanced
   industrial analysis
 - [Community Extensions](extensions/overview.md) — Analysis Packs now and the
