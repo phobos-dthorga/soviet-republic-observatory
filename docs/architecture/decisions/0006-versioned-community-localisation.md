@@ -2,6 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-27
+- **Native-authority amendment:** 2026-08-30
 
 ## Context
 
@@ -35,8 +36,13 @@ Adopt WyrmGrid's format and runtime principles with these changes:
    extension-authored text as separate domains.
 9. Add a compatible Analysis Pack v1 `default_locale` field for author-owned
    prose, defaulting older v1 files to `en-AU`.
-10. Make Rust authoritative for validation and persistence when the desktop host
-    arrives; the current webview implementation proves the contract and UX.
+10. Make Rust authoritative for validation and app-local SQLite persistence in
+    desktop builds. Keep the TypeScript validator as a browser-preview and
+    development preflight, not a desktop trust boundary.
+11. Migrate the superseded browser-local store once through a bounded,
+    transactional, idempotent handover. Mount in English before that asynchronous
+    handover so language persistence cannot delay application startup.
+12. Keep install, selection, export, and removal as distinct lifecycle actions.
 
 Community files remain inert data and may be partial. Resolution order is the
 selected pack, canonical English, then the explicit caller fallback. No
@@ -52,8 +58,10 @@ ambient access.
   translation is shipped.
 - Changing UI language cannot alter parser identity, metrics, provenance, or
   game-source evidence.
-- The current browser persistence is deliberately replaceable and is not a
-  desktop trust boundary.
+- Desktop persistence follows the same application-owned SQLite boundary as
+  other operational state and is covered by its append-only migrations.
+- Browser-local persistence remains available only to the development preview
+  and is visibly identified as non-authoritative.
 - Multilingual Analysis Packs require a future explicit package contract; host
   language packs cannot silently rewrite extension-authored analytical claims.
 

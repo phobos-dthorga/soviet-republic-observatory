@@ -3,15 +3,18 @@
   import ContextHelp from "../ui/ContextHelp.svelte";
   import { notify } from "../notifications/service";
   import { translation } from "./runtime";
+  import type { LanguageStatus } from "./types";
+  import type { TranslationKey } from "./catalog";
   import {
     installLanguagePack,
+    inspectLanguagePack,
     languageErrorMessageKeys,
     languageStatus,
     LanguageServiceError,
     removeLanguagePack,
     selectLanguagePack,
+    exportLanguagePack,
   } from "./service";
-  import { validateCommunityLanguagePackJson } from "./validation";
 
   let { open, onclose }: { open: boolean; onclose: () => void } = $props();
   let fileInput = $state<HTMLInputElement>();
@@ -23,6 +26,16 @@
     if (trust === "built_in") return $translation("security-language-built-in");
     if (trust === "reviewed") return $translation("security-language-reviewed");
     return $translation("security-language-community");
+  }
+
+  function storageAuthorityKey(
+    authority: LanguageStatus["storage_authority"],
+  ): TranslationKey {
+    if (authority === "native_sqlite")
+      return "security-language-storage-native";
+    if (authority === "native_unavailable")
+      return "security-language-storage-unavailable";
+    return "security-language-storage-preview";
   }
 
   function reportError(error: unknown): void {
@@ -42,15 +55,18 @@
     errorMessage = "";
     try {
       const manifestJson = await file.slice(0, MAX_MANIFEST_READ_BYTES).text();
-      const validation = validateCommunityLanguagePackJson(manifestJson);
-      if (!validation.ok) {
-        throw new LanguageServiceError(validation.code, validation.detail);
+      const inspection = await inspectLanguagePack(manifestJson);
+      if (!inspection.valid || !inspection.manifest) {
+        throw new LanguageServiceError(
+          inspection.code ?? "invalid_manifest",
+          inspection.detail,
+        );
       }
-      installLanguagePack(manifestJson);
+      await installLanguagePack(manifestJson);
       notify({
         title: $translation("language-title"),
         message: $translation("language-installed-status", {
-          name: validation.manifest.name,
+          name: inspection.manifest.name,
         }),
         tone: "success",
       });
@@ -61,9 +77,10 @@
     }
   }
 
-  function selectPack(packId: string): void {
+  async function selectPack(packId: string): Promise<void> {
+    busy = true;
     try {
-      selectLanguagePack(packId);
+      await selectLanguagePack(packId);
       errorMessage = "";
       notify({
         title: $translation("language-title"),
@@ -72,10 +89,12 @@
       });
     } catch (error) {
       reportError(error);
+    } finally {
+      busy = false;
     }
   }
 
-  function removePack(packId: string, name: string): void {
+  async function removePack(packId: string, name: string): Promise<void> {
     if (
       !window.confirm(
         $translation("destructive-language-remove-confirm", { name }),
@@ -83,8 +102,9 @@
     ) {
       return;
     }
+    busy = true;
     try {
-      removeLanguagePack(packId);
+      await removeLanguagePack(packId);
       errorMessage = "";
       notify({
         title: $translation("language-title"),
@@ -93,6 +113,35 @@
       });
     } catch (error) {
       reportError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function exportPack(packId: string, name: string): Promise<void> {
+    busy = true;
+    try {
+      const json = await exportLanguagePack(packId);
+      const url = URL.createObjectURL(
+        new Blob([`${json}\n`], { type: "application/json" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${packId}.rolanguage.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      errorMessage = "";
+      notify({
+        title: $translation("language-title"),
+        message: $translation("language-exported-status", { name }),
+        tone: "success",
+      });
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busy = false;
     }
   }
 </script>
@@ -181,7 +230,7 @@
                 <button
                   type="button"
                   disabled={busy}
-                  onclick={() => selectPack(pack.manifest.id)}
+                  onclick={() => void selectPack(pack.manifest.id)}
                 >
                   {$translation("language-select")}
                 </button>
@@ -189,11 +238,18 @@
               {#if pack.trust === "community"}
                 <button
                   type="button"
+                  disabled={busy}
+                  onclick={() =>
+                    void exportPack(pack.manifest.id, pack.manifest.name)}
+                  >{$translation("language-export")}</button
+                >
+                <button
+                  type="button"
                   class="language-remove"
                   disabled={busy}
                   title={$translation("language-remove-title")}
                   onclick={() =>
-                    removePack(pack.manifest.id, pack.manifest.name)}
+                    void removePack(pack.manifest.id, pack.manifest.name)}
                   >{$translation("action-remove")}</button
                 >
               {/if}
@@ -210,6 +266,9 @@
           })}</strong
         >
         <span>{$translation("security-language-boundary")}</span>
+        <span>
+          {$translation(storageAuthorityKey($languageStatus.storage_authority))}
+        </span>
       </aside>
 
       {#if errorMessage}<p class="language-error" role="alert">

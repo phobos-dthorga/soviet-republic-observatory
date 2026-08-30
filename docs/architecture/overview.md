@@ -161,8 +161,11 @@ application services. It does not parse files, calculate business metrics, or
 decide recommendations.
 
 All host-owned prose and locale-sensitive formatting pass through the versioned
-localisation service. Community language packs are validated inert catalogues,
-layered over canonical `en-AU`. Installed-game display vocabulary is a separate
+localisation service. In desktop builds, Rust validates community language
+packs and SQLite owns their manifests and selected identity. Svelte receives
+only bounded status and manifest models. The browser preview has an explicitly
+non-authoritative local fallback. Community packs are inert catalogues layered
+over canonical `en-AU`. Installed-game display vocabulary is a separate
 future resolver over stable source IDs; neither translated UI nor game labels
 become database keys. Analysis Pack prose carries its own declared locale.
 

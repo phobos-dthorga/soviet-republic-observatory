@@ -71,6 +71,26 @@ pub enum ObservatoryError {
     BinaryCompatibilityMismatch(&'static str),
     #[error("Another critical task of this type is already running.")]
     CriticalTaskBusy,
+    #[error("That language pack is larger than the 256 KiB safety limit.")]
+    LanguageManifestTooLarge,
+    #[error("That file does not contain valid JSON.")]
+    InvalidLanguageJson,
+    #[error("That file is not a valid Republic Observatory language-pack manifest.")]
+    InvalidLanguageManifest,
+    #[error("That language pack targets an unsupported schema or source-catalogue version.")]
+    UnsupportedLanguageVersion,
+    #[error("That language-pack identifier is invalid or reserved by Republic Observatory.")]
+    InvalidLanguageIdentifier,
+    #[error("That language pack contains invalid locale, name, author, or direction metadata.")]
+    InvalidLanguageMetadata,
+    #[error("That language pack contains an unknown, malformed, or incompatible message.")]
+    InvalidLanguageMessage,
+    #[error("Community language packs cannot replace protected Observatory messages.")]
+    ProtectedLanguageMessage,
+    #[error("Choose a language pack that is currently installed.")]
+    UnknownLanguagePack,
+    #[error("The built-in English catalogue cannot be removed.")]
+    BuiltInLanguagePackRemove,
 }
 
 impl ObservatoryError {
@@ -109,6 +129,16 @@ impl ObservatoryError {
             Self::InvalidCompatibilityProfile(_) => "invalid_compatibility_profile",
             Self::BinaryCompatibilityMismatch(_) => "binary_compatibility_mismatch",
             Self::CriticalTaskBusy => "critical_task_busy",
+            Self::LanguageManifestTooLarge => "manifest_too_large",
+            Self::InvalidLanguageJson => "invalid_json",
+            Self::InvalidLanguageManifest => "invalid_manifest",
+            Self::UnsupportedLanguageVersion => "unsupported_version",
+            Self::InvalidLanguageIdentifier => "invalid_identifier",
+            Self::InvalidLanguageMetadata => "invalid_metadata",
+            Self::InvalidLanguageMessage => "invalid_message",
+            Self::ProtectedLanguageMessage => "protected_message",
+            Self::UnknownLanguagePack => "unknown_pack",
+            Self::BuiltInLanguagePackRemove => "built_in_remove",
         }
     }
 

@@ -537,6 +537,14 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
     let migrated = storage.connect().expect("migration evidence");
     assert_eq!(
         migrated
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get::<_, u32>(0)
+            })
+            .expect("latest migration"),
+        9
+    );
+    assert_eq!(
+        migrated
             .query_row(
                 "SELECT COUNT(*) FROM warehouse_projection_jobs \
                  WHERE projection_kind = 'rebuild' AND status = 'pending'",

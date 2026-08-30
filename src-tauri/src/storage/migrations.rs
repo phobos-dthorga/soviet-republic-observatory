@@ -44,6 +44,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "versioned game compatibility profiles and immutable interpretations",
         include_str!("../../migrations/0008_compatibility_profiles.sql"),
     ),
+    (
+        9,
+        "authoritative language packs and language preference",
+        include_str!("../../migrations/0009_language_packs.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

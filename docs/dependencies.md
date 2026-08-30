@@ -8,6 +8,7 @@ keeping the Observatory independent and small.
 | Svelte 5         | MIT        | Presentational components and local interaction state | No parsing or analytical business rules              |
 | Apache ECharts   | Apache-2.0 | Canvas chart rendering                                | Used only through `ObservatoryChart` and `ChartSpec` |
 | `@fluent/bundle` | Apache-2.0 | Message parsing, variables, and catalogue fallback    | Data-only host and community message patterns        |
+| `fluent-syntax`  | MIT/Apache | Authoritative Rust Fluent syntax validation           | Parse only; no executable translation modules        |
 | Vite             | MIT        | Local development and production webview build        | Build-time only                                      |
 | TypeScript       | Apache-2.0 | Interface and contract type checking                  | Build-time only                                      |
 | Vitest           | MIT        | Calculation and contract tests                        | Development only                                     |
@@ -27,9 +28,11 @@ and architectural precedent, not a runtime dependency. Both repositories are
 MIT-licensed, but shared packages are intentionally deferred until two current
 consumers demonstrate genuinely identical semantics.
 
-The small Fluent runtime replaces hand-written interpolation and pluralisation;
-it does not permit executable translation modules. The source catalogue and
-manifests remain JSON so they can be inspected and validated independently.
+The small Fluent runtimes replace hand-written interpolation and pluralisation;
+they do not permit executable translation modules. Rust owns desktop manifest
+acceptance through `fluent-syntax`; `@fluent/bundle` formats the accepted text
+in presentation. The source catalogue and manifests remain JSON so they can be
+inspected and validated independently.
 
 The Tauri/Rust/SQLite group is the authoritative save-observation boundary.
 Its purpose is narrow: choose directories with explicit player action, inspect

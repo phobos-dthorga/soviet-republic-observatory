@@ -10,14 +10,24 @@ import type {
   AvailableLanguagePack,
   LanguagePackManifest,
   LanguageStatus,
-  LanguageValidationCode,
+  LanguagePackInspection,
+  LanguageServiceErrorCode,
 } from "./types";
+import {
+  exportNativeLanguagePack,
+  getNativeLanguageStatus,
+  handoverLegacyLanguagePacks,
+  inspectNativeLanguagePack,
+  installNativeLanguagePack,
+  nativeLanguageHostAvailable,
+  removeNativeLanguagePack,
+  selectNativeLanguagePack,
+} from "./desktopClient";
 
-export type LanguageServiceErrorCode =
-  | LanguageValidationCode
-  | "storage_unavailable"
-  | "unknown_pack"
-  | "built_in_remove";
+export type { LanguageServiceErrorCode } from "./types";
+
+const LEGACY_PACKS_KEY = "republic-observatory.language-packs.v1";
+const LEGACY_SELECTED_KEY = "republic-observatory.selected-language.v1";
 
 export class LanguageServiceError extends Error {
   constructor(
@@ -62,21 +72,18 @@ export class MemoryLanguagePackRepository implements LanguagePackRepository {
 }
 
 class BrowserLanguagePackRepository implements LanguagePackRepository {
-  private readonly packsKey = "republic-observatory.language-packs.v1";
-  private readonly selectedKey = "republic-observatory.selected-language.v1";
-
   loadSelectedId(): string | null {
-    return localStorage.getItem(this.selectedKey);
+    return localStorage.getItem(LEGACY_SELECTED_KEY);
   }
 
   saveSelectedId(packId: string): void {
-    localStorage.setItem(this.selectedKey, packId);
+    localStorage.setItem(LEGACY_SELECTED_KEY, packId);
   }
 
   listManifests(): string[] {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(localStorage.getItem(this.packsKey) ?? "{}");
+      parsed = JSON.parse(localStorage.getItem(LEGACY_PACKS_KEY) ?? "{}");
     } catch {
       return [];
     }
@@ -95,7 +102,7 @@ class BrowserLanguagePackRepository implements LanguagePackRepository {
       }),
     );
     manifests[packId] = manifestJson;
-    localStorage.setItem(this.packsKey, JSON.stringify(manifests));
+    localStorage.setItem(LEGACY_PACKS_KEY, JSON.stringify(manifests));
   }
 
   removeManifest(packId: string): void {
@@ -107,7 +114,7 @@ class BrowserLanguagePackRepository implements LanguagePackRepository {
           : [];
       }),
     );
-    localStorage.setItem(this.packsKey, JSON.stringify(manifests));
+    localStorage.setItem(LEGACY_PACKS_KEY, JSON.stringify(manifests));
   }
 }
 
@@ -150,6 +157,7 @@ export class LanguageSettingsService {
       selected_language_pack_id: active.id,
       active_pack: active,
       packs,
+      storage_authority: "browser_preview",
     };
   }
 
@@ -194,6 +202,9 @@ export const languageStatus = writable<LanguageStatus>({
   selected_language_pack_id: DEFAULT_LANGUAGE_PACK_ID,
   active_pack: sourceLanguagePack,
   packs: [],
+  storage_authority: nativeLanguageHostAvailable()
+    ? "native_sqlite"
+    : "browser_preview",
 });
 
 let browserService: LanguageSettingsService | undefined;
@@ -216,50 +227,89 @@ function activate(status: LanguageStatus): LanguageStatus {
 }
 
 export function initializeLanguage(): LanguageStatus {
+  if (nativeLanguageHostAvailable()) {
+    const initial = activate(fallbackStatus("native_sqlite"));
+    void initializeNativeLanguage();
+    return initial;
+  }
   try {
     return activate(service().status());
   } catch {
-    return activate({
-      selected_language_pack_id: DEFAULT_LANGUAGE_PACK_ID,
-      active_pack: sourceLanguagePack,
-      packs: [
-        {
-          manifest: sourceLanguagePack,
-          trust: "built_in",
-          translated_messages: eligibleMessageCount(),
-          eligible_messages: eligibleMessageCount(),
-        },
-      ],
-    });
+    return activate(fallbackStatus("browser_preview"));
   }
 }
 
-export function installLanguagePack(manifestJson: string): LanguageStatus {
+export async function installLanguagePack(
+  manifestJson: string,
+): Promise<LanguageStatus> {
   try {
-    const status = service().install(manifestJson);
-    languageStatus.set(status);
-    return status;
+    const status = nativeLanguageHostAvailable()
+      ? await installNativeLanguagePack(manifestJson)
+      : service().install(manifestJson);
+    return activate(status);
   } catch (error) {
-    if (error instanceof LanguageServiceError) throw error;
-    throw new LanguageServiceError("storage_unavailable");
+    throw normalizedLanguageError(error);
   }
 }
 
-export function selectLanguagePack(packId: string): LanguageStatus {
+export async function selectLanguagePack(
+  packId: string,
+): Promise<LanguageStatus> {
   try {
-    return activate(service().select(packId));
+    const status = nativeLanguageHostAvailable()
+      ? await selectNativeLanguagePack(packId)
+      : service().select(packId);
+    return activate(status);
   } catch (error) {
-    if (error instanceof LanguageServiceError) throw error;
-    throw new LanguageServiceError("storage_unavailable");
+    throw normalizedLanguageError(error);
   }
 }
 
-export function removeLanguagePack(packId: string): LanguageStatus {
+export async function removeLanguagePack(
+  packId: string,
+): Promise<LanguageStatus> {
   try {
-    return activate(service().remove(packId));
+    const status = nativeLanguageHostAvailable()
+      ? await removeNativeLanguagePack(packId)
+      : service().remove(packId);
+    return activate(status);
   } catch (error) {
-    if (error instanceof LanguageServiceError) throw error;
-    throw new LanguageServiceError("storage_unavailable");
+    throw normalizedLanguageError(error);
+  }
+}
+
+export async function inspectLanguagePack(
+  manifestJson: string,
+): Promise<LanguagePackInspection> {
+  if (nativeLanguageHostAvailable()) {
+    try {
+      return await inspectNativeLanguagePack(manifestJson);
+    } catch (error) {
+      throw normalizedLanguageError(error);
+    }
+  }
+  const result = validateCommunityLanguagePackJson(manifestJson);
+  return result.ok
+    ? { valid: true, manifest: result.manifest }
+    : {
+        valid: false,
+        code: result.code,
+        detail: result.detail,
+      };
+}
+
+export async function exportLanguagePack(packId: string): Promise<string> {
+  try {
+    if (nativeLanguageHostAvailable()) {
+      return await exportNativeLanguagePack(packId);
+    }
+    const pack = service()
+      .status()
+      .packs.find((candidate) => candidate.manifest.id === packId);
+    if (!pack) throw new LanguageServiceError("unknown_pack");
+    return JSON.stringify(pack.manifest, null, 2);
+  } catch (error) {
+    throw normalizedLanguageError(error);
   }
 }
 
@@ -282,4 +332,93 @@ export const languageErrorMessageKeys: Record<
 
 export function currentLanguageStatus(): LanguageStatus {
   return get(languageStatus);
+}
+
+function fallbackStatus(
+  storageAuthority: LanguageStatus["storage_authority"],
+): LanguageStatus {
+  const eligible = eligibleMessageCount();
+  return {
+    selected_language_pack_id: DEFAULT_LANGUAGE_PACK_ID,
+    active_pack: sourceLanguagePack,
+    packs: [
+      {
+        manifest: sourceLanguagePack,
+        trust: "built_in",
+        translated_messages: eligible,
+        eligible_messages: eligible,
+      },
+    ],
+    storage_authority: storageAuthority,
+  };
+}
+
+async function initializeNativeLanguage(): Promise<void> {
+  try {
+    const legacy = readLegacyLanguageState();
+    const status = await handoverLegacyLanguagePacks(
+      legacy.manifests,
+      legacy.selectedId,
+    );
+    clearLegacyLanguageState();
+    activate(status);
+  } catch {
+    try {
+      activate(await getNativeLanguageStatus());
+    } catch {
+      activate(fallbackStatus("native_unavailable"));
+    }
+  }
+}
+
+function readLegacyLanguageState(): {
+  manifests: string[];
+  selectedId: string | null;
+} {
+  if (typeof localStorage === "undefined") {
+    return { manifests: [], selectedId: null };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(localStorage.getItem(LEGACY_PACKS_KEY) ?? "{}");
+  } catch {
+    parsed = {};
+  }
+  const manifests =
+    typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? Object.values(parsed).filter(
+          (value): value is string =>
+            typeof value === "string" &&
+            validateCommunityLanguagePackJson(value).ok,
+        )
+      : [];
+  return {
+    manifests,
+    selectedId: localStorage.getItem(LEGACY_SELECTED_KEY),
+  };
+}
+
+function clearLegacyLanguageState(): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.removeItem(LEGACY_PACKS_KEY);
+  localStorage.removeItem(LEGACY_SELECTED_KEY);
+}
+
+function normalizedLanguageError(error: unknown): LanguageServiceError {
+  if (error instanceof LanguageServiceError) return error;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    error.code in languageErrorMessageKeys
+  ) {
+    return new LanguageServiceError(
+      error.code as LanguageServiceErrorCode,
+      "diagnostic" in error && typeof error.diagnostic === "string"
+        ? error.diagnostic
+        : undefined,
+    );
+  }
+  return new LanguageServiceError("storage_unavailable");
 }

@@ -5,14 +5,15 @@ WyrmGrid, with several debt-reduction changes made before save parsing begins.
 English (Australia), `en-AU`, is the canonical source catalogue. Every current
 workspace, chart label, textual chart summary, provenance sentence, dialog, and
 locale-sensitive number passes through the same host-owned boundary.
-The current source contract is compatibility version 1, additive revision 19.
+The current source contract is compatibility version 1, additive revision 21.
 
 ## What is implemented
 
 - a canonical versioned JSON catalogue in [`locales/en-AU.json`](../../locales/en-AU.json);
 - Fluent message formatting through `@fluent/bundle`;
 - strict `.rolanguage.json` manifests and a Draft 2020-12 schema;
-- local import, inspection, explicit selection, fallback, and removal;
+- authoritative Rust inspection and validation in desktop builds;
+- app-local SQLite installation, explicit selection, export, and removal;
 - per-message selected-pack → `en-AU` fallback;
 - locale-aware number and percentage formatting;
 - left-to-right and right-to-left document direction;
@@ -20,12 +21,23 @@ The current source contract is compatibility version 1, additive revision 19.
 - expanded and RTL pseudo-language generators used by tests; and
 - a localisation audit in `npm run check`.
 
-The runnable webview stores installed community catalogues and the selected ID
-in versioned webview-local storage. The Tauri/Rust save host now exists, but
-language-pack validation and persistence have not yet migrated across that
-boundary. Rust becoming their authoritative owner is a separate slice so it can
-retain the same manifest contract and distinct install/select/remove lifecycle
-without coupling translation work to save parsing.
+Desktop builds store installed community catalogues and the selected ID in the
+app-local `republic-observatory.sqlite3` database. Rust is the authoritative
+validator and lifecycle owner; Svelte receives only bounded manifests and
+status models through native commands. No SQL, database connection, or storage
+path crosses into presentation code.
+
+On the first desktop start after this change, a bounded one-time handover reads
+valid packs from the earlier webview-local store, imports them transactionally,
+preserves the selection when possible, and then removes the legacy keys. The
+handover is idempotent, so a crash or reload cannot overwrite later native
+choices. Startup mounts immediately in built-in English while native language
+status loads asynchronously. If SQLite is unavailable, the dialog reports that
+degraded state and keeps built-in English active.
+
+The browser-only development preview continues to use browser-local storage so
+interface work remains convenient. Its Language dialog labels that store as a
+preview and never presents it as desktop authority.
 
 ## Manifest contract
 
@@ -53,7 +65,8 @@ changing its variables incompatibly requires a new catalogue compatibility
 version.
 
 Installation never activates a pack. The user inspects the result and selects
-it separately. Removing the selected pack returns to built-in English.
+it separately. Removing the selected pack returns to built-in English. Export
+returns the canonical validated JSON held by the authority layer.
 
 ## Validation and trust boundary
 
@@ -64,8 +77,8 @@ exact variable parity with English, and rejects markup, control characters, and
 explicit bidi-control characters.
 
 Community language files contain no JavaScript, Svelte, HTML, CSS, callbacks,
-URLs, filesystem paths, SQL, renderer configuration, or capabilities. Strings
-are rendered only as text.
+URL or filesystem navigation fields, SQL, renderer configuration, or
+capabilities. Strings are rendered only as text.
 
 Some host wording cannot be replaced by an unreviewed community file. Protected
 prefixes cover legal, privacy, credentials, save safety, extension permissions,
@@ -75,6 +88,10 @@ file from relabelling an estimate as a save fact, hiding that values are
 synthetic, weakening a removal confirmation, or rewriting a security boundary.
 Reviewed built-in translations may eventually localise protected messages as
 part of the application release process.
+
+The TypeScript validator remains a fast browser-preview and development
+preflight. It is intentionally tested against the same fixtures, but it does
+not decide whether a desktop installation is accepted; Rust does.
 
 ## Authoring rules
 

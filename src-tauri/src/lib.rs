@@ -11,6 +11,7 @@ mod diagnostics;
 mod error;
 mod fixed_binary;
 mod game_vocabulary;
+mod language_pack;
 mod model;
 mod planning_overlay;
 mod recorder_service;
@@ -98,6 +99,13 @@ pub fn run() {
             commands::rollback_analysis_pack,
             commands::remove_analysis_pack,
             commands::get_analysis_pack_contributions,
+            commands::language_status,
+            commands::inspect_language_pack,
+            commands::install_language_pack,
+            commands::select_language_pack,
+            commands::remove_language_pack,
+            commands::export_language_pack,
+            commands::handover_legacy_language_packs,
         ])
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");

@@ -67,7 +67,8 @@ The interface follows the methodology established by
 - provenance attached to every chart;
 - Apache ECharts behind one declarative application-owned adapter;
 - canonical `en-AU`, Fluent formatting, and strict inert community language
-  packs with complete current-interface coverage;
+  packs with complete current-interface coverage, authoritative Rust
+  validation, and app-local SQLite ownership;
 - a local Analysis Pack library with authoritative Rust validation, immutable
   SQLite revisions, explicit enablement, host evaluation, and host-rendered
   charts;

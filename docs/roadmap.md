@@ -17,6 +17,8 @@ numbers are assigned only when implementation begins.
   formatting, strict inert community language packs, per-message fallback,
   explicit install/select/remove lifecycle, and locale-aware chart summaries
 - Localisation audit, expanded pseudo-language tests, and RTL contract tests
+- Authoritative Rust language-pack validation, app-local SQLite persistence,
+  canonical export, and one-time migration from the browser proof of concept
 - Initial calculation utilities and unit tests
 - Data limitations, metric contract, architecture decisions, and contributor
   safeguards
@@ -59,9 +61,7 @@ Implemented foundation:
 - Crash-recoverable SQLite candidate lifecycle ledger
 - Event-driven Observer Health and save-to-save Republic Pulse workspace
 
-Remaining in this slice:
-
-- Authoritative Rust validation and persistence for community language packs
+The branch-aware archive slice is complete at its currently documented scope.
 
 ## Slice 3 — definition catalogue and planning warehouse — implemented foundation
 

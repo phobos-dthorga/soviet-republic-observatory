@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::analysis_pack::{AnalysisPackContribution, AnalysisPackInspection, AnalysisPackSummary};
 use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
+use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
     ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
@@ -397,5 +398,70 @@ pub fn get_analysis_pack_contributions(
     state
         .application
         .analysis_pack_contributions()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn language_status(state: State<'_, AppState>) -> Result<LanguageStatus, CommandError> {
+    state.application.language_status().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn inspect_language_pack(json: String, state: State<'_, AppState>) -> LanguagePackInspection {
+    state.application.inspect_language_pack(&json)
+}
+
+#[tauri::command]
+pub fn install_language_pack(
+    json: String,
+    state: State<'_, AppState>,
+) -> Result<LanguageStatus, CommandError> {
+    state
+        .application
+        .install_language_pack(&json)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn select_language_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<LanguageStatus, CommandError> {
+    state
+        .application
+        .select_language_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_language_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<LanguageStatus, CommandError> {
+    state
+        .application
+        .remove_language_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn export_language_pack(
+    pack_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    state
+        .application
+        .export_language_pack(&pack_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn handover_legacy_language_packs(
+    handover: LegacyLanguageHandover,
+    state: State<'_, AppState>,
+) -> Result<LanguageStatus, CommandError> {
+    state
+        .application
+        .handover_legacy_language_packs(&handover)
         .map_err(Into::into)
 }

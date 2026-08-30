@@ -14,6 +14,9 @@ use crate::definition_catalogue::{
 use crate::diagnostics;
 use crate::error::ObservatoryError;
 use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_directory};
+use crate::language_pack::{
+    LanguagePackInspection, LanguageStatus, LegacyLanguageHandover, inspect_community_manifest,
+};
 use crate::model::{
     ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
@@ -164,6 +167,37 @@ impl ObservatoryApplication {
 
     pub fn latest_receiver_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
         self.storage.load_latest_dataset()
+    }
+
+    pub fn language_status(&self) -> Result<LanguageStatus, ObservatoryError> {
+        self.storage.language_status()
+    }
+
+    pub fn inspect_language_pack(&self, json: &str) -> LanguagePackInspection {
+        inspect_community_manifest(json)
+    }
+
+    pub fn install_language_pack(&self, json: &str) -> Result<LanguageStatus, ObservatoryError> {
+        self.storage.install_language_pack(json)
+    }
+
+    pub fn select_language_pack(&self, pack_id: &str) -> Result<LanguageStatus, ObservatoryError> {
+        self.storage.select_language_pack(pack_id)
+    }
+
+    pub fn remove_language_pack(&self, pack_id: &str) -> Result<LanguageStatus, ObservatoryError> {
+        self.storage.remove_language_pack(pack_id)
+    }
+
+    pub fn export_language_pack(&self, pack_id: &str) -> Result<String, ObservatoryError> {
+        self.storage.export_language_pack(pack_id)
+    }
+
+    pub fn handover_legacy_language_packs(
+        &self,
+        handover: &LegacyLanguageHandover,
+    ) -> Result<LanguageStatus, ObservatoryError> {
+        self.storage.handover_legacy_language_packs(handover)
     }
 
     pub fn compatibility_status(&self) -> Result<CompatibilityStatus, ObservatoryError> {
@@ -1122,7 +1156,10 @@ mod tests {
         application.setup_state().expect("setup state");
         let status = application.catalogue_status().expect("catalogue status");
 
-        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+        // This guards against waiting on the held DuckDB writer lock. A one-second
+        // ceiling remains far below a blocked writer while tolerating parallel
+        // filesystem-heavy tests on slower Windows hosts.
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
         assert_eq!(status.warehouse.phase, WarehousePhase::Lagging);
     }
 

@@ -4,6 +4,7 @@ mod comparison;
 mod compatibility;
 mod connection;
 mod history;
+mod language_packs;
 mod migrations;
 mod observations;
 mod planning_overlays;

@@ -26,6 +26,14 @@ export type LanguageStatus = {
   selected_language_pack_id: string;
   active_pack: LanguagePackManifest;
   packs: AvailableLanguagePack[];
+  storage_authority: "native_sqlite" | "native_unavailable" | "browser_preview";
+};
+
+export type LanguagePackInspection = {
+  valid: boolean;
+  code?: LanguageServiceErrorCode;
+  detail?: string;
+  manifest?: LanguagePackManifest;
 };
 
 export type LanguageValidationCode =
@@ -37,6 +45,12 @@ export type LanguageValidationCode =
   | "invalid_metadata"
   | "invalid_message"
   | "protected_message";
+
+export type LanguageServiceErrorCode =
+  | LanguageValidationCode
+  | "storage_unavailable"
+  | "unknown_pack"
+  | "built_in_remove";
 
 export type LanguageValidationResult =
   | { ok: true; manifest: LanguagePackManifest }
