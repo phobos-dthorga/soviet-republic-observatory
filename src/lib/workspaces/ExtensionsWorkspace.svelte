@@ -11,6 +11,8 @@
   } from "../extensions/runtime";
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
+  import { notify, type NotificationTone } from "../notifications/service";
+  import ContextHelp from "../ui/ContextHelp.svelte";
   import {
     disableAnalysisPack,
     enableAnalysisPack,
@@ -32,8 +34,6 @@
   let inspection = $state<AnalysisPackInspection | null>(null);
   let inspectedJson = $state("");
   let busy = $state(false);
-  let errorMessage = $state("");
-  let noticeMessage = $state("");
   let fileInput = $state<HTMLInputElement>();
   let loadedObservationContext = $state("");
   let runtimeInitialised = $state(false);
@@ -101,29 +101,39 @@
   async function runAction(action: () => Promise<void>): Promise<void> {
     if (busy) return;
     busy = true;
-    errorMessage = "";
-    noticeMessage = "";
     try {
       await action();
     } catch (error) {
-      errorMessage =
+      const message =
         typeof error === "object" && error && "diagnostic" in error
           ? String(error.diagnostic)
           : $translation("extensions-action-failed");
+      reportAction(message, "error");
     } finally {
       busy = false;
     }
+  }
+
+  function reportAction(message: string, tone: NotificationTone): void {
+    notify({
+      title: $translation("extensions-local-manager"),
+      message,
+      tone,
+    });
   }
 
   async function inspectJson(json: string): Promise<void> {
     await runAction(async () => {
       inspection = await inspectAnalysisPack(json);
       inspectedJson = inspection.valid ? json : "";
-      noticeMessage = inspection.valid
-        ? $translation("extensions-inspection-valid")
-        : $translation("extensions-inspection-invalid", {
-            code: inspection.code ?? "invalid_analysis_pack",
-          });
+      reportAction(
+        inspection.valid
+          ? $translation("extensions-inspection-valid")
+          : $translation("extensions-inspection-invalid", {
+              code: inspection.code ?? "invalid_analysis_pack",
+            }),
+        inspection.valid ? "success" : "warning",
+      );
     });
   }
 
@@ -133,7 +143,7 @@
     input.value = "";
     if (!file) return;
     if (file.size > 512 * 1024) {
-      errorMessage = $translation("extensions-file-too-large");
+      reportAction($translation("extensions-file-too-large"), "error");
       return;
     }
     await inspectJson(await file.text());
@@ -143,9 +153,12 @@
     if (!inspection?.valid || !inspectedJson) return;
     await runAction(async () => {
       const imported = await importAnalysisPack(inspectedJson);
-      noticeMessage = $translation("extensions-imported", {
-        name: imported.display_name,
-      });
+      reportAction(
+        $translation("extensions-imported", {
+          name: imported.display_name,
+        }),
+        "success",
+      );
       await refreshRuntime();
     });
   }
@@ -155,11 +168,14 @@
       if (pack.enabled) await disableAnalysisPack(pack.pack_id);
       else await enableAnalysisPack(pack.pack_id, pack.latest_revision);
       await refreshRuntime();
-      noticeMessage = $translation(
-        pack.enabled
-          ? "extensions-disabled-notice"
-          : "extensions-enabled-notice",
-        { name: pack.display_name },
+      reportAction(
+        $translation(
+          pack.enabled
+            ? "extensions-disabled-notice"
+            : "extensions-enabled-notice",
+          { name: pack.display_name },
+        ),
+        "success",
       );
     });
   }
@@ -168,9 +184,12 @@
     await runAction(async () => {
       await rollbackAnalysisPack(pack.pack_id);
       await refreshRuntime();
-      noticeMessage = $translation("extensions-rollback-notice", {
-        name: pack.display_name,
-      });
+      reportAction(
+        $translation("extensions-rollback-notice", {
+          name: pack.display_name,
+        }),
+        "success",
+      );
     });
   }
 
@@ -186,9 +205,12 @@
     await runAction(async () => {
       await removeAnalysisPack(pack.pack_id);
       await refreshRuntime();
-      noticeMessage = $translation("extensions-removed-notice", {
-        name: pack.display_name,
-      });
+      reportAction(
+        $translation("extensions-removed-notice", {
+          name: pack.display_name,
+        }),
+        "success",
+      );
     });
   }
 
@@ -203,9 +225,12 @@
       link.download = `${pack.pack_id}-${pack.semantic_version}.roanalysis.json`;
       link.click();
       URL.revokeObjectURL(url);
-      noticeMessage = $translation("extensions-exported-notice", {
-        name: pack.display_name,
-      });
+      reportAction(
+        $translation("extensions-exported-notice", {
+          name: pack.display_name,
+        }),
+        "success",
+      );
     });
   }
 
@@ -376,17 +401,13 @@
         >{$translation("extensions-import-inspected")}</button
       >
       <span>{$translation("extensions-import-separation")}</span>
+      <ContextHelp
+        topic="analysis-pack-actions"
+        title={$translation("help-extension-actions-title")}
+        text={$translation("help-extension-actions-text")}
+        placement="left"
+      />
     </section>
-
-    {#if errorMessage || noticeMessage}
-      <div
-        class:extension-error={Boolean(errorMessage)}
-        class="extension-notice"
-        role="status"
-      >
-        {errorMessage || noticeMessage}
-      </div>
-    {/if}
 
     {#if inspection}
       <section
@@ -646,20 +667,44 @@
         >
       </div>
     </section>
-    <section class="inspector-notes">
-      <span class="eyebrow">{$translation("extensions-lifecycle-label")}</span>
-      <article>
-        <span>01</span><strong>{$translation("extensions-inspect")}</strong>
-        <p>{$translation("extensions-inspect-description")}</p>
-      </article>
-      <article>
-        <span>02</span><strong>{$translation("extensions-validate")}</strong>
-        <p>{$translation("extensions-validate-description")}</p>
-      </article>
-      <article>
-        <span>03</span><strong>{$translation("extensions-enable")}</strong>
-        <p>{$translation("extensions-enable-description-live")}</p>
-      </article>
+    <section
+      class="inspector-notes lifecycle-inspector"
+      aria-labelledby="analysis-pack-lifecycle-title"
+    >
+      <header>
+        <span class="eyebrow" id="analysis-pack-lifecycle-title"
+          >{$translation("extensions-lifecycle-label")}</span
+        >
+        <ContextHelp
+          topic="analysis-pack-lifecycle"
+          title={$translation("help-extension-lifecycle-title")}
+          text={$translation("help-extension-lifecycle-text")}
+          placement="left"
+        />
+      </header>
+      <ol>
+        <li>
+          <span aria-hidden="true">01</span>
+          <div>
+            <strong>{$translation("extensions-inspect")}</strong>
+            <p>{$translation("extensions-inspect-description")}</p>
+          </div>
+        </li>
+        <li>
+          <span aria-hidden="true">02</span>
+          <div>
+            <strong>{$translation("extensions-validate")}</strong>
+            <p>{$translation("extensions-validate-description")}</p>
+          </div>
+        </li>
+        <li>
+          <span aria-hidden="true">03</span>
+          <div>
+            <strong>{$translation("extensions-enable")}</strong>
+            <p>{$translation("extensions-enable-description-live")}</p>
+          </div>
+        </li>
+      </ol>
     </section>
   </aside>
 </section>

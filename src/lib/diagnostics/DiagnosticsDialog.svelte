@@ -152,7 +152,7 @@
   .diagnostics-boundary,
   .empty-log {
     color: var(--colour-muted);
-    font-size: 11px;
+    font-size: var(--type-caption);
     line-height: 1.55;
   }
   button {
@@ -174,7 +174,7 @@
     justify-content: flex-start;
     flex-wrap: wrap;
     color: var(--colour-observed);
-    font-size: 9px;
+    font-size: var(--type-caption);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -204,7 +204,7 @@
   article time,
   article small {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   article strong {
     color: var(--colour-observed);
@@ -215,7 +215,7 @@
   }
   article p {
     margin: 7px 0;
-    font-size: 11px;
+    font-size: var(--type-caption);
   }
   .diagnostics-error {
     padding: 9px;

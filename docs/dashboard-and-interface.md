@@ -287,6 +287,15 @@ claim feature parity.
 - Colour contrast is validated against theme roles.
 - Long resource and city labels receive horizontal space rather than smaller
   unreadable type.
+- Ordinary captions and controls use shared tokens with a
+  12-pixel-equivalent default floor; zoom and text scaling cause reflow rather
+  than a return to microtext.
+- Consequential or unfamiliar concepts may expose keyboard-accessible
+  contextual help with stable tutorial topic IDs. Required warnings and actions
+  never exist only inside a tooltip.
+- Transient cross-workspace outcomes use the bounded shell notification centre,
+  while field validation remains inline and long-running work remains in the
+  critical-task progress system.
 - Chart layouts are visually checked at wide desktop, compact desktop, and
   narrow stacked widths.
 - Synthetic preview data is permanently labelled so it cannot be mistaken for

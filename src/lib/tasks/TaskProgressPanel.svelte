@@ -139,7 +139,7 @@
     border-top: 1px solid var(--colour-line-faint);
     padding-top: 7px;
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .task-stages li.active {
     border-color: var(--colour-observed);
@@ -171,7 +171,7 @@
   .task-stages small {
     display: block;
     margin-top: 2px;
-    font-size: 7px;
+    font-size: var(--type-caption);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -189,7 +189,7 @@
     display: flex;
     justify-content: space-between;
     color: var(--colour-muted);
-    font-size: 8px;
+    font-size: var(--type-caption);
     text-transform: uppercase;
   }
   .task-meters strong {
@@ -210,7 +210,7 @@
     padding: 7px;
     color: var(--colour-muted);
     background: var(--colour-surface-raised);
-    font-size: 8px;
+    font-size: var(--type-caption);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -218,7 +218,7 @@
     display: block;
     margin-top: 3px;
     color: var(--colour-text);
-    font-size: 10px;
+    font-size: var(--type-caption);
   }
   .current-item {
     display: grid;
@@ -229,7 +229,7 @@
     padding: 8px;
     color: var(--colour-muted);
     background: var(--colour-surface-raised);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .current-item strong {
     overflow: hidden;
@@ -243,7 +243,7 @@
   p {
     margin-top: 9px;
     padding: 8px;
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   p.warning,
   p.error {

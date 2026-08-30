@@ -886,7 +886,7 @@
   }
   .catalogue-health span {
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
     text-transform: uppercase;
   }
   .catalogue-health strong {
@@ -945,7 +945,7 @@
   .catalogue-table i,
   .entity-kind {
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .entity-kind {
     text-transform: uppercase;
@@ -971,7 +971,7 @@
   .fact-ledger small {
     display: block;
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .fact-ledger div {
     display: grid;
@@ -1005,7 +1005,7 @@
   .relation-ledger span,
   .relation-ledger small {
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .fact-ledger small.mapping-warning,
   .relation-ledger small.mapping-warning {
@@ -1046,7 +1046,7 @@
     display: block;
     margin-top: 3px;
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
   }
   .overlay-editor {
     display: grid;
@@ -1068,7 +1068,7 @@
     display: grid;
     gap: 4px;
     color: var(--colour-muted);
-    font-size: 9px;
+    font-size: var(--type-caption);
     text-transform: uppercase;
   }
   textarea {

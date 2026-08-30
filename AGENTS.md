@@ -45,6 +45,14 @@
   model; future credentials belong in an operating-system credential vault.
 - Reduce duplicate calculations and magic field names as soon as their shared
   meaning is established; do not generalise hypothetical requirements.
+- During implementation and review, explicitly ask whether a function should be
+  genericised or made first-class. Extract the smallest stable contract when
+  there are at least two concrete consumers, cross-workspace state, or a shared
+  accessibility, security, provenance, progress, or failure-isolation policy.
+- Debuggers, profilers, browser developer tools, database inspection tools, and
+  trace captures are authorised whenever they are the preferable way to
+  diagnose behaviour. Preserve the save-safety, privacy, and repository-content
+  boundaries while using them.
 
 ## Statistical honesty
 
@@ -68,6 +76,15 @@
 - Respect reduced-motion preferences and provide accessible textual summaries
   for every chart.
 - Empty, loading, unavailable, partial, and error states are distinct.
+- Ordinary captions and controls use the shared readable type tokens and have a
+  12-pixel-equivalent floor at default scale. Reflow rather than shrinking
+  meaningful text to fit.
+- Use the application notification service for transient cross-workspace
+  outcomes, the critical-task system for progress, and inline messages for
+  field-level validation. Do not create workspace-local toast systems.
+- Contextual help uses the shared keyboard-accessible help primitive and stable
+  tutorial topic IDs. Essential instructions and warnings must remain visible
+  without opening a tooltip.
 
 ## Localisation
 

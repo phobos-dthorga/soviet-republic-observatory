@@ -10,6 +10,25 @@ decision records. Do not attach real saves to an issue. Reduce a reported case
 to a sanitised fixture containing only the minimum fields needed to reproduce
 it.
 
+Before adding a workspace-local helper, ask whether the behaviour has become a
+host-wide contract. Two concrete consumers, cross-workspace state, or a shared
+accessibility, security, provenance, progress, or failure-isolation rule are
+signals to extract the smallest reusable service. Do not generalise solely for
+hypothetical use.
+
+Use the shared notification centre for transient outcomes, the critical-task
+components for long-running progress, and inline messages for validation tied
+to a particular field or operation. Contextual explanations use the shared
+help primitive and stable tutorial topic IDs; required instructions never live
+only in a tooltip. New ordinary captions and controls must use the readable
+type tokens rather than introduce microtext below the 12-pixel-equivalent
+default floor.
+
+Debuggers, profilers, browser developer tools, database inspection tools, and
+trace captures may be used whenever they are the preferable diagnostic method.
+Keep captures local, bounded, and free of save contents, personal paths, or
+other private data.
+
 ## Local checks
 
 ```powershell

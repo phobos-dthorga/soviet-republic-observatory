@@ -39,6 +39,9 @@ an engineering requirement.
 - [Localisation and language-pack authoring](localization/README.md) — canonical
   catalogue, Fluent patterns, validation, fallback, UI/game vocabulary split,
   and extension-text ownership
+- [Accessibility, contextual guidance, and notifications](accessibility-guidance-and-notifications.md)
+  — readable typography, tutorial-ready help, app-wide feedback, shared-service
+  criteria, and debugging policy
 
 ## Architecture
 

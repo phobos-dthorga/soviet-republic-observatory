@@ -166,6 +166,13 @@ layered over canonical `en-AU`. Installed-game display vocabulary is a separate
 future resolver over stable source IDs; neither translated UI nor game labels
 become database keys. Analysis Pack prose carries its own declared locale.
 
+The shell owns a bounded notification centre for transient outcomes. Workspace
+services submit localised text and severity through one presentation contract;
+they do not create independent toast stacks. Contextual explanations use one
+keyboard-accessible help primitive with stable topic IDs so a later tutorial
+can compose existing guidance. Inline validation and critical-task progress
+remain distinct contracts.
+
 ## Technology direction
 
 - **Rust** for bounded archive access, parsing, timeline logic, SQLite, DuckDB, and
@@ -208,6 +215,7 @@ replacement boundary.
 - `CatalogueGeneration`, `DefinitionDossier`, and `PlanningOverlayRevision`
 - `ProjectionJob` and `WarehouseSnapshot`
 - `WarehouseWriteActivity` and governed write budget
+- `AppNotification` and contextual `HelpTopic`
 
 Dates retain game year/day and a derived display date only when the conversion
 is verified. Resource identifiers remain source identifiers plus a versioned

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { modalFocus } from "../ui/modalFocus";
+  import ContextHelp from "../ui/ContextHelp.svelte";
+  import { notify } from "../notifications/service";
   import { translation } from "./runtime";
   import {
     installLanguagePack,
@@ -15,7 +17,6 @@
   let fileInput = $state<HTMLInputElement>();
   let busy = $state(false);
   let errorMessage = $state("");
-  let statusMessage = $state("");
   const MAX_MANIFEST_READ_BYTES = 256 * 1024 + 1;
 
   function trustLabel(trust: string): string {
@@ -30,7 +31,6 @@
         ? languageErrorMessageKeys[error.code]
         : "error-language-storage-unavailable";
     errorMessage = $translation(key);
-    statusMessage = "";
   }
 
   async function handleFile(event: Event): Promise<void> {
@@ -40,7 +40,6 @@
     if (!file) return;
     busy = true;
     errorMessage = "";
-    statusMessage = "";
     try {
       const manifestJson = await file.slice(0, MAX_MANIFEST_READ_BYTES).text();
       const validation = validateCommunityLanguagePackJson(manifestJson);
@@ -48,8 +47,12 @@
         throw new LanguageServiceError(validation.code, validation.detail);
       }
       installLanguagePack(manifestJson);
-      statusMessage = $translation("language-installed-status", {
-        name: validation.manifest.name,
+      notify({
+        title: $translation("language-title"),
+        message: $translation("language-installed-status", {
+          name: validation.manifest.name,
+        }),
+        tone: "success",
       });
     } catch (error) {
       reportError(error);
@@ -62,7 +65,11 @@
     try {
       selectLanguagePack(packId);
       errorMessage = "";
-      statusMessage = $translation("language-selected");
+      notify({
+        title: $translation("language-title"),
+        message: $translation("language-selected"),
+        tone: "success",
+      });
     } catch (error) {
       reportError(error);
     }
@@ -79,7 +86,11 @@
     try {
       removeLanguagePack(packId);
       errorMessage = "";
-      statusMessage = "";
+      notify({
+        title: $translation("language-title"),
+        message: $translation("language-removed-status", { name }),
+        tone: "success",
+      });
     } catch (error) {
       reportError(error);
     }
@@ -97,9 +108,17 @@
       aria-describedby="language-introduction"
     >
       <header>
-        <div>
+        <div class="language-heading">
           <span class="eyebrow">{$translation("language-eyebrow")}</span>
-          <h2 id="language-title">{$translation("language-title")}</h2>
+          <div class="language-heading-row">
+            <h2 id="language-title">{$translation("language-title")}</h2>
+            <ContextHelp
+              topic="language-packs"
+              title={$translation("help-language-packs-title")}
+              text={$translation("help-language-packs-text")}
+              placement="right"
+            />
+          </div>
         </div>
         <button
           data-modal-autofocus
@@ -196,10 +215,6 @@
       {#if errorMessage}<p class="language-error" role="alert">
           {errorMessage}
         </p>{/if}
-      {#if statusMessage}<p class="language-status" role="status">
-          {statusMessage}
-        </p>{/if}
-
       <footer>
         <div>
           <strong>{$translation("language-community-files")}</strong>

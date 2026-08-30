@@ -43,7 +43,7 @@
     color: var(--colour-muted);
     background: var(--colour-observed-soft);
     cursor: pointer;
-    font-size: 8px;
+    font-size: var(--type-caption);
     letter-spacing: 0.06em;
     text-align: start;
     text-transform: uppercase;

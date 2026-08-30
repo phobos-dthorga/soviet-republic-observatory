@@ -13,6 +13,7 @@
   import ObservationDialog from "./lib/observations/ObservationDialog.svelte";
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
+  import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
   import {
@@ -533,6 +534,8 @@
     <span>{$translation("legal-independent-community-project")}</span>
   </footer>
 </main>
+
+<NotificationCenter />
 
 <LanguageDialog
   open={languageDialogOpen}
