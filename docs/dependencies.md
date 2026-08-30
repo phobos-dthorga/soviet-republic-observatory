@@ -40,7 +40,9 @@ service still reconciles the complete directory periodically, so a dropped or
 coalesced platform event cannot become silent data loss. The webview receives
 status events but does not drive recorder liveness. Ajv
 prevents the checked-in Analysis Pack examples and invalid fixtures from
-drifting away from Draft 2020-12 during development; it is not a desktop trust
+drifting away from Draft 2020-12 during development. It also proves the public
+compatibility-profile contract rejects unknown fields, operations, host slots,
+paths, markup, URLs, and excessive mappings; it is not a desktop trust
 boundary. MapLibre, Three.js, hosted services, executable plugin runtimes, and
 data science environments remain outside the dependency set until a concrete
 player question requires them.

@@ -161,17 +161,18 @@ pub(crate) fn persist_latest_metric_evidence(
         record.source_lines.television,
         record.source_lines.computer,
     ];
-    for (metric, line) in RECEIVER_METRICS.iter().zip(lines) {
+    let source_fields = [
+        record.source_fields.none.as_str(),
+        record.source_fields.radio.as_str(),
+        record.source_fields.television.as_str(),
+        record.source_fields.computer.as_str(),
+    ];
+    for ((metric, line), source_field) in RECEIVER_METRICS.iter().zip(lines).zip(source_fields) {
         transaction.execute(
             "INSERT OR REPLACE INTO observation_metric_evidence(\
                  payload_hash, metric_id, source_field, latest_source_line\
              ) VALUES(?1, ?2, ?3, ?4)",
-            params![
-                payload_hash,
-                metric.id,
-                metric.source_field,
-                to_sql_integer(line)?
-            ],
+            params![payload_hash, metric.id, source_field, to_sql_integer(line)?],
         )?;
     }
     Ok(())

@@ -7,9 +7,10 @@ use crate::application::ObservatoryApplication;
 use crate::error::CommandError;
 use crate::model::{
     ArchiveComparison, ArchiveOverview, BranchSelectionResult, CataloguePage,
-    CatalogueSearchFilter, CatalogueStatus, DefinitionDossier, DiagnosticLogView, DirectoryKind,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, ReceiverDataset,
-    RecorderHealth, SetupState, WarehouseSnapshot,
+    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
+    DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
+    OverlayInspection, OverlayProfileSummary, ReceiverDataset, RecorderHealth,
+    ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 
 #[derive(Debug)]
@@ -85,14 +86,89 @@ pub fn select_timeline_branch(
 
 #[tauri::command]
 pub fn compare_archive_observations(
-    from_payload_hash: String,
-    to_payload_hash: String,
+    from_interpretation_id: String,
+    to_interpretation_id: String,
     state: State<'_, AppState>,
 ) -> Result<ArchiveComparison, CommandError> {
     state
         .application
-        .compare_observations(&from_payload_hash, &to_payload_hash)
+        .compare_observations(&from_interpretation_id, &to_interpretation_id)
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_compatibility_status(
+    state: State<'_, AppState>,
+) -> Result<CompatibilityStatus, CommandError> {
+    state.application.compatibility_status().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn create_local_compatibility_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CompatibilityUpdate, CommandError> {
+    let update = state.application.create_compatibility_override()?;
+    let _ = app.emit(
+        crate::compatibility_service::COMPATIBILITY_UPDATE_EVENT,
+        &update,
+    );
+    crate::compatibility_service::schedule_catalogue_refresh(
+        app.clone(),
+        Arc::clone(&state.application),
+        &update,
+    );
+    Ok(update)
+}
+
+#[tauri::command]
+pub fn reload_local_compatibility_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<CompatibilityUpdate, CommandError> {
+    let update = state.application.reload_compatibility()?;
+    let _ = app.emit(
+        crate::compatibility_service::COMPATIBILITY_UPDATE_EVENT,
+        &update,
+    );
+    crate::compatibility_service::schedule_catalogue_refresh(
+        app.clone(),
+        Arc::clone(&state.application),
+        &update,
+    );
+    Ok(update)
+}
+
+#[tauri::command]
+pub fn get_reinterpretation_progress(
+    state: State<'_, AppState>,
+) -> Result<ReinterpretationProgress, CommandError> {
+    state
+        .application
+        .reinterpretation_progress()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn reinterpret_latest_save(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ObservationImportResult, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.reinterpret_latest_save(|progress| {
+            let _ = app.emit(
+                crate::compatibility_service::REINTERPRETATION_PROGRESS_EVENT,
+                progress,
+            );
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "reinterpretation_worker_unavailable".to_owned(),
+        diagnostic: "The save reinterpretation worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

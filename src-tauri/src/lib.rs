@@ -3,9 +3,13 @@ mod application;
 mod automatic_observer;
 mod catalogue_service;
 mod commands;
+mod compatibility_profile;
+mod compatibility_runtime;
+mod compatibility_service;
 mod definition_catalogue;
 mod diagnostics;
 mod error;
+mod fixed_binary;
 mod game_vocabulary;
 mod model;
 mod planning_overlay;
@@ -48,6 +52,7 @@ pub fn run() {
                 application: Arc::clone(&application),
             });
             recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
+            compatibility_service::spawn(app.handle().clone(), Arc::clone(&application));
             catalogue_service::spawn(app.handle().clone(), Arc::clone(&application));
             warehouse_service::spawn(app.handle().clone(), application);
             Ok(())
@@ -62,6 +67,11 @@ pub fn run() {
             commands::set_automatic_observation,
             commands::select_timeline_branch,
             commands::compare_archive_observations,
+            commands::get_compatibility_status,
+            commands::create_local_compatibility_override,
+            commands::reload_local_compatibility_override,
+            commands::get_reinterpretation_progress,
+            commands::reinterpret_latest_save,
             commands::get_catalogue_status,
             commands::refresh_definitions,
             commands::diagnostic_log,

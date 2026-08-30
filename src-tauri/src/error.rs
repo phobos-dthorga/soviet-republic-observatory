@@ -51,6 +51,10 @@ pub enum ObservatoryError {
     CatalogueUnavailable,
     #[error("The definition catalogue request is invalid.")]
     InvalidCatalogueRequest,
+    #[error(
+        "An exact mod compatibility scope no longer matches its acknowledged definition content."
+    )]
+    CatalogueCompatibilityConflict,
     #[error("The planning overlay is invalid: {0}")]
     InvalidPlanningOverlay(&'static str),
     #[error("The selected planning overlay profile does not exist.")]
@@ -59,6 +63,12 @@ pub enum ObservatoryError {
     InvalidAnalysisPack(&'static str),
     #[error("The selected Analysis Pack does not exist.")]
     UnknownAnalysisPack,
+    #[error("The compatibility profile is invalid: {0}")]
+    InvalidCompatibilityProfile(&'static str),
+    #[error("A fixed binary compatibility layout did not match the save: {0}")]
+    BinaryCompatibilityMismatch(&'static str),
+    #[error("Another critical task of this type is already running.")]
+    CriticalTaskBusy,
 }
 
 impl ObservatoryError {
@@ -88,10 +98,14 @@ impl ObservatoryError {
             Self::WarehouseUnavailable => "warehouse_unavailable",
             Self::CatalogueUnavailable => "catalogue_unavailable",
             Self::InvalidCatalogueRequest => "invalid_catalogue_request",
+            Self::CatalogueCompatibilityConflict => "catalogue_compatibility_conflict",
             Self::InvalidPlanningOverlay(_) => "invalid_planning_overlay",
             Self::UnknownPlanningOverlay => "unknown_planning_overlay",
             Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",
             Self::UnknownAnalysisPack => "unknown_analysis_pack",
+            Self::InvalidCompatibilityProfile(_) => "invalid_compatibility_profile",
+            Self::BinaryCompatibilityMismatch(_) => "binary_compatibility_mismatch",
+            Self::CriticalTaskBusy => "critical_task_busy",
         }
     }
 

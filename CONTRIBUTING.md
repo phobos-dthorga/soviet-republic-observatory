@@ -61,6 +61,19 @@ options. Future executable plugins remain out of process with deny-by-default
 capabilities; process separation must never be described as an operating-system
 sandbox.
 
+Compatibility profiles are a separate inert contract. They may map only
+version-sensitive source aliases, allowlisted definition operations, and fixed
+bounded binary reads onto host-owned slots. Do not add a new stable fact,
+calculation, scope, unit, pointer graph, decompressor, path, URL, or executable
+behaviour through a profile. A reviewed profile change requires a sanitised
+minimum fixture and byte-for-byte equivalent normalised output for every
+unchanged fixture. See the [authoring and recovery guide](docs/compatibility-profiles.md).
+Mod mappings must reuse an exact source-qualified Workshop/WIP catalogue
+identity, declare an acknowledged supported-definition hash and explicit update
+policy, and map only to an existing allowlisted host operation. Never use them
+as load-order rules, mod configuration, save-level active-mod evidence, or
+planning-value overrides.
+
 The bundled DuckDB build produces long intermediate C++ paths. The npm Rust and
 Tauri scripts select a short operating-system temporary target directory so the
 Windows compiler does not exceed legacy path limits. Do not replace that helper

@@ -39,6 +39,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "analysis pack revisions and lifecycle",
         include_str!("../../migrations/0007_analysis_packs.sql"),
     ),
+    (
+        8,
+        "versioned game compatibility profiles and immutable interpretations",
+        include_str!("../../migrations/0008_compatibility_profiles.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {
@@ -67,5 +72,90 @@ pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError>
         )?;
         transaction.commit()?;
     }
+    backfill_compatibility_provenance(connection)?;
+    Ok(())
+}
+
+fn backfill_compatibility_provenance(connection: &mut Connection) -> Result<(), ObservatoryError> {
+    use crate::compatibility_profile::{PARSER_ENGINE_VERSION, ResolvedCompatibilityProfile};
+
+    let profile = ResolvedCompatibilityProfile::reviewed_builtin()?;
+    let document_json = profile.canonical_document_json()?;
+    connection.execute(
+        "INSERT OR IGNORE INTO compatibility_profile_revisions(\
+             profile_id, semantic_version, content_hash, resolved_hash, base_profile_hash,\
+             profile_source, mapping_classification, parser_engine_version, document_json,\
+             validated_at_ms\
+         ) VALUES(?1, ?2, ?3, ?4, NULL, 'reviewed_builtin', 'reviewed_mapping', ?5, ?6, ?7)",
+        params![
+            profile.id(),
+            profile.version(),
+            profile.content_hash(),
+            profile.resolved_hash(),
+            PARSER_ENGINE_VERSION,
+            document_json,
+            now_ms(),
+        ],
+    )?;
+    let legacy = {
+        let mut statement = connection.prepare(
+            "SELECT payload_hash FROM observation_sources WHERE interpretation_id IS NULL",
+        )?;
+        statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?
+    };
+    let had_legacy_observations = !legacy.is_empty();
+    let transaction = connection.transaction()?;
+    for raw_payload_hash in legacy {
+        let interpretation_id = profile.interpretation_id(&raw_payload_hash);
+        transaction.execute(
+            r#"UPDATE observation_sources SET
+                   raw_payload_hash = ?1,
+                   interpretation_id = ?2,
+                   profile_id = ?3,
+                   profile_semantic_version = ?4,
+                   profile_content_hash = ?5,
+                   resolved_profile_hash = ?6,
+                   base_profile_hash = NULL,
+                   profile_source = 'reviewed_builtin',
+                   mapping_classification = 'reviewed_mapping',
+                   parser_engine_version = ?7
+               WHERE payload_hash = ?1 AND interpretation_id IS NULL"#,
+            params![
+                raw_payload_hash,
+                interpretation_id,
+                profile.id(),
+                profile.version(),
+                profile.content_hash(),
+                profile.resolved_hash(),
+                PARSER_ENGINE_VERSION,
+            ],
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_projection_jobs SET source_identity = ?1, status = 'pending', \
+                 started_at_ms = NULL, applied_at_ms = NULL, error_code = NULL \
+             WHERE projection_kind = 'observation' AND source_identity = ?2",
+            params![interpretation_id, raw_payload_hash],
+        )?;
+    }
+    transaction.execute(
+        "UPDATE compatibility_runtime_state SET active_resolved_hash = ?1 \
+         WHERE singleton_id = 1 AND active_resolved_hash IS NULL",
+        [profile.resolved_hash()],
+    )?;
+    if had_legacy_observations {
+        let requested_at_ms = now_ms();
+        transaction.execute(
+            "INSERT OR IGNORE INTO warehouse_projection_jobs(\
+                 projection_id, projection_kind, source_identity, status, requested_at_ms\
+             ) VALUES(?1, 'rebuild', 'compatibility_migration', 'pending', ?2)",
+            params![
+                format!("rebuild:compatibility:{}", &profile.resolved_hash()[..32]),
+                requested_at_ms
+            ],
+        )?;
+    }
+    transaction.commit()?;
     Ok(())
 }

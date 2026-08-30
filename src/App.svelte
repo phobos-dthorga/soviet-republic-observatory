@@ -13,6 +13,7 @@
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
+  import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
   import {
     clearDiagnosticLog,
     compareArchiveObservations,
@@ -21,19 +22,24 @@
     getCatalogueStatus,
     getDiagnosticLog,
     getLatestReceiverDataset,
+    getReinterpretationProgress,
     getRecorderHealth,
     getSetupState,
     listenForRecorderUpdates,
     listenForCatalogueProgress,
+    listenForCompatibilityUpdates,
+    listenForReinterpretationProgress,
     selectTimelineBranch,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
     CatalogueRefreshProgress,
+    CompatibilityUpdate,
     DiagnosticLogView,
     ReceiverDataset,
     RecorderHealth,
     RecorderUpdate,
+    ReinterpretationProgress,
     SetupState,
   } from "./lib/observations/types";
 
@@ -74,6 +80,7 @@
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
   let catalogueProgress = $state<CatalogueRefreshProgress | null>(null);
+  let reinterpretationProgress = $state<ReinterpretationProgress | null>(null);
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -140,6 +147,12 @@
     }
   }
 
+  function acceptCompatibilityUpdate(update: CompatibilityUpdate): void {
+    if (setupState) {
+      setupState = { ...setupState, compatibility: update.status };
+    }
+  }
+
   async function refreshDiagnostics(): Promise<void> {
     if (!desktopAvailable || diagnosticsBusy) return;
     diagnosticsBusy = true;
@@ -181,6 +194,8 @@
     let disposed = false;
     let stopListening: (() => void) | undefined;
     let stopCatalogueListening: (() => void) | undefined;
+    let stopCompatibilityListening: (() => void) | undefined;
+    let stopReinterpretationListening: (() => void) | undefined;
     void Promise.all([
       getSetupState(),
       getLatestReceiverDataset(),
@@ -197,6 +212,12 @@
       if (disposed) unlisten();
       else stopListening = unlisten;
     });
+    void listenForCompatibilityUpdates(acceptCompatibilityUpdate).then(
+      (unlisten) => {
+        if (disposed) unlisten();
+        else stopCompatibilityListening = unlisten;
+      },
+    );
     void observeLatestTaskProgress(
       {
         listen: listenForCatalogueProgress,
@@ -209,10 +230,24 @@
       if (disposed) unlisten();
       else stopCatalogueListening = unlisten;
     });
+    void observeLatestTaskProgress(
+      {
+        listen: listenForReinterpretationProgress,
+        read: getReinterpretationProgress,
+      },
+      (progress) => {
+        if (!disposed) reinterpretationProgress = progress;
+      },
+    ).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopReinterpretationListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
       stopCatalogueListening?.();
+      stopCompatibilityListening?.();
+      stopReinterpretationListening?.();
     };
   });
 
@@ -303,6 +338,20 @@
           currentItem={catalogueProgress.current_file ??
             catalogueProgress.current_source}
           onclick={() => (activeWorkspace = "materials")}
+        />
+      {/if}
+      {#if reinterpretationProgress && ["reading", "parsing", "persisting", "queueing_warehouse", "failed"].includes(reinterpretationProgress.phase)}
+        {@const view = reinterpretationProgressView(
+          reinterpretationProgress,
+          $translation,
+        )}
+        <TaskProgressIndicator
+          label={$translation("reinterpretation-global-progress")}
+          detail={view.heading}
+          percent={view.progressPercent}
+          failed={view.state === "failed"}
+          currentItem={view.currentItem}
+          onclick={() => (observationDialogOpen = true)}
         />
       {/if}
       <button
@@ -430,6 +479,7 @@
   {desktopAvailable}
   setup={setupState}
   dataset={receiverDataset}
+  {reinterpretationProgress}
   onclose={() => (observationDialogOpen = false)}
   onsetupchange={acceptSetupChange}
   onobservation={acceptObservation}

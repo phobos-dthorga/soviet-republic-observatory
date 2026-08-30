@@ -237,13 +237,20 @@ line number, unit, parser version, and catalogue generation. An unresolved
 automatic construction coefficient is a rule input, not a material-demand
 quantity.
 
+A definition fact produced through a compatibility profile additionally retains
+the stable mapping ID, optional catalogue-scope ID, reviewed/player mapping
+classification, update policy, acknowledged supported-definition hash, current
+supported-definition hash, and scope state. These are interpretation
+provenance; they do not change the installed value.
+
 An overlay operation is `player_override`; a supplemental entity is
 `player_definition`. For every affected scalar or repeatable value the public
 shape is `original → override → effective`. A failed revision or value
 precondition makes the override unavailable and leaves the original effective.
 It is never silently rebased.
 
-Planning and model results pin the catalogue generation, active profile and
+Planning and model results pin the catalogue generation, compatibility profile
+and resolved hash, mapping classification, active planning-overlay profile and
 revision, SQLite observation watermark, warehouse schema, and projector
 version. Results from different snapshots cannot be joined as though they were
 one coherent model run.

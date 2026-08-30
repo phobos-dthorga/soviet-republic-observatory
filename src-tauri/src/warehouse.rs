@@ -10,15 +10,17 @@ use crate::definition_catalogue::{
 };
 use crate::error::ObservatoryError;
 use crate::model::{
-    CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter, DefinitionDossier,
-    DefinitionFact, DefinitionRelation, DefinitionSummary, DefinitionValue, ReceiverDataset,
-    UnknownDirectiveSummary, WarehouseHealth, WarehousePhase, WarehouseSnapshot,
+    CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
+    CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
+    DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
+    DefinitionValue, ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth, WarehousePhase,
+    WarehouseSnapshot,
 };
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 2;
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 4;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
@@ -40,6 +42,7 @@ fn catalogue_publish_row_count(generation: &CatalogueGeneration) -> u64 {
         .sources
         .len()
         .saturating_add(generation.files.len())
+        .saturating_add(generation.compatibility_scopes.len())
         .saturating_add(entity_rows)
         .saturating_add(detail_rows)
         .min(u64::MAX as usize) as u64
@@ -59,6 +62,25 @@ fn note_published_row(
     }
 }
 
+fn scope_state_name(state: CompatibilityCatalogueScopeState) -> &'static str {
+    match state {
+        CompatibilityCatalogueScopeState::Matched => "matched",
+        CompatibilityCatalogueScopeState::Dormant => "dormant",
+        CompatibilityCatalogueScopeState::UpdatedUnreviewed => "updated_unreviewed",
+        CompatibilityCatalogueScopeState::Conflict => "conflict",
+    }
+}
+
+fn parse_scope_state(value: Option<String>) -> Option<CompatibilityCatalogueScopeState> {
+    match value.as_deref() {
+        Some("matched") => Some(CompatibilityCatalogueScopeState::Matched),
+        Some("dormant") => Some(CompatibilityCatalogueScopeState::Dormant),
+        Some("updated_unreviewed") => Some(CompatibilityCatalogueScopeState::UpdatedUnreviewed),
+        Some("conflict") => Some(CompatibilityCatalogueScopeState::Conflict),
+        _ => None,
+    }
+}
+
 const MIGRATIONS: &[(u32, &str)] = &[
     (
         1,
@@ -67,6 +89,14 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         2,
         include_str!("../warehouse_migrations/0002_planning_projections.sql"),
+    ),
+    (
+        3,
+        include_str!("../warehouse_migrations/0003_compatibility_provenance.sql"),
+    ),
+    (
+        4,
+        include_str!("../warehouse_migrations/0004_definition_mapping_provenance.sql"),
     ),
 ];
 
@@ -184,7 +214,12 @@ impl AnalyticalWarehouse {
         )?;
 
         transaction.execute(
-            "INSERT INTO catalogue_generations VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO catalogue_generations(\
+                 generation_id, game_build_id, parser_version, created_at_ms, source_count,\
+                 file_count, entity_count, property_count, relation_count, warning_count,\
+                 compatibility_profile_id, compatibility_profile_version,\
+                 compatibility_profile_hash, mapping_classification\
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 generation.generation_id,
                 generation.game_build_id,
@@ -196,6 +231,10 @@ impl AnalyticalWarehouse {
                 0_u64,
                 0_u64,
                 warning_count,
+                generation.compatibility.profile_id,
+                generation.compatibility.profile_version,
+                generation.compatibility.resolved_profile_hash,
+                generation.compatibility.mapping_classification,
             ],
         )?;
 
@@ -225,6 +264,23 @@ impl AnalyticalWarehouse {
                     file.byte_size,
                     DEFINITION_PARSER_VERSION,
                     file.warning_count,
+                ])?;
+                note_published_row(&mut report, &mut rows_written, rows_total);
+            }
+        }
+        {
+            let mut appender = transaction.appender("catalogue_scope_evaluations")?;
+            for scope in &generation.compatibility_scopes {
+                appender.append_row(params![
+                    generation.generation_id,
+                    scope.id,
+                    scope.source_id,
+                    scope.package_name,
+                    scope.update_policy,
+                    scope.acknowledged_content_hash,
+                    scope.current_content_hash,
+                    scope.mapping_count,
+                    scope_state_name(scope.state),
                 ])?;
                 note_published_row(&mut report, &mut rows_written, rows_total);
             }
@@ -261,6 +317,9 @@ impl AnalyticalWarehouse {
                         property.raw_arguments,
                         "game_definition",
                         property.resolution,
+                        property.mapping_id,
+                        property.catalogue_scope_id,
+                        property.mapping_classification,
                     ])?;
                     note_published_row(&mut report, &mut rows_written, rows_total);
                 }
@@ -282,6 +341,9 @@ impl AnalyticalWarehouse {
                         relation.source_line,
                         relation.raw_arguments,
                         relation.resolution,
+                        relation.mapping_id,
+                        relation.catalogue_scope_id,
+                        relation.mapping_classification,
                     ])?;
                     note_published_row(&mut report, &mut rows_written, rows_total);
                 }
@@ -425,7 +487,11 @@ impl AnalyticalWarehouse {
         let transaction = connection.transaction()?;
         {
             let mut statement = transaction.prepare(
-                "INSERT INTO observation_metrics VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
+                "INSERT INTO observation_metrics(\
+                     payload_hash, branch_id, record_id, year, day, game_day, metric_id, value,\
+                     interpretation_id, raw_payload_hash, profile_id, profile_version,\
+                     profile_content_hash, resolved_profile_hash, mapping_classification\
+                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
                  ON CONFLICT DO NOTHING",
             )?;
             for point in &dataset.points {
@@ -436,7 +502,7 @@ impl AnalyticalWarehouse {
                     ("core.citizens.electronics.computer", point.computer),
                 ] {
                     statement.execute(params![
-                        dataset.payload_hash,
+                        dataset.interpretation_id,
                         dataset.branch_id,
                         point.record_id,
                         point.year,
@@ -444,6 +510,13 @@ impl AnalyticalWarehouse {
                         point.game_day,
                         metric_id,
                         value,
+                        dataset.interpretation_id,
+                        dataset.payload_hash,
+                        dataset.compatibility.profile_id,
+                        dataset.compatibility.profile_version,
+                        dataset.compatibility.profile_content_hash,
+                        dataset.compatibility.resolved_profile_hash,
+                        dataset.compatibility.mapping_classification,
                     ])?;
                 }
             }
@@ -452,13 +525,13 @@ impl AnalyticalWarehouse {
             &transaction,
             projection_id,
             "observation",
-            &dataset.payload_hash,
+            &dataset.interpretation_id,
             applied_at_ms,
         )?;
         transaction.execute(
             "UPDATE warehouse_metadata SET last_projection_ms = ?1, observation_watermark = ?2 \
              WHERE singleton_id = 1",
-            params![applied_at_ms, dataset.payload_hash],
+            params![applied_at_ms, dataset.interpretation_id],
         )?;
         transaction.commit()?;
         Ok(())
@@ -645,7 +718,9 @@ impl AnalyticalWarehouse {
                 "SELECT generation.generation_id, generation.game_build_id, generation.parser_version, \
                         generation.created_at_ms, generation.source_count, generation.file_count, \
                         generation.entity_count, generation.property_count, generation.relation_count, \
-                        generation.warning_count \
+                        generation.warning_count, generation.compatibility_profile_id,\
+                        generation.compatibility_profile_version, generation.compatibility_profile_hash,\
+                        generation.mapping_classification \
                  FROM catalogue_generations generation JOIN warehouse_metadata metadata \
                    ON generation.generation_id = metadata.current_catalogue_generation_id \
                  WHERE metadata.singleton_id = 1",
@@ -662,10 +737,45 @@ impl AnalyticalWarehouse {
                         property_count: row.get(7)?,
                         relation_count: row.get(8)?,
                         warning_count: row.get(9)?,
+                        compatibility_profile_id: row.get(10)?,
+                        compatibility_profile_version: row.get(11)?,
+                        compatibility_profile_hash: row.get(12)?,
+                        mapping_classification: row.get(13)?,
                     })
                 },
             )
             .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn catalogue_scope_statuses(
+        &self,
+    ) -> Result<Vec<CompatibilityCatalogueScopeStatus>, ObservatoryError> {
+        let connection = self.lock()?;
+        let mut statement = connection.prepare(
+            "SELECT scope.scope_id, scope.source_id, scope.package_name, scope.update_policy, \
+                    scope.acknowledged_content_hash, scope.current_content_hash, \
+                    scope.mapping_count, scope.state \
+             FROM catalogue_scope_evaluations scope \
+             JOIN warehouse_metadata metadata \
+               ON scope.generation_id = metadata.current_catalogue_generation_id \
+             WHERE metadata.singleton_id = 1 ORDER BY scope.scope_id",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok(CompatibilityCatalogueScopeStatus {
+                    id: row.get(0)?,
+                    source_id: row.get(1)?,
+                    package_name: row.get(2)?,
+                    update_policy: row.get(3)?,
+                    acknowledged_content_hash: row.get(4)?,
+                    current_content_hash: row.get(5)?,
+                    mapping_count: row.get(6)?,
+                    state: parse_scope_state(row.get(7)?)
+                        .unwrap_or(CompatibilityCatalogueScopeState::Conflict),
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
 
@@ -803,8 +913,16 @@ impl AnalyticalWarehouse {
         {
             let mut statement = connection.prepare(
                 "SELECT field_id, occurrence, value_kind, value_number, value_text, unit, \
-                        source_directive, source_line, raw_arguments, evidence_kind, resolution \
-                 FROM definition_properties WHERE revision_hash = ?1 ORDER BY field_id, occurrence",
+                        source_directive, source_line, raw_arguments, evidence_kind, resolution, \
+                        properties.mapping_id, properties.catalogue_scope_id, \
+                        properties.mapping_classification, scope.state, scope.update_policy, \
+                        scope.acknowledged_content_hash, scope.current_content_hash \
+                 FROM definition_properties properties \
+                 JOIN warehouse_metadata metadata ON metadata.singleton_id = 1 \
+                 LEFT JOIN catalogue_scope_evaluations scope \
+                   ON scope.generation_id = metadata.current_catalogue_generation_id \
+                  AND scope.scope_id = properties.catalogue_scope_id \
+                 WHERE revision_hash = ?1 ORDER BY field_id, occurrence",
             )?;
             for row in statement.query_map([&summary.revision_hash], |row| {
                 let field_id = row.get::<_, String>(0)?;
@@ -829,6 +947,15 @@ impl AnalyticalWarehouse {
                         evidence_kind: row.get(9)?,
                         resolution: row.get(10)?,
                         conflict_code: None,
+                        mapping: DefinitionMappingProvenance {
+                            mapping_id: row.get(11)?,
+                            catalogue_scope_id: row.get(12)?,
+                            mapping_classification: row.get(13)?,
+                            scope_state: parse_scope_state(row.get(14)?),
+                            update_policy: row.get(15)?,
+                            acknowledged_content_hash: row.get(16)?,
+                            current_content_hash: row.get(17)?,
+                        },
                     },
                 ))
             })? {
@@ -877,6 +1004,15 @@ impl AnalyticalWarehouse {
                     evidence_kind: "player_definition".to_owned(),
                     resolution: "overlay".to_owned(),
                     conflict_code: conflict.clone(),
+                    mapping: DefinitionMappingProvenance {
+                        mapping_id: "host.planning_overlay".to_owned(),
+                        catalogue_scope_id: None,
+                        mapping_classification: "player_override".to_owned(),
+                        scope_state: None,
+                        update_policy: None,
+                        acknowledged_content_hash: None,
+                        current_content_hash: None,
+                    },
                 });
                 entry.override_value = override_value.clone();
                 entry.conflict_code = conflict.clone();
@@ -893,8 +1029,16 @@ impl AnalyticalWarehouse {
         let relations = {
             let mut statement = connection.prepare(
                 "SELECT relation_kind, occurrence, target_id, quantity, unit, phase_id, \
-                        source_directive, source_line, raw_arguments, resolution \
-                 FROM definition_relations WHERE revision_hash = ?1 \
+                        source_directive, source_line, raw_arguments, resolution, \
+                        relations.mapping_id, relations.catalogue_scope_id, \
+                        relations.mapping_classification, scope.state, scope.update_policy, \
+                        scope.acknowledged_content_hash, scope.current_content_hash \
+                 FROM definition_relations relations \
+                 JOIN warehouse_metadata metadata ON metadata.singleton_id = 1 \
+                 LEFT JOIN catalogue_scope_evaluations scope \
+                   ON scope.generation_id = metadata.current_catalogue_generation_id \
+                  AND scope.scope_id = relations.catalogue_scope_id \
+                 WHERE revision_hash = ?1 \
                  ORDER BY relation_kind, occurrence",
             )?;
             statement
@@ -910,6 +1054,15 @@ impl AnalyticalWarehouse {
                         source_line: row.get(7)?,
                         raw_arguments: row.get(8)?,
                         resolution: row.get(9)?,
+                        mapping: DefinitionMappingProvenance {
+                            mapping_id: row.get(10)?,
+                            catalogue_scope_id: row.get(11)?,
+                            mapping_classification: row.get(12)?,
+                            scope_state: parse_scope_state(row.get(13)?),
+                            update_policy: row.get(14)?,
+                            acknowledged_content_hash: row.get(15)?,
+                            current_content_hash: row.get(16)?,
+                        },
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?
@@ -955,17 +1108,27 @@ impl AnalyticalWarehouse {
     pub fn snapshot(&self) -> Result<WarehouseSnapshot, ObservatoryError> {
         self.lock()?
             .query_row(
-                "SELECT current_catalogue_generation_id, active_overlay_profile_id, \
-                    active_overlay_revision, observation_watermark \
-             FROM warehouse_metadata WHERE singleton_id = 1 \
-               AND current_catalogue_generation_id IS NOT NULL",
+                "SELECT metadata.current_catalogue_generation_id, \
+                    generation.compatibility_profile_id, \
+                    generation.compatibility_profile_version, \
+                    generation.compatibility_profile_hash, generation.mapping_classification, \
+                    metadata.active_overlay_profile_id, metadata.active_overlay_revision, \
+                    metadata.observation_watermark \
+             FROM warehouse_metadata metadata \
+             JOIN catalogue_generations generation \
+               ON generation.generation_id = metadata.current_catalogue_generation_id \
+             WHERE metadata.singleton_id = 1",
                 [],
                 |row| {
                     Ok(WarehouseSnapshot {
                         catalogue_generation_id: row.get(0)?,
-                        overlay_profile_id: row.get(1)?,
-                        overlay_revision: row.get(2)?,
-                        observation_watermark: row.get(3)?,
+                        compatibility_profile_id: row.get(1)?,
+                        compatibility_profile_version: row.get(2)?,
+                        compatibility_profile_hash: row.get(3)?,
+                        mapping_classification: row.get(4)?,
+                        overlay_profile_id: row.get(5)?,
+                        overlay_revision: row.get(6)?,
+                        observation_watermark: row.get(7)?,
                         warehouse_schema_version: WAREHOUSE_SCHEMA_VERSION,
                         projector_version: PROJECTOR_VERSION.to_owned(),
                     })
@@ -1218,21 +1381,37 @@ mod tests {
         let warehouse = AnalyticalWarehouse::initialise(directory.path().join("catalogue.duckdb"))
             .expect("warehouse");
         let revision_hash = "a".repeat(64);
-        let entity_id = "base.buildings::building::factory".to_owned();
+        let entity_id = "workshop.123::building::factory".to_owned();
+        let mut compatibility =
+            crate::compatibility_profile::ResolvedCompatibilityProfile::reviewed_builtin()
+                .expect("profile")
+                .provenance();
+        compatibility.mapping_classification = "player_mapped".to_owned();
         let generation = CatalogueGeneration {
             generation_id: "b".repeat(64),
             game_build_id: Some("test-build".to_owned()),
             created_at_ms: 10,
+            compatibility,
+            compatibility_scopes: vec![CompatibilityCatalogueScopeStatus {
+                id: "local.example.factory".to_owned(),
+                source_id: "workshop.123".to_owned(),
+                package_name: Some("Scoped factory".to_owned()),
+                update_policy: "exact".to_owned(),
+                acknowledged_content_hash: "c".repeat(64),
+                current_content_hash: Some("c".repeat(64)),
+                mapping_count: 1,
+                state: CompatibilityCatalogueScopeState::Matched,
+            }],
             sources: vec![CatalogueSource {
-                source_id: "base.buildings".to_owned(),
-                source_kind: "base".to_owned(),
-                package_name: "Base buildings".to_owned(),
+                source_id: "workshop.123".to_owned(),
+                source_kind: "workshop".to_owned(),
+                package_name: "Scoped factory".to_owned(),
                 package_version: None,
                 content_hash: "c".repeat(64),
                 file_count: 1,
             }],
             files: vec![CatalogueFile {
-                source_id: "base.buildings".to_owned(),
+                source_id: "workshop.123".to_owned(),
                 logical_path: "factory.ini".to_owned(),
                 content_hash: "d".repeat(64),
                 byte_size: 10,
@@ -1242,7 +1421,7 @@ mod tests {
                 entity_id: entity_id.clone(),
                 revision_hash: revision_hash.clone(),
                 entity_kind: "building".to_owned(),
-                source_id: "base.buildings".to_owned(),
+                source_id: "workshop.123".to_owned(),
                 source_object_id: "factory".to_owned(),
                 display_name: "Test factory".to_owned(),
                 coverage: "complete".to_owned(),
@@ -1257,6 +1436,9 @@ mod tests {
                     source_line: 3,
                     raw_arguments: "20".to_owned(),
                     resolution: "verified".to_owned(),
+                    mapping_id: "local.example.factory.workers".to_owned(),
+                    catalogue_scope_id: Some("local.example.factory".to_owned()),
+                    mapping_classification: "player_mapped".to_owned(),
                 }],
                 relations: vec![ParsedRelation {
                     relation_kind: "construction_material_explicit".to_owned(),
@@ -1269,6 +1451,9 @@ mod tests {
                     source_line: 5,
                     raw_arguments: "steel 12".to_owned(),
                     resolution: "explicit_quantity".to_owned(),
+                    mapping_id: "core.construction.material_explicit".to_owned(),
+                    catalogue_scope_id: None,
+                    mapping_classification: "reviewed_mapping".to_owned(),
                 }],
                 unknown_directives: vec![("$UNREVIEWED".to_owned(), 1)],
             }],
@@ -1330,6 +1515,22 @@ mod tests {
             Some(25.0)
         );
         assert_eq!(dossier.facts[0].evidence_kind, "player_override");
+        assert_eq!(
+            dossier.facts[0].mapping.mapping_id,
+            "local.example.factory.workers"
+        );
+        assert_eq!(
+            dossier.facts[0].mapping.scope_state,
+            Some(CompatibilityCatalogueScopeState::Matched)
+        );
+        assert_eq!(
+            warehouse.catalogue_scope_statuses().expect("scopes").len(),
+            1
+        );
+        assert_eq!(
+            dossier.relations[0].mapping.mapping_id,
+            "core.construction.material_explicit"
+        );
         let snapshot = warehouse.snapshot().expect("pinned model snapshot");
         assert_eq!(snapshot.catalogue_generation_id, generation.generation_id);
         assert_eq!(

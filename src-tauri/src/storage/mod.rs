@@ -1,6 +1,7 @@
 mod analysis_packs;
 mod archive;
 mod comparison;
+mod compatibility;
 mod connection;
 mod history;
 mod migrations;

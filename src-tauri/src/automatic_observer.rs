@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::compatibility_profile::ResolvedCompatibilityProfile;
 use crate::error::ObservatoryError;
 use crate::model::{
     AutomaticObservationUpdate, AutomaticObserverPhase, AutomaticObserverStatus, ImportOutcome,
@@ -96,12 +97,31 @@ impl AutomaticObserver {
         );
     }
 
+    #[cfg(test)]
     pub fn poll(
         &mut self,
         storage: &ObservatoryStorage,
         directory: Option<&Path>,
         observed_at_ms: i64,
         discovery_source: RecorderDiscoverySource,
+    ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin()?;
+        self.poll_with_profile(
+            storage,
+            directory,
+            observed_at_ms,
+            discovery_source,
+            &profile,
+        )
+    }
+
+    pub fn poll_with_profile(
+        &mut self,
+        storage: &ObservatoryStorage,
+        directory: Option<&Path>,
+        observed_at_ms: i64,
+        discovery_source: RecorderDiscoverySource,
+        profile: &ResolvedCompatibilityProfile,
     ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
         if !self.enabled {
             self.set_enabled(false, directory.is_some());
@@ -256,10 +276,10 @@ impl AutomaticObserver {
         let attempt = storage
             .mark_recorder_candidate_reading(ledger.candidate_id, observed_at_ms)?
             .min(u8::MAX as u32) as u8;
-        match inspect_save_archive(&candidate.path) {
+        match inspect_save_archive(&candidate.path, profile) {
             Ok(inspection) => {
                 let inserted = storage.save_inspection(&inspection)?;
-                let dataset = storage.load_dataset(&inspection.payload_hash)?;
+                let dataset = storage.load_dataset(&inspection.interpretation_id)?;
                 let outcome = if inserted {
                     ImportOutcome::Imported
                 } else {
@@ -268,7 +288,7 @@ impl AutomaticObserver {
                 storage.complete_recorder_candidate(
                     ledger.candidate_id,
                     outcome,
-                    &inspection.payload_hash,
+                    &inspection.interpretation_id,
                     observed_at_ms,
                 )?;
                 let import_result = ObservationImportResult { outcome, dataset };

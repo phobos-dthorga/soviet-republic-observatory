@@ -497,8 +497,11 @@ fn load_archive_observations(
     connection: &Connection,
 ) -> Result<Vec<ArchiveObservation>, ObservatoryError> {
     let mut statement = connection.prepare(
-        r#"SELECT os.payload_hash, os.source_file_name, os.imported_at_ms, os.branch_id,
-                  ol.relationship, ol.parent_payload_hash, ol.shared_record_count,
+        r#"SELECT os.raw_payload_hash, os.interpretation_id, os.source_file_name,
+                  os.imported_at_ms, os.branch_id, ol.relationship,
+                  (SELECT parent.raw_payload_hash FROM observation_sources parent
+                   WHERE parent.payload_hash = ol.parent_payload_hash),
+                  ol.shared_record_count,
                   os.history_records, os.coverage_status,
                   (SELECT node.year FROM observation_history_tips tip
                    JOIN receiver_history_nodes node ON node.node_id = tip.tip_node_id
@@ -514,7 +517,9 @@ fn load_archive_observations(
                   (SELECT COUNT(*) FROM snapshot_scopes scope
                    WHERE scope.payload_hash = os.payload_hash AND scope.scope_kind = 'city'),
                   COALESCE((SELECT SUM(scope.supported_fact_count) FROM snapshot_scopes scope
-                   WHERE scope.payload_hash = os.payload_hash AND scope.scope_kind = 'city'), 0)
+                   WHERE scope.payload_hash = os.payload_hash AND scope.scope_kind = 'city'), 0),
+                  os.mapping_classification, os.profile_id, os.profile_semantic_version,
+                  os.resolved_profile_hash
            FROM observation_sources os
            JOIN observation_lineage ol ON ol.payload_hash = os.payload_hash
            ORDER BY os.imported_at_ms DESC, os.payload_hash DESC
@@ -522,26 +527,31 @@ fn load_archive_observations(
     )?;
     statement
         .query_map([], |row| {
-            let coverage = match row.get::<_, String>(8)?.as_str() {
+            let coverage = match row.get::<_, String>(9)?.as_str() {
                 "complete" => CoverageStatus::Complete,
                 _ => CoverageStatus::Partial,
             };
             Ok(ArchiveObservation {
                 payload_hash: row.get(0)?,
-                source_file_name: row.get(1)?,
-                imported_at_ms: row.get(2)?,
-                branch_id: row.get(3)?,
-                relationship: row.get(4)?,
-                parent_payload_hash: row.get(5)?,
-                shared_record_count: row.get(6)?,
-                history_records: row.get(7)?,
+                interpretation_id: row.get(1)?,
+                source_file_name: row.get(2)?,
+                imported_at_ms: row.get(3)?,
+                branch_id: row.get(4)?,
+                relationship: row.get(5)?,
+                parent_payload_hash: row.get(6)?,
+                shared_record_count: row.get(7)?,
+                history_records: row.get(8)?,
                 coverage_status: coverage,
-                latest_year: row.get(9)?,
-                latest_day: row.get(10)?,
-                file_observation_count: row.get(11)?,
-                republic_snapshot_fields: row.get(12)?,
-                city_snapshot_count: row.get(13)?,
-                city_snapshot_fields: row.get(14)?,
+                latest_year: row.get(10)?,
+                latest_day: row.get(11)?,
+                file_observation_count: row.get(12)?,
+                republic_snapshot_fields: row.get(13)?,
+                city_snapshot_count: row.get(14)?,
+                city_snapshot_fields: row.get(15)?,
+                mapping_classification: row.get(16)?,
+                profile_id: row.get(17)?,
+                profile_version: row.get(18)?,
+                resolved_profile_hash: row.get(19)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()

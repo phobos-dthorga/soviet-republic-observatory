@@ -4,20 +4,22 @@ use std::io::BufRead;
 
 use sha2::{Digest, Sha256};
 
+use crate::compatibility_profile::{ResolvedCompatibilityProfile, StatsContext, StatsMarkerSlot};
 use crate::error::ObservatoryError;
 use crate::model::{
     CoverageReport, CoverageStatus, CoverageWarning, ParsedStats, ReceiverRecord, SNAPSHOT_FACTS,
-    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceLineSet,
+    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
 };
 
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 16 * 1024;
 const DAYS_PER_GAME_YEAR: i64 = 365;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct FieldValue<T> {
     value: T,
     line: u64,
+    source_field: String,
 }
 
 #[derive(Debug)]
@@ -36,7 +38,7 @@ struct RecordDraft {
 struct SnapshotDraft {
     scope_kind: SnapshotScopeKind,
     scope_id: String,
-    facts: BTreeMap<&'static str, SnapshotFact>,
+    facts: BTreeMap<String, SnapshotFact>,
 }
 
 impl SnapshotDraft {
@@ -72,7 +74,10 @@ impl RecordDraft {
     }
 }
 
-pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, ObservatoryError> {
+pub fn parse_stats<R: BufRead>(
+    mut reader: R,
+    profile: &ResolvedCompatibilityProfile,
+) -> Result<ParsedStats, ObservatoryError> {
     let mut hash = Sha256::new();
     let mut bytes_read = 0_u64;
     let mut line_number = 0_u64;
@@ -114,18 +119,24 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
             .map_err(|_| ObservatoryError::InvalidStatsEncoding)?
             .trim_end_matches(['\r', '\n']);
 
-        if line.starts_with("$STATS_FORMAT") {
-            let version: u32 = parse_single_value(line).ok_or(
+        let directive = directive_name(line);
+        let marker = directive.and_then(|directive| profile.marker_for(directive));
+
+        if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::Format) {
+            let version: u16 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedReceiverHistory("invalid stats format marker"),
             )?;
-            if version != 1 {
+            if !marker
+                .and_then(|marker| marker.accepted_values.as_ref())
+                .is_some_and(|values| values.contains(&version))
+            {
                 return Err(ObservatoryError::UnsupportedStatsFormat);
             }
             continue;
         }
 
-        if line.starts_with("$STAT_RECORD") {
-            finalise_snapshot(current_snapshot.take(), &mut snapshots);
+        if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::HistoryRecord) {
+            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
             finalise_record(
                 current.take(),
                 &mut records,
@@ -152,7 +163,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
             continue;
         }
 
-        if line.starts_with("$STAT_CURRENT") {
+        if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::CurrentState) {
             finalise_record(
                 current.take(),
                 &mut records,
@@ -161,12 +172,12 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
                 &mut dropped_records,
                 &mut chartable_records,
             )?;
-            finalise_snapshot(current_snapshot.take(), &mut snapshots);
+            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
             current_snapshot = Some(SnapshotDraft::republic());
             continue;
         }
 
-        if line.starts_with("$STAT_CITY") {
+        if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::City) {
             finalise_record(
                 current.take(),
                 &mut records,
@@ -175,7 +186,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
                 &mut dropped_records,
                 &mut chartable_records,
             )?;
-            finalise_snapshot(current_snapshot.take(), &mut snapshots);
+            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
             let city_source_id: u32 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedSnapshot("invalid city identifier"),
             )?;
@@ -189,7 +200,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
         }
 
         if let Some(snapshot) = current_snapshot.as_mut() {
-            assign_snapshot_fact(snapshot, line, line_number)?;
+            assign_snapshot_fact(profile, snapshot, line, line_number)?;
             continue;
         }
 
@@ -197,44 +208,58 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
             continue;
         };
 
-        match directive_name(line) {
-            Some("$DATE_YEAR") => assign_field(
+        match marker.map(|marker| marker.slot) {
+            Some(StatsMarkerSlot::DateYear) => assign_field(
                 &mut record.year,
                 parse_single_value::<i32>(line),
                 line_number,
+                directive.unwrap_or_default(),
                 &mut record.malformed,
             )?,
-            Some("$DATE_DAY") => assign_field(
+            Some(StatsMarkerSlot::DateDay) => assign_field(
                 &mut record.day,
                 parse_single_value::<u16>(line).filter(|day| *day < DAYS_PER_GAME_YEAR as u16),
                 line_number,
+                directive.unwrap_or_default(),
                 &mut record.malformed,
             )?,
-            Some("$Citizens_EletronicNone") => assign_field(
-                &mut record.none,
-                parse_single_value::<u64>(line),
-                line_number,
-                &mut record.malformed,
-            )?,
-            Some("$Citizens_EletrinicRadio") => assign_field(
-                &mut record.radio,
-                parse_single_value::<u64>(line),
-                line_number,
-                &mut record.malformed,
-            )?,
-            Some("$Citizens_EletronicTV") => assign_field(
-                &mut record.television,
-                parse_single_value::<u64>(line),
-                line_number,
-                &mut record.malformed,
-            )?,
-            Some("$Citizens_EletronicComputer") => assign_field(
-                &mut record.computer,
-                parse_single_value::<u64>(line),
-                line_number,
-                &mut record.malformed,
-            )?,
-            _ => {}
+            _ => {
+                let Some(directive) = directive else { continue };
+                let Some(field) = profile.field_for(directive, StatsContext::History) else {
+                    continue;
+                };
+                match field.host_slot.as_str() {
+                    "core.citizens.electronics.none" => assign_field(
+                        &mut record.none,
+                        parse_single_value::<u64>(line),
+                        line_number,
+                        directive,
+                        &mut record.malformed,
+                    )?,
+                    "core.citizens.electronics.radio" => assign_field(
+                        &mut record.radio,
+                        parse_single_value::<u64>(line),
+                        line_number,
+                        directive,
+                        &mut record.malformed,
+                    )?,
+                    "core.citizens.electronics.television" => assign_field(
+                        &mut record.television,
+                        parse_single_value::<u64>(line),
+                        line_number,
+                        directive,
+                        &mut record.malformed,
+                    )?,
+                    "core.citizens.electronics.computer" => assign_field(
+                        &mut record.computer,
+                        parse_single_value::<u64>(line),
+                        line_number,
+                        directive,
+                        &mut record.malformed,
+                    )?,
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -246,7 +271,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
         &mut dropped_records,
         &mut chartable_records,
     )?;
-    finalise_snapshot(current_snapshot, &mut snapshots);
+    finalise_snapshot(profile, current_snapshot, &mut snapshots);
 
     if records.is_empty() {
         return Err(ObservatoryError::ReceiverHistoryUnavailable);
@@ -283,6 +308,7 @@ pub fn parse_stats<R: BufRead>(mut reader: R) -> Result<ParsedStats, Observatory
 }
 
 fn assign_snapshot_fact(
+    profile: &ResolvedCompatibilityProfile,
     snapshot: &mut SnapshotDraft,
     line: &str,
     line_number: u64,
@@ -290,13 +316,17 @@ fn assign_snapshot_fact(
     let Some(source_field) = directive_name(line) else {
         return Ok(());
     };
-    let Some(definition) = SNAPSHOT_FACTS.iter().find(|definition| {
-        definition.source_field == source_field
-            && match snapshot.scope_kind {
-                SnapshotScopeKind::Republic => definition.republic,
-                SnapshotScopeKind::City => definition.city,
-            }
-    }) else {
+    let context = match snapshot.scope_kind {
+        SnapshotScopeKind::Republic => StatsContext::Republic,
+        SnapshotScopeKind::City => StatsContext::City,
+    };
+    let Some(mapping) = profile.field_for(source_field, context) else {
+        return Ok(());
+    };
+    let Some(definition) = SNAPSHOT_FACTS
+        .iter()
+        .find(|definition| definition.id == mapping.host_slot)
+    else {
         return Ok(());
     };
     if snapshot.facts.contains_key(definition.id) {
@@ -308,10 +338,10 @@ fn assign_snapshot_fact(
         return Ok(());
     };
     snapshot.facts.insert(
-        definition.id,
+        definition.id.to_owned(),
         SnapshotFact {
-            fact_id: definition.id,
-            source_field: definition.source_field,
+            fact_id: definition.id.to_owned(),
+            source_field: source_field.to_owned(),
             value,
             source_line: line_number,
         },
@@ -319,18 +349,18 @@ fn assign_snapshot_fact(
     Ok(())
 }
 
-fn finalise_snapshot(draft: Option<SnapshotDraft>, snapshots: &mut Vec<SaveSnapshot>) {
+fn finalise_snapshot(
+    profile: &ResolvedCompatibilityProfile,
+    draft: Option<SnapshotDraft>,
+    snapshots: &mut Vec<SaveSnapshot>,
+) {
     let Some(draft) = draft else {
         return;
     };
-    let expected_fact_count = SNAPSHOT_FACTS
-        .iter()
-        .filter(|definition| match draft.scope_kind {
-            SnapshotScopeKind::Republic => definition.republic,
-            SnapshotScopeKind::City => definition.city,
-        })
-        .count()
-        .min(u32::MAX as usize) as u32;
+    let expected_fact_count = profile.expected_snapshot_fields(match draft.scope_kind {
+        SnapshotScopeKind::Republic => StatsContext::Republic,
+        SnapshotScopeKind::City => StatsContext::City,
+    });
     let coverage = if draft.facts.len() == expected_fact_count as usize {
         CoverageStatus::Complete
     } else {
@@ -410,6 +440,12 @@ fn finalise_record(
             television: television.line,
             computer: computer.line,
         },
+        source_fields: SourceFieldSet {
+            none: none.source_field,
+            radio: radio.source_field,
+            television: television.source_field,
+            computer: computer.source_field,
+        },
     });
     Ok(())
 }
@@ -418,6 +454,7 @@ fn assign_field<T: Copy>(
     target: &mut Option<FieldValue<T>>,
     value: Option<T>,
     line: u64,
+    source_field: &str,
     malformed: &mut bool,
 ) -> Result<(), ObservatoryError> {
     if target.is_some() {
@@ -426,7 +463,13 @@ fn assign_field<T: Copy>(
         ));
     }
     match value {
-        Some(value) => *target = Some(FieldValue { value, line }),
+        Some(value) => {
+            *target = Some(FieldValue {
+                value,
+                line,
+                source_field: source_field.to_owned(),
+            })
+        }
         None => *malformed = true,
     }
     Ok(())
@@ -454,14 +497,17 @@ mod tests {
     use std::io::Cursor;
 
     use super::parse_stats;
+    use crate::compatibility_profile::ResolvedCompatibilityProfile;
     use crate::error::ObservatoryError;
     use crate::model::{CoverageStatus, SnapshotScopeKind};
 
     #[test]
     fn parses_complete_receiver_history_and_closes_it_at_current_block() {
-        let parsed = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/valid.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!("../fixtures/valid.receiver-stats.txt")),
+            &profile,
+        )
         .expect("valid fixture");
 
         assert_eq!(parsed.records.len(), 3);
@@ -478,9 +524,11 @@ mod tests {
 
     #[test]
     fn reports_partial_coverage_without_inventing_a_missing_metric() {
-        let parsed = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/partial.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!("../fixtures/partial.receiver-stats.txt")),
+            &profile,
+        )
         .expect("partially usable fixture");
 
         assert_eq!(parsed.records.len(), 1);
@@ -492,9 +540,11 @@ mod tests {
 
     #[test]
     fn drops_a_malformed_record_but_preserves_a_later_valid_record() {
-        let parsed = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/malformed.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!("../fixtures/malformed.receiver-stats.txt")),
+            &profile,
+        )
         .expect("one record remains usable");
 
         assert_eq!(parsed.records.len(), 1);
@@ -504,9 +554,13 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_record_identifiers() {
-        let error = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/duplicate-ids.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let error = parse_stats(
+            Cursor::new(include_bytes!(
+                "../fixtures/duplicate-ids.receiver-stats.txt"
+            )),
+            &profile,
+        )
         .expect_err("duplicate ids must fail");
         assert!(matches!(
             error,
@@ -516,18 +570,26 @@ mod tests {
 
     #[test]
     fn rejects_an_explicit_unsupported_format() {
-        let error = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/unsupported-version.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let error = parse_stats(
+            Cursor::new(include_bytes!(
+                "../fixtures/unsupported-version.receiver-stats.txt"
+            )),
+            &profile,
+        )
         .expect_err("unsupported format must fail");
         assert!(matches!(error, ObservatoryError::UnsupportedStatsFormat));
     }
 
     #[test]
     fn captures_supported_current_and_city_snapshot_facts() {
-        let parsed = parse_stats(Cursor::new(include_bytes!(
-            "../fixtures/current-city.receiver-stats.txt"
-        )))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!(
+                "../fixtures/current-city.receiver-stats.txt"
+            )),
+            &profile,
+        )
         .expect("snapshot fixture");
 
         assert_eq!(parsed.snapshots.len(), 3);

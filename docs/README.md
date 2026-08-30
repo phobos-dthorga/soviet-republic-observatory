@@ -24,6 +24,9 @@ an engineering requirement.
   complexity budget
 - [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)
   — dual-engine ownership, projection recovery, generations, and overlays
+- [W&R compatibility profiles](compatibility-profiles.md) — reviewed mappings,
+  one local repair file, immutable interpretation identity, bounded binary
+  layouts, evidence consequences, and contribution workflow
 - [Local diagnostics and long-running work](operations/diagnostics.md) — shared
   critical-task progress, startup recovery, stall visibility, bounded local
   logging, and privacy
@@ -51,6 +54,7 @@ an engineering requirement.
 - [ADR-0009: compact history before automatic observation](architecture/decisions/0009-compact-history-before-automatic-observation.md)
 - [ADR-0010: native recorder and durable candidate ledger](architecture/decisions/0010-native-recorder-and-durable-candidate-ledger.md)
 - [ADR-0011: dual-engine definition catalogue and planning warehouse](architecture/decisions/0011-dual-engine-catalogue-and-warehouse.md)
+- [ADR-0012: versioned inert game compatibility profiles](architecture/decisions/0012-versioned-game-compatibility-profiles.md)
 
 ## Evidence status vocabulary
 
@@ -67,3 +71,5 @@ Every public finding and visual should carry one of these statuses:
 | Unavailable           | The source did not establish the value                           |
 | Player override       | Player replacement layered over an installed definition fact     |
 | Player definition     | Player supplemental planning entity                              |
+| Reviewed mapping      | Fact interpreted through a repository-reviewed compatibility map |
+| Player mapped         | Fact interpreted through the active app-local compatibility map  |

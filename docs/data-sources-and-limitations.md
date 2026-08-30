@@ -16,14 +16,31 @@ The implemented manual and automatic observers follow this sequence:
 1. notice a candidate ZIP;
 2. wait until file size and modification time are stable;
 3. validate the archive without modifying it;
-4. hash the statistical payload and deduplicate it;
-5. parse supported records into application-owned models;
-6. store source identity, compacted history, bounded snapshot facts, parser
+4. hash the statistical payload as raw identity;
+5. resolve the active reviewed or local compatibility profile and derive a
+   separate interpretation identity;
+6. parse supported records into application-owned models;
+7. store source identity, compacted history, bounded snapshot facts, parser
    version, coverage, source fields, source lines, file evidence, and lineage
    atomically in app-local SQLite;
-7. resolve exact supported prefixes into a main timeline, successor, fork, or
+8. resolve exact supported prefixes into a main timeline, successor, fork, or
    visibly unassigned state; and
-8. return a bounded dataset for the selected branch to the presentation.
+9. return a bounded dataset for the selected branch to the presentation.
+
+The reviewed W&R 1.1.1.9 compatibility profile reproduces the previously
+verified text parser mappings. A valid local override is accepted immediately
+as `player_mapped` evidence. Schema validity does not prove a community mapping
+is factually correct. The application therefore retains exact profile identity,
+marks mapping changes across observations, and never infers a value to make a
+new profile appear complete.
+
+Local definition mappings may be scoped to an exact Workshop or WIP catalogue
+source. This supports unusual aliases used by total conversions, legacy mods,
+or community-researched definitions; ordinary mods using documented W&R
+directives need no override. Exact scopes stop publication after a definition
+change, while tracked scopes remain usable with an unreviewed-update warning.
+Installed-mod identity never scopes save fields because installation is not
+proof that the observed save used that mod.
 
 Automatic observation is opt-in and runs only while the desktop program is
 open. It retains an initial baseline of existing files, considers the newest
@@ -35,6 +52,11 @@ does not backfill every save created while the program was closed.
 Prefix ancestry currently uses only the supported receiver-history record
 identity. It cannot claim ancestry from current-state, city, or binary fields,
 so tied or unrelated evidence remains visibly `unassigned`.
+
+Fixed binary profile layouts are limited to named archive members and bounded
+offset reads. The reviewed profile intentionally declares no binary facts yet;
+station, citizen, building-instance, and vehicle-instance structures remain
+research candidates until sanitised fixtures prove their layout and meaning.
 
 The SQLite database is unencrypted and contains no credentials. Full configured
 paths remain inside app-local settings and are never included in presentation or

@@ -83,6 +83,28 @@ Remaining in this slice:
 Ignored reference-machine scale and growth benchmarks accompany the automated
 suite. Broader verified directive coverage remains ongoing catalogue hardening.
 
+## Slice 3.5 — versioned W&R compatibility profiles — implemented foundation
+
+- Reviewed W&R 1.1.1.9 mappings moved from parser branches into a strict public
+  `.rocompat.json` contract with authoritative Rust validation
+- One watched app-local exact-base override with immediate activation,
+  last-valid recovery, manual reload, and no executable or rendering surface
+- Separate raw payload and immutable interpretation identities with legacy
+  SQLite backfill and idempotent DuckDB re-projection
+- Reviewed-versus-player-mapped provenance in Archive, receiver evidence,
+  catalogue generations, and pinned warehouse snapshots
+- Fixed bounded binary layout engine covering allowlisted primitives, masks,
+  scaling, missing-value sentinels, endian modes, magic checks, and overflow
+  rejection; the reviewed profile adds no unverified binary facts
+- Shared critical-task progress and controlled diagnostics for explicit save
+  reinterpretation
+- Source-qualified Workshop/WIP definition scopes with stable mapping IDs,
+  deterministic precedence, exact-pin conflicts, tracked-update warnings, and
+  per-fact mapping provenance
+
+Additional first-party game profiles require real version evidence and
+sanitised fixtures; they are not generated speculatively.
+
 ## Slice 4 — local Analysis Packs — implemented foundation
 
 - Authoritative Rust validation against Analysis Pack schema and semantic rules

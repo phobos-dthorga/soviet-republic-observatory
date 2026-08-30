@@ -2,18 +2,25 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
   import { modalFocus } from "../ui/modalFocus";
+  import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
+  import { reinterpretationProgressView } from "../tasks/reinterpretationProgress";
   import {
     chooseDirectory,
     configureDirectory,
+    createLocalCompatibilityOverride,
     getSetupState,
     observeLatestSave,
     observerErrorCode,
+    reinterpretLatestSave,
+    reloadLocalCompatibilityOverride,
     setAutomaticObservation,
   } from "./desktopClient";
   import type {
+    CompatibilityCatalogueScopeStatus,
     DirectoryKind,
     ObserverErrorCode,
     ReceiverDataset,
+    ReinterpretationProgress,
     SetupState,
   } from "./types";
 
@@ -22,6 +29,7 @@
     desktopAvailable,
     setup,
     dataset,
+    reinterpretationProgress,
     onclose,
     onsetupchange,
     onobservation,
@@ -30,6 +38,7 @@
     desktopAvailable: boolean;
     setup: SetupState | null;
     dataset: ReceiverDataset | null;
+    reinterpretationProgress: ReinterpretationProgress | null;
     onclose: () => void;
     onsetupchange: (setup: SetupState) => void;
     onobservation: (dataset: ReceiverDataset) => void;
@@ -62,6 +71,9 @@
     incompatible_comparison: "error-observer-incompatible-comparison",
     same_observation_comparison: "error-observer-same-comparison",
     unknown_observation: "error-observer-unknown-observation",
+    invalid_compatibility_profile: "error-observer-invalid-compatibility",
+    binary_compatibility_mismatch: "error-observer-binary-compatibility",
+    critical_task_busy: "error-observer-critical-task-busy",
     unknown: "error-observer-unknown",
   };
 
@@ -126,6 +138,109 @@
     } finally {
       busy = false;
     }
+  }
+
+  async function createCompatibilityOverride(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    statusMessage = "";
+    try {
+      const update = await createLocalCompatibilityOverride();
+      if (setup) onsetupchange({ ...setup, compatibility: update.status });
+      statusMessage = $translation("compatibility-created");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function reloadCompatibility(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    statusMessage = "";
+    try {
+      const update = await reloadLocalCompatibilityOverride();
+      if (setup) onsetupchange({ ...setup, compatibility: update.status });
+      statusMessage = $translation("compatibility-reloaded");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function reinterpret(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    statusMessage = "";
+    try {
+      const result = await reinterpretLatestSave();
+      onobservation(result.dataset);
+      onsetupchange(await getSetupState());
+      statusMessage = $translation("compatibility-reinterpreted");
+    } catch (error) {
+      reportError(error);
+    } finally {
+      busy = false;
+    }
+  }
+
+  function compatibilityBadge(): string {
+    return setup?.compatibility.active.mapping_classification ===
+      "player_mapped"
+      ? $translation("compatibility-player-mapped")
+      : $translation("compatibility-reviewed");
+  }
+
+  function validationLabel(): string {
+    const validation = setup?.compatibility.local_validation ?? "missing";
+    return $translation(
+      validation === "valid"
+        ? "compatibility-validation-valid"
+        : validation === "invalid"
+          ? "compatibility-validation-invalid"
+          : "compatibility-validation-missing",
+    );
+  }
+
+  function scopeStateLabel(
+    state: CompatibilityCatalogueScopeStatus["state"],
+  ): string {
+    switch (state) {
+      case "matched":
+        return $translation("compatibility-scope-matched");
+      case "dormant":
+        return $translation("compatibility-scope-dormant");
+      case "updated_unreviewed":
+        return $translation("compatibility-scope-updated");
+      case "conflict":
+        return $translation("compatibility-scope-conflict");
+    }
+  }
+
+  function scopeGuidance(
+    state: CompatibilityCatalogueScopeStatus["state"],
+  ): string {
+    switch (state) {
+      case "matched":
+        return $translation("compatibility-scope-guidance-matched");
+      case "dormant":
+        return $translation("compatibility-scope-guidance-dormant");
+      case "updated_unreviewed":
+        return $translation("compatibility-scope-guidance-updated");
+      case "conflict":
+        return $translation("compatibility-scope-guidance-conflict");
+    }
+  }
+
+  function scopeDataStatus(
+    state: CompatibilityCatalogueScopeStatus["state"],
+  ): "stable" | "watch" | "exposed" | "neutral" {
+    if (state === "matched") return "stable";
+    if (state === "conflict") return "exposed";
+    if (state === "updated_unreviewed") return "watch";
+    return "neutral";
   }
 
   function automaticStatusText(): string {
@@ -329,6 +444,181 @@
             <span>{$translation("observer-automatic-toggle")}</span>
           </label>
         </section>
+
+        {#if setup?.compatibility}
+          <section
+            class="compatibility-card"
+            aria-labelledby="compatibility-title"
+          >
+            <header>
+              <div>
+                <span class="eyebrow"
+                  >{$translation("compatibility-eyebrow")}</span
+                >
+                <h3 id="compatibility-title">
+                  {$translation("compatibility-title")}
+                </h3>
+              </div>
+              <span
+                class="status-chip"
+                data-status={setup.compatibility.active
+                  .mapping_classification === "player_mapped"
+                  ? "watch"
+                  : "stable"}>{compatibilityBadge()}</span
+              >
+            </header>
+            <p>{$translation("compatibility-description")}</p>
+            <div class="compatibility-facts">
+              <div>
+                <span>{$translation("compatibility-active-profile")}</span>
+                <strong>{setup.compatibility.active.id}</strong>
+                <small
+                  >{$translation("compatibility-version-hash", {
+                    version: setup.compatibility.active.version,
+                    hash: setup.compatibility.active.resolved_hash.slice(0, 12),
+                  })}</small
+                >
+              </div>
+              <div>
+                <span>{$translation("compatibility-detected")}</span>
+                <strong
+                  >{setup.compatibility.detected_game_version ??
+                    setup.compatibility.detected_build_id ??
+                    $translation("compatibility-target-unknown")}</strong
+                >
+                <small
+                  >{setup.compatibility.active.target_game_versions.join(
+                    ", ",
+                  ) || $translation("compatibility-target-unknown")}</small
+                >
+              </div>
+              <div>
+                <span>{$translation("compatibility-base")}</span>
+                <strong
+                  >{setup.compatibility.active.base_profile_id ??
+                    setup.compatibility.reviewed_base.id}</strong
+                >
+                <small
+                  >{setup.compatibility.active.base_profile_hash?.slice(
+                    0,
+                    12,
+                  ) ??
+                    setup.compatibility.reviewed_base.content_hash.slice(
+                      0,
+                      12,
+                    )}</small
+                >
+              </div>
+              <div>
+                <span>{$translation("compatibility-local-file")}</span>
+                <strong>{validationLabel()}</strong>
+                <small title={setup.compatibility.local_file_path}
+                  >{setup.compatibility.local_file_path}</small
+                >
+              </div>
+            </div>
+            <p class="compatibility-coverage">
+              {$translation("compatibility-coverage", {
+                markers: setup.compatibility.coverage.stats_markers,
+                fields: setup.compatibility.coverage.stats_fields,
+                operations: setup.compatibility.coverage.definition_operations,
+                layouts: setup.compatibility.coverage.binary_layouts,
+                scopes: setup.compatibility.coverage.catalogue_scopes,
+              })}
+            </p>
+            {#if setup.compatibility.catalogue_scopes.length}
+              <section
+                class="compatibility-scopes"
+                aria-labelledby="compatibility-scopes-title"
+              >
+                <header>
+                  <div>
+                    <span class="eyebrow"
+                      >{$translation("compatibility-scopes-eyebrow")}</span
+                    >
+                    <h4 id="compatibility-scopes-title">
+                      {$translation("compatibility-scopes-title")}
+                    </h4>
+                  </div>
+                  <span>{setup.compatibility.catalogue_scopes.length}</span>
+                </header>
+                <div class="compatibility-scope-list">
+                  {#each setup.compatibility.catalogue_scopes as scope}
+                    <article data-status={scopeDataStatus(scope.state)}>
+                      <header>
+                        <div>
+                          <strong>{scope.package_name ?? scope.id}</strong>
+                          <code>{scope.source_id}</code>
+                        </div>
+                        <span
+                          class="status-chip"
+                          data-status={scopeDataStatus(scope.state)}
+                          >{scopeStateLabel(scope.state)}</span
+                        >
+                      </header>
+                      <p>{scopeGuidance(scope.state)}</p>
+                      <small
+                        >{$translation("compatibility-scope-evidence", {
+                          policy:
+                            scope.update_policy === "exact"
+                              ? $translation("compatibility-policy-exact")
+                              : $translation("compatibility-policy-track"),
+                          mappings: scope.mapping_count,
+                          acknowledged: scope.acknowledged_content_hash.slice(
+                            0,
+                            12,
+                          ),
+                          current:
+                            scope.current_content_hash?.slice(0, 12) ?? "—",
+                        })}</small
+                      >
+                    </article>
+                  {/each}
+                </div>
+              </section>
+            {/if}
+            {#if setup.compatibility.last_validation_error}
+              <p class="compatibility-warning" role="alert">
+                {validationLabel()} · {setup.compatibility
+                  .last_validation_error}
+              </p>
+            {/if}
+            <p class="compatibility-boundary">
+              {$translation("compatibility-no-editor")}
+            </p>
+            <div class="compatibility-actions">
+              <button
+                type="button"
+                disabled={busy || setup.compatibility.local_file_exists}
+                onclick={() => void createCompatibilityOverride()}
+                >{$translation("compatibility-create")}</button
+              >
+              <button
+                type="button"
+                disabled={busy || !setup.compatibility.local_file_exists}
+                onclick={() => void reloadCompatibility()}
+                >{$translation("compatibility-reload")}</button
+              >
+              <button
+                type="button"
+                disabled={busy || !setup.save_directory}
+                onclick={() => void reinterpret()}
+                >{$translation("compatibility-reinterpret")}</button
+              >
+            </div>
+            {#if reinterpretationProgress && reinterpretationProgress.phase !== "idle"}
+              <div class="compatibility-progress">
+                <TaskProgressPanel
+                  view={reinterpretationProgressView(
+                    reinterpretationProgress,
+                    $translation,
+                  )}
+                  headingId="compatibility-reinterpretation-title"
+                />
+              </div>
+            {/if}
+          </section>
+        {/if}
 
         <aside class="observer-boundary">
           <strong>{$translation("save-safety-observer-boundary")}</strong>

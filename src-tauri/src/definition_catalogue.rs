@@ -5,9 +5,15 @@ use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
+use crate::compatibility_profile::{
+    CatalogueScopeUpdatePolicy, DefinitionOperation, ResolvedCompatibilityProfile,
+};
 use crate::error::ObservatoryError;
+use crate::model::{
+    CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, CompatibilityProvenance,
+};
 
-pub const DEFINITION_PARSER_VERSION: &str = "wrsr-definition-directives.v2";
+pub const DEFINITION_PARSER_VERSION: &str = "wrsr-definition-directives.v3";
 const MAX_FILES: usize = 100_000;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
@@ -27,6 +33,8 @@ pub struct CatalogueGeneration {
     pub generation_id: String,
     pub game_build_id: Option<String>,
     pub created_at_ms: i64,
+    pub compatibility: CompatibilityProvenance,
+    pub compatibility_scopes: Vec<CompatibilityCatalogueScopeStatus>,
     pub sources: Vec<CatalogueSource>,
     pub files: Vec<CatalogueFile>,
     pub entities: Vec<ParsedDefinition>,
@@ -99,6 +107,9 @@ pub struct ParsedProperty {
     pub source_line: u32,
     pub raw_arguments: String,
     pub resolution: String,
+    pub mapping_id: String,
+    pub catalogue_scope_id: Option<String>,
+    pub mapping_classification: String,
 }
 
 #[derive(Clone, Debug)]
@@ -113,6 +124,9 @@ pub struct ParsedRelation {
     pub source_line: u32,
     pub raw_arguments: String,
     pub resolution: String,
+    pub mapping_id: String,
+    pub catalogue_scope_id: Option<String>,
+    pub mapping_classification: String,
 }
 
 #[derive(Clone, Debug)]
@@ -147,11 +161,13 @@ pub fn discover_catalogue_with_reuse(
     created_at_ms: i64,
     reuse: &HashMap<String, CatalogueReuseEntry>,
 ) -> Result<CatalogueGeneration, ObservatoryError> {
+    let profile = ResolvedCompatibilityProfile::reviewed_builtin()?;
     discover_catalogue_with_reuse_and_progress(
         media_directory,
         optional_workshop_directory,
         created_at_ms,
         reuse,
+        &profile,
         |_| {},
     )
 }
@@ -161,6 +177,7 @@ pub fn discover_catalogue_with_reuse_and_progress(
     optional_workshop_directory: Option<&Path>,
     created_at_ms: i64,
     reuse: &HashMap<String, CatalogueReuseEntry>,
+    profile: &ResolvedCompatibilityProfile,
     mut report: impl FnMut(CatalogueDiscoveryProgress),
 ) -> Result<CatalogueGeneration, ObservatoryError> {
     let roots = discover_source_roots(media_directory, optional_workshop_directory)?;
@@ -287,8 +304,12 @@ pub fn discover_catalogue_with_reuse_and_progress(
             let bytes = fs::read(&candidate).map_err(|_| ObservatoryError::InvalidGameDirectory)?;
             let content_hash = hex_hash(&bytes);
             let logical_path = logical_path(&source.root, &candidate)?;
-            let (entity_kind, source_object_id, entity_id, revision_hash) =
-                definition_identity(source, &logical_path, &content_hash);
+            let (entity_kind, source_object_id, entity_id, revision_hash) = definition_identity(
+                source,
+                &logical_path,
+                &content_hash,
+                profile.resolved_hash(),
+            );
             let (definition, warning_count) = if let Some(cached) = reuse.get(&revision_hash) {
                 files_reused = files_reused.saturating_add(1);
                 (
@@ -308,7 +329,7 @@ pub fn discover_catalogue_with_reuse_and_progress(
                 )
             } else {
                 files_parsed = files_parsed.saturating_add(1);
-                parse_definition(source, &logical_path, &content_hash, &bytes)
+                parse_definition(source, &logical_path, &content_hash, &bytes, profile)?
             };
             source_entries
                 .entry(source.source_id.clone())
@@ -397,10 +418,12 @@ pub fn discover_catalogue_with_reuse_and_progress(
         });
     }
     sources.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    let compatibility_scopes = evaluate_catalogue_scopes(profile, &sources);
 
     let game_build_id = discover_game_build(media_directory);
     let mut generation_hasher = Sha256::new();
     generation_hasher.update(DEFINITION_PARSER_VERSION.as_bytes());
+    generation_hasher.update(profile.resolved_hash().as_bytes());
     if let Some(build) = &game_build_id {
         generation_hasher.update(build.as_bytes());
     }
@@ -430,6 +453,8 @@ pub fn discover_catalogue_with_reuse_and_progress(
         generation_id: hex_bytes(&generation_hasher.finalize()),
         game_build_id,
         created_at_ms,
+        compatibility: profile.provenance(),
+        compatibility_scopes,
         sources,
         files,
         entities,
@@ -662,11 +687,12 @@ fn parse_definition(
     logical_path: &str,
     content_hash: &str,
     bytes: &[u8],
-) -> (ParsedDefinition, u32) {
+    profile: &ResolvedCompatibilityProfile,
+) -> Result<(ParsedDefinition, u32), ObservatoryError> {
     let text = String::from_utf8_lossy(bytes);
     let lossy = matches!(&text, std::borrow::Cow::Owned(_));
     let (entity_kind, source_object_id, entity_id, revision_hash) =
-        definition_identity(source, logical_path, content_hash);
+        definition_identity(source, logical_path, content_hash, profile.resolved_hash());
     let mut display_name = fallback_display_name(&source_object_id);
     let mut properties = Vec::new();
     let mut relations = Vec::new();
@@ -692,7 +718,9 @@ fn parse_definition(
         let arguments = split_arguments(&raw_arguments);
         let source_line = (line_index + 1).min(u32::MAX as usize) as u32;
 
-        if directive == "$COST_WORK" {
+        let mapping = profile.definition_mapping(&source.source_id, &directive)?;
+        let operation = mapping.as_ref().map(|mapping| mapping.operation);
+        if operation == Some(DefinitionOperation::BuildingConstructionPhase) {
             phase_ordinal = phase_ordinal.saturating_add(1);
             current_phase = arguments
                 .first()
@@ -708,11 +736,18 @@ fn parse_definition(
                 &raw_arguments,
                 "source_directive",
             );
+            if let (Some(property), Some(mapping)) = (properties.last_mut(), mapping) {
+                property.mapping_id = mapping.id;
+                property.catalogue_scope_id = mapping.catalogue_scope;
+                property.mapping_classification = mapping.mapping_classification;
+            }
             continue;
         }
 
-        let recognized = match directive.as_str() {
-            "$NAME_STR" => {
+        let property_start = properties.len();
+        let relation_start = relations.len();
+        let recognized = match operation {
+            Some(DefinitionOperation::DefinitionDisplayName) => {
                 if let Some(value) = arguments.first() {
                     display_name = truncate(value, 120);
                     push_text_property(
@@ -729,7 +764,7 @@ fn parse_definition(
                 }
                 true
             }
-            "$NAME" => {
+            Some(DefinitionOperation::DefinitionNameToken) => {
                 if let Some(value) = arguments.first() {
                     display_name = format!("Name token {}", truncate(value, 32));
                     push_text_property(
@@ -746,7 +781,7 @@ fn parse_definition(
                 }
                 true
             }
-            "$STYLE_FLAG" => text_property(
+            Some(DefinitionOperation::BuildingStyle) => text_property(
                 &mut properties,
                 &mut property_counts,
                 "building.style",
@@ -756,7 +791,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$WORKERS_NEEDED" => number_property(
+            Some(DefinitionOperation::BuildingWorkersRequired) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "building.workers.required",
@@ -767,7 +802,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
-            "$PROFESORS_NEEDED" => number_property(
+            Some(DefinitionOperation::BuildingProfessorsRequired) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "building.professors.required",
@@ -778,7 +813,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
-            "$CITIZEN_ABLE_SERVE" => number_property(
+            Some(DefinitionOperation::BuildingServiceCapacity) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "building.citizens.service_capacity_per_worker",
@@ -789,7 +824,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_coefficient",
             ),
-            "$QUALITY_OF_LIVING" => number_property(
+            Some(DefinitionOperation::BuildingQualityOfLiving) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "building.quality_of_living",
@@ -800,7 +835,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
-            "$WORKING_VEHICLES_NEEDED" => number_property(
+            Some(DefinitionOperation::BuildingVehicleCapacity) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "building.vehicles.capacity",
@@ -811,7 +846,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
-            "$TYPE" if entity_kind == "vehicle" => text_property(
+            Some(DefinitionOperation::VehicleType) if entity_kind == "vehicle" => text_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.type",
@@ -821,7 +856,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$FAMILY" => text_property(
+            Some(DefinitionOperation::VehicleFamily) => text_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.family",
@@ -831,7 +866,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$COUNTRY" => text_property(
+            Some(DefinitionOperation::VehicleCountry) => text_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.country_token",
@@ -841,7 +876,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$AVAILABLE" => multi_number_properties(
+            Some(DefinitionOperation::DefinitionAvailability) => multi_number_properties(
                 &mut properties,
                 &mut property_counts,
                 [
@@ -854,7 +889,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$LIFESPAN" => number_property(
+            Some(DefinitionOperation::VehicleLifespan) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.lifespan",
@@ -865,7 +900,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
-            "$COST_RUB" => number_property(
+            Some(DefinitionOperation::VehicleCostRub) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.purchase_cost.rubles",
@@ -876,7 +911,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$COST_USD" => number_property(
+            Some(DefinitionOperation::VehicleCostUsd) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.purchase_cost.dollars",
@@ -887,7 +922,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$MOVEMENT_SPEED" => number_property(
+            Some(DefinitionOperation::VehicleSpeed) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.speed.maximum",
@@ -898,7 +933,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$MOVEMENT_POWER_KW" => number_property(
+            Some(DefinitionOperation::VehiclePower) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.power",
@@ -909,7 +944,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$MOVEMENT_EMPTY_WEIGHT" => number_property(
+            Some(DefinitionOperation::VehicleEmptyWeight) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.empty_weight",
@@ -920,7 +955,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$MOVEMENT_CONSPUMPTION" => number_property(
+            Some(DefinitionOperation::VehicleConsumption) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.consumption.coefficient",
@@ -931,7 +966,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_coefficient",
             ),
-            "$RESOURCE_CAPACITY" => number_property(
+            Some(DefinitionOperation::VehicleResourceCapacity) => number_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.resource_capacity",
@@ -942,7 +977,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            "$RESOURCE_TRANSPORT_TYPE" => text_property(
+            Some(DefinitionOperation::VehicleTransportType) => text_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.transport_type",
@@ -952,7 +987,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$RESOURCE_ALLOW_ONLY" => text_property(
+            Some(DefinitionOperation::VehicleResourceAllowed) => text_property(
                 &mut properties,
                 &mut property_counts,
                 "vehicle.resource_allowed",
@@ -962,7 +997,7 @@ fn parse_definition(
                 source_line,
                 &raw_arguments,
             ),
-            "$PRODUCTION" => relation(
+            Some(DefinitionOperation::ProductionOutput) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "production_output",
@@ -975,7 +1010,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_coefficient",
             ),
-            "$CONSUMPTION" => relation(
+            Some(DefinitionOperation::ProductionInput) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "production_input",
@@ -988,7 +1023,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_coefficient",
             ),
-            "$CONSUMPTION_PER_SECOND" => relation(
+            Some(DefinitionOperation::ProductionInputPerSecond) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "production_input",
@@ -1001,7 +1036,7 @@ fn parse_definition(
                 &raw_arguments,
                 "verified_time_basis",
             ),
-            "$WASTE_CONSUMPTION" => relation(
+            Some(DefinitionOperation::ProductionWasteInput) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "waste_input",
@@ -1014,7 +1049,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_coefficient",
             ),
-            "$COST_RESOURCE" => relation(
+            Some(DefinitionOperation::ConstructionMaterialExplicit) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "construction_material_explicit",
@@ -1027,7 +1062,7 @@ fn parse_definition(
                 &raw_arguments,
                 "explicit_quantity",
             ),
-            "$COST_RESOURCE_AUTO" => relation(
+            Some(DefinitionOperation::ConstructionMaterialAuto) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "construction_material_auto",
@@ -1040,7 +1075,7 @@ fn parse_definition(
                 &raw_arguments,
                 "unresolved_auto",
             ),
-            "$COST_WORK_BUILDING_NODE" => relation(
+            Some(DefinitionOperation::ConstructionNode) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "construction_node",
@@ -1053,7 +1088,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_directive",
             ),
-            "$COST_WORK_BUILDING_KEYWORD" => relation(
+            Some(DefinitionOperation::ConstructionKeyword) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "construction_keyword",
@@ -1066,7 +1101,7 @@ fn parse_definition(
                 &raw_arguments,
                 "source_directive",
             ),
-            _ if directive.starts_with("$TYPE_") && entity_kind == "building" => {
+            Some(DefinitionOperation::BuildingType) if entity_kind == "building" => {
                 push_text_property(
                     &mut properties,
                     &mut property_counts,
@@ -1080,7 +1115,7 @@ fn parse_definition(
                 );
                 true
             }
-            _ if directive.starts_with("$SKILL_") && entity_kind == "vehicle" => {
+            Some(DefinitionOperation::VehicleSkill) if entity_kind == "vehicle" => {
                 let field = format!(
                     "vehicle.skill.{}",
                     normalized_token(directive.trim_start_matches("$SKILL_"))
@@ -1097,7 +1132,7 @@ fn parse_definition(
                     "game_definition",
                 )
             }
-            _ if directive.starts_with("$STORAGE") => relation(
+            Some(DefinitionOperation::StorageCapacity) => relation(
                 &mut relations,
                 &mut relation_counts,
                 "storage_capacity",
@@ -1110,7 +1145,7 @@ fn parse_definition(
                 &raw_arguments,
                 "game_definition",
             ),
-            _ if directive.contains("REPAIR") || directive.contains("MAINTENANCE") => {
+            Some(DefinitionOperation::DefinitionRepairOrMaintenance) => {
                 let field = format!(
                     "definition.repair.{}",
                     normalized_token(directive.trim_start_matches('$'))
@@ -1148,6 +1183,17 @@ fn parse_definition(
         };
         if !recognized {
             *unknown.entry(directive).or_default() += 1;
+        } else if let Some(mapping) = mapping {
+            for property in &mut properties[property_start..] {
+                property.mapping_id = mapping.id.clone();
+                property.catalogue_scope_id = mapping.catalogue_scope.clone();
+                property.mapping_classification = mapping.mapping_classification.clone();
+            }
+            for relation in &mut relations[relation_start..] {
+                relation.mapping_id = mapping.id.clone();
+                relation.catalogue_scope_id = mapping.catalogue_scope.clone();
+                relation.mapping_classification = mapping.mapping_classification.clone();
+            }
         }
     }
 
@@ -1156,7 +1202,7 @@ fn parse_definition(
     } else {
         "partial"
     };
-    (
+    Ok((
         ParsedDefinition {
             entity_id,
             revision_hash,
@@ -1170,13 +1216,53 @@ fn parse_definition(
             unknown_directives: unknown.into_iter().collect(),
         },
         warning_count,
-    )
+    ))
+}
+
+fn evaluate_catalogue_scopes(
+    profile: &ResolvedCompatibilityProfile,
+    sources: &[CatalogueSource],
+) -> Vec<CompatibilityCatalogueScopeStatus> {
+    profile
+        .catalogue_scopes()
+        .iter()
+        .map(|scope| {
+            let source = sources
+                .iter()
+                .find(|source| source.source_id == scope.source_id);
+            let state = match source {
+                None => CompatibilityCatalogueScopeState::Dormant,
+                Some(source) if source.content_hash == scope.acknowledged_content_hash => {
+                    CompatibilityCatalogueScopeState::Matched
+                }
+                Some(_) if scope.update_policy == CatalogueScopeUpdatePolicy::Exact => {
+                    CompatibilityCatalogueScopeState::Conflict
+                }
+                Some(_) => CompatibilityCatalogueScopeState::UpdatedUnreviewed,
+            };
+            CompatibilityCatalogueScopeStatus {
+                id: scope.id.clone(),
+                source_id: scope.source_id.clone(),
+                package_name: source.map(|source| source.package_name.clone()),
+                update_policy: match scope.update_policy {
+                    CatalogueScopeUpdatePolicy::Exact => "exact",
+                    CatalogueScopeUpdatePolicy::TrackUpdates => "track_updates",
+                }
+                .to_owned(),
+                acknowledged_content_hash: scope.acknowledged_content_hash.clone(),
+                current_content_hash: source.map(|source| source.content_hash.clone()),
+                mapping_count: profile.catalogue_scope_mapping_count(&scope.id),
+                state,
+            }
+        })
+        .collect()
 }
 
 fn definition_identity(
     source: &SourceRoot,
     logical_path: &str,
     content_hash: &str,
+    compatibility_hash: &str,
 ) -> (String, String, String, String) {
     let entity_kind = if logical_path
         .rsplit('/')
@@ -1197,8 +1283,10 @@ fn definition_identity(
         "{}::{}::{}",
         source.source_id, entity_kind, source_object_id
     );
-    let revision_hash =
-        hex_hash(format!("{content_hash}\0{entity_id}\0{DEFINITION_PARSER_VERSION}").as_bytes());
+    let revision_hash = hex_hash(
+        format!("{content_hash}\0{entity_id}\0{DEFINITION_PARSER_VERSION}\0{compatibility_hash}")
+            .as_bytes(),
+    );
     (entity_kind, source_object_id, entity_id, revision_hash)
 }
 
@@ -1226,6 +1314,9 @@ fn push_text_property(
         source_line: line,
         raw_arguments: raw.to_owned(),
         resolution: resolution.to_owned(),
+        mapping_id: String::new(),
+        catalogue_scope_id: None,
+        mapping_classification: "reviewed_mapping".to_owned(),
     });
 }
 
@@ -1288,6 +1379,9 @@ fn number_property(
         source_line: line,
         raw_arguments: raw.to_owned(),
         resolution: resolution.to_owned(),
+        mapping_id: String::new(),
+        catalogue_scope_id: None,
+        mapping_classification: "reviewed_mapping".to_owned(),
     });
     true
 }
@@ -1353,6 +1447,9 @@ fn relation(
         source_line: line,
         raw_arguments: raw.to_owned(),
         resolution: resolution.to_owned(),
+        mapping_id: String::new(),
+        catalogue_scope_id: None,
+        mapping_classification: "reviewed_mapping".to_owned(),
     });
     true
 }
@@ -1434,6 +1531,9 @@ fn add_recipe_entities(
                     source_line: 0,
                     raw_arguments: String::new(),
                     resolution: "derived_from_definition".to_owned(),
+                    mapping_id: "host.derived.recipe".to_owned(),
+                    catalogue_scope_id: None,
+                    mapping_classification: "reviewed_mapping".to_owned(),
                 }],
                 relations: entity
                     .relations
@@ -1561,6 +1661,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::compatibility_profile::{
+        CatalogueScopeMapping, CatalogueScopeUpdatePolicy, CompatibilityProfileDocument,
+        DefinitionDirectiveMapping, DirectiveMatch, DirectiveMatchKind,
+    };
 
     fn reuse_entries(generation: &CatalogueGeneration) -> HashMap<String, CatalogueReuseEntry> {
         generation
@@ -1763,8 +1867,15 @@ mod tests {
             mode: ScanMode::BaseBuildings,
         };
         let oversized_line = format!("$NAME_STR {}\n$TYPE_FACTORY\n", "x".repeat(MAX_LINE_BYTES));
-        let (definition, warning_count) =
-            parse_definition(&source, "limited.ini", "content", oversized_line.as_bytes());
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let (definition, warning_count) = parse_definition(
+            &source,
+            "limited.ini",
+            "content",
+            oversized_line.as_bytes(),
+            &profile,
+        )
+        .expect("definition");
         assert_eq!(warning_count, 1);
         assert!(definition.display_name.contains("limited"));
         assert!(
@@ -1773,6 +1884,76 @@ mod tests {
                 .iter()
                 .all(|property| property.raw_arguments.len() <= 1_024)
         );
+    }
+
+    #[test]
+    fn catalogue_scopes_distinguish_exact_conflicts_tracked_updates_and_dormancy() {
+        let base = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let mut local = CompatibilityProfileDocument::starter_override(&base);
+        local.mappings.catalogue_scopes = Some(vec![
+            CatalogueScopeMapping {
+                id: "local.scope.exact".to_owned(),
+                source_id: "workshop.1".to_owned(),
+                acknowledged_content_hash: "a".repeat(64),
+                update_policy: CatalogueScopeUpdatePolicy::Exact,
+            },
+            CatalogueScopeMapping {
+                id: "local.scope.tracked".to_owned(),
+                source_id: "wip.2".to_owned(),
+                acknowledged_content_hash: "b".repeat(64),
+                update_policy: CatalogueScopeUpdatePolicy::TrackUpdates,
+            },
+            CatalogueScopeMapping {
+                id: "local.scope.dormant".to_owned(),
+                source_id: "workshop.3".to_owned(),
+                acknowledged_content_hash: "c".repeat(64),
+                update_policy: CatalogueScopeUpdatePolicy::Exact,
+            },
+        ]);
+        local.mappings.definition_directives = Some(
+            ["exact", "tracked", "dormant"]
+                .into_iter()
+                .map(|name| DefinitionDirectiveMapping {
+                    id: format!("local.mapping.{name}"),
+                    operation: DefinitionOperation::BuildingStyle,
+                    matches: vec![DirectiveMatch {
+                        kind: DirectiveMatchKind::Exact,
+                        value: format!("$MOD_{}", name.to_ascii_uppercase()),
+                    }],
+                    catalogue_scope: Some(format!("local.scope.{name}")),
+                })
+                .collect(),
+        );
+        let profile =
+            ResolvedCompatibilityProfile::resolve_override(&base, local).expect("resolved profile");
+        let sources = vec![
+            CatalogueSource {
+                source_id: "workshop.1".to_owned(),
+                source_kind: "workshop".to_owned(),
+                package_name: "Exact package".to_owned(),
+                package_version: None,
+                content_hash: "d".repeat(64),
+                file_count: 1,
+            },
+            CatalogueSource {
+                source_id: "wip.2".to_owned(),
+                source_kind: "wip".to_owned(),
+                package_name: "Tracked package".to_owned(),
+                package_version: None,
+                content_hash: "e".repeat(64),
+                file_count: 1,
+            },
+        ];
+        let statuses = evaluate_catalogue_scopes(&profile, &sources);
+        assert_eq!(
+            statuses[0].state,
+            CompatibilityCatalogueScopeState::Conflict
+        );
+        assert_eq!(
+            statuses[1].state,
+            CompatibilityCatalogueScopeState::UpdatedUnreviewed
+        );
+        assert_eq!(statuses[2].state, CompatibilityCatalogueScopeState::Dormant);
     }
 
     #[test]
@@ -1789,9 +1970,15 @@ mod tests {
         .expect("definition");
         let mut updates = Vec::new();
 
-        discover_catalogue_with_reuse_and_progress(&media, None, 1, &HashMap::new(), |progress| {
-            updates.push(progress)
-        })
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        discover_catalogue_with_reuse_and_progress(
+            &media,
+            None,
+            1,
+            &HashMap::new(),
+            &profile,
+            |progress| updates.push(progress),
+        )
         .expect("catalogue");
 
         let scanning = updates

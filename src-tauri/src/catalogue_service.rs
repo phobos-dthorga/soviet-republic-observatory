@@ -62,6 +62,16 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
             if let Ok(status) = application.catalogue_status() {
                 let _ = app_handle.emit(CATALOGUE_UPDATE_EVENT, status);
             }
+            if let Ok(status) = application.compatibility_status() {
+                let _ = app_handle.emit(
+                    crate::compatibility_service::COMPATIBILITY_UPDATE_EVENT,
+                    crate::model::CompatibilityUpdate {
+                        status,
+                        profile_changed: false,
+                        definition_mapping_changed: false,
+                    },
+                );
+            }
             refresh_due_at = None;
         }
     }

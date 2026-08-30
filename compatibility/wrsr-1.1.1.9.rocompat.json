@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "id": "org.republic-observatory.wrsr-1.1.1.9",
+  "version": "1.0.0",
+  "parser_engine_api_version": "1.0.0",
+  "author": "Republic Observatory contributors",
+  "description": "Reviewed compatibility mappings preserving the parser behaviour verified for Workers & Resources: Soviet Republic 1.1.1.9.",
+  "targets": {
+    "game_versions": ["1.1.1.9"],
+    "build_ids": [],
+    "stats_formats": [1]
+  },
+  "content_hash": "0f2737d29ddb50aa22a32d6fb1747e7c0ec5aa00227464a38d68b4ae1bac522e",
+  "mappings": {
+    "catalogue_scopes": [],
+    "archive_entries": [{ "slot": "stats", "aliases": ["stats.ini"] }],
+    "stats_markers": [
+      {
+        "slot": "format",
+        "aliases": ["$STATS_FORMAT"],
+        "accepted_values": [1]
+      },
+      { "slot": "history_record", "aliases": ["$STAT_RECORD"] },
+      { "slot": "current_state", "aliases": ["$STAT_CURRENT"] },
+      { "slot": "city", "aliases": ["$STAT_CITY"] },
+      { "slot": "date_year", "aliases": ["$DATE_YEAR"] },
+      { "slot": "date_day", "aliases": ["$DATE_DAY"] }
+    ],
+    "stats_fields": [
+      {
+        "host_slot": "core.citizens.electronics.none",
+        "aliases": ["$Citizens_EletronicNone"],
+        "contexts": ["history", "republic"]
+      },
+      {
+        "host_slot": "core.citizens.electronics.radio",
+        "aliases": ["$Citizens_EletrinicRadio"],
+        "contexts": ["history", "republic"]
+      },
+      {
+        "host_slot": "core.citizens.electronics.television",
+        "aliases": ["$Citizens_EletronicTV"],
+        "contexts": ["history", "republic"]
+      },
+      {
+        "host_slot": "core.citizens.electronics.computer",
+        "aliases": ["$Citizens_EletronicComputer"],
+        "contexts": ["history", "republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.born",
+        "aliases": ["$Citizens_Born"],
+        "contexts": ["republic", "city"]
+      },
+      {
+        "host_slot": "source.stats.citizens.dead",
+        "aliases": ["$Citizens_Dead"],
+        "contexts": ["republic", "city"]
+      },
+      {
+        "host_slot": "source.stats.citizens.escaped",
+        "aliases": ["$Citizens_Escaped"],
+        "contexts": ["republic", "city"]
+      },
+      {
+        "host_slot": "source.stats.citizens.immigrant_soviet",
+        "aliases": ["$Citizens_ImigrantSoviet"],
+        "contexts": ["republic", "city"]
+      },
+      {
+        "host_slot": "source.stats.citizens.immigrant_africa",
+        "aliases": ["$Citizens_ImigrantAfrica"],
+        "contexts": ["republic", "city"]
+      },
+      {
+        "host_slot": "source.stats.citizens.small_children",
+        "aliases": ["$Citizens_SmallChilds"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.medium_children",
+        "aliases": ["$Citizens_MediumChilds"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.adults_parent",
+        "aliases": ["$Citizens_AdultsParent"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.adults",
+        "aliases": ["$Citizens_Adults"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.unemployed",
+        "aliases": ["$Citizens_Unemployed"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.no_education",
+        "aliases": ["$Citizens_NoEducation"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.basic_education",
+        "aliases": ["$Citizens_BasicEducationNum"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.higher_education",
+        "aliases": ["$Citizens_HighEducationNum"],
+        "contexts": ["republic"]
+      },
+      {
+        "host_slot": "source.stats.citizens.car_owners",
+        "aliases": ["$Citizens_CarOwners"],
+        "contexts": ["republic"]
+      }
+    ],
+    "definition_directives": [
+      {
+        "id": "core.building.construction_phase",
+        "operation": "building.construction_phase",
+        "matches": [{ "kind": "exact", "value": "$COST_WORK" }]
+      },
+      {
+        "id": "core.definition.display_name",
+        "operation": "definition.display_name",
+        "matches": [{ "kind": "exact", "value": "$NAME_STR" }]
+      },
+      {
+        "id": "core.definition.name_token",
+        "operation": "definition.name_token",
+        "matches": [{ "kind": "exact", "value": "$NAME" }]
+      },
+      {
+        "id": "core.building.style",
+        "operation": "building.style",
+        "matches": [{ "kind": "exact", "value": "$STYLE_FLAG" }]
+      },
+      {
+        "id": "core.building.workers_required",
+        "operation": "building.workers_required",
+        "matches": [{ "kind": "exact", "value": "$WORKERS_NEEDED" }]
+      },
+      {
+        "id": "core.building.professors_required",
+        "operation": "building.professors_required",
+        "matches": [{ "kind": "exact", "value": "$PROFESORS_NEEDED" }]
+      },
+      {
+        "id": "core.building.service_capacity",
+        "operation": "building.service_capacity",
+        "matches": [{ "kind": "exact", "value": "$CITIZEN_ABLE_SERVE" }]
+      },
+      {
+        "id": "core.building.quality_of_living",
+        "operation": "building.quality_of_living",
+        "matches": [{ "kind": "exact", "value": "$QUALITY_OF_LIVING" }]
+      },
+      {
+        "id": "core.building.vehicle_capacity",
+        "operation": "building.vehicle_capacity",
+        "matches": [{ "kind": "exact", "value": "$WORKING_VEHICLES_NEEDED" }]
+      },
+      {
+        "id": "core.vehicle.type",
+        "operation": "vehicle.type",
+        "matches": [{ "kind": "exact", "value": "$TYPE" }]
+      },
+      {
+        "id": "core.vehicle.family",
+        "operation": "vehicle.family",
+        "matches": [{ "kind": "exact", "value": "$FAMILY" }]
+      },
+      {
+        "id": "core.vehicle.country",
+        "operation": "vehicle.country",
+        "matches": [{ "kind": "exact", "value": "$COUNTRY" }]
+      },
+      {
+        "id": "core.definition.availability",
+        "operation": "definition.availability",
+        "matches": [{ "kind": "exact", "value": "$AVAILABLE" }]
+      },
+      {
+        "id": "core.vehicle.lifespan",
+        "operation": "vehicle.lifespan",
+        "matches": [{ "kind": "exact", "value": "$LIFESPAN" }]
+      },
+      {
+        "id": "core.vehicle.cost_rub",
+        "operation": "vehicle.cost_rub",
+        "matches": [{ "kind": "exact", "value": "$COST_RUB" }]
+      },
+      {
+        "id": "core.vehicle.cost_usd",
+        "operation": "vehicle.cost_usd",
+        "matches": [{ "kind": "exact", "value": "$COST_USD" }]
+      },
+      {
+        "id": "core.vehicle.speed",
+        "operation": "vehicle.speed",
+        "matches": [{ "kind": "exact", "value": "$MOVEMENT_SPEED" }]
+      },
+      {
+        "id": "core.vehicle.power",
+        "operation": "vehicle.power",
+        "matches": [{ "kind": "exact", "value": "$MOVEMENT_POWER_KW" }]
+      },
+      {
+        "id": "core.vehicle.empty_weight",
+        "operation": "vehicle.empty_weight",
+        "matches": [{ "kind": "exact", "value": "$MOVEMENT_EMPTY_WEIGHT" }]
+      },
+      {
+        "id": "core.vehicle.consumption",
+        "operation": "vehicle.consumption",
+        "matches": [{ "kind": "exact", "value": "$MOVEMENT_CONSPUMPTION" }]
+      },
+      {
+        "id": "core.vehicle.resource_capacity",
+        "operation": "vehicle.resource_capacity",
+        "matches": [{ "kind": "exact", "value": "$RESOURCE_CAPACITY" }]
+      },
+      {
+        "id": "core.vehicle.transport_type",
+        "operation": "vehicle.transport_type",
+        "matches": [{ "kind": "exact", "value": "$RESOURCE_TRANSPORT_TYPE" }]
+      },
+      {
+        "id": "core.vehicle.resource_allowed",
+        "operation": "vehicle.resource_allowed",
+        "matches": [{ "kind": "exact", "value": "$RESOURCE_ALLOW_ONLY" }]
+      },
+      {
+        "id": "core.production.output",
+        "operation": "production.output",
+        "matches": [{ "kind": "exact", "value": "$PRODUCTION" }]
+      },
+      {
+        "id": "core.production.input",
+        "operation": "production.input",
+        "matches": [{ "kind": "exact", "value": "$CONSUMPTION" }]
+      },
+      {
+        "id": "core.production.input_per_second",
+        "operation": "production.input_per_second",
+        "matches": [{ "kind": "exact", "value": "$CONSUMPTION_PER_SECOND" }]
+      },
+      {
+        "id": "core.production.waste_input",
+        "operation": "production.waste_input",
+        "matches": [{ "kind": "exact", "value": "$WASTE_CONSUMPTION" }]
+      },
+      {
+        "id": "core.construction.material_explicit",
+        "operation": "construction.material_explicit",
+        "matches": [{ "kind": "exact", "value": "$COST_RESOURCE" }]
+      },
+      {
+        "id": "core.construction.material_auto",
+        "operation": "construction.material_auto",
+        "matches": [{ "kind": "exact", "value": "$COST_RESOURCE_AUTO" }]
+      },
+      {
+        "id": "core.construction.node",
+        "operation": "construction.node",
+        "matches": [{ "kind": "exact", "value": "$COST_WORK_BUILDING_NODE" }]
+      },
+      {
+        "id": "core.construction.keyword",
+        "operation": "construction.keyword",
+        "matches": [{ "kind": "exact", "value": "$COST_WORK_BUILDING_KEYWORD" }]
+      },
+      {
+        "id": "core.building.type",
+        "operation": "building.type",
+        "matches": [{ "kind": "prefix", "value": "$TYPE_" }]
+      },
+      {
+        "id": "core.vehicle.skill",
+        "operation": "vehicle.skill",
+        "matches": [{ "kind": "prefix", "value": "$SKILL_" }]
+      },
+      {
+        "id": "core.storage.capacity",
+        "operation": "storage.capacity",
+        "matches": [{ "kind": "prefix", "value": "$STORAGE" }]
+      },
+      {
+        "id": "core.definition.repair_or_maintenance",
+        "operation": "definition.repair_or_maintenance",
+        "matches": [
+          { "kind": "contains", "value": "REPAIR" },
+          { "kind": "contains", "value": "MAINTENANCE" }
+        ]
+      }
+    ],
+    "binary_layouts": []
+  }
+}

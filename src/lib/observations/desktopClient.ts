@@ -14,6 +14,8 @@ import type {
   CatalogueRefreshProgress,
   CatalogueSearchFilter,
   CatalogueStatus,
+  CompatibilityStatus,
+  CompatibilityUpdate,
   DefinitionDossier,
   DiagnosticLogView,
   DirectoryKind,
@@ -22,6 +24,7 @@ import type {
   ReceiverDataset,
   RecorderHealth,
   RecorderUpdate,
+  ReinterpretationProgress,
   SetupState,
   OverlayInspection,
   OverlayProfileSummary,
@@ -85,13 +88,50 @@ export function setAutomaticObservation(enabled: boolean): Promise<SetupState> {
 }
 
 export function compareArchiveObservations(
-  fromPayloadHash: string,
-  toPayloadHash: string,
+  fromInterpretationId: string,
+  toInterpretationId: string,
 ): Promise<ArchiveComparison> {
   return invoke<ArchiveComparison>("compare_archive_observations", {
-    fromPayloadHash,
-    toPayloadHash,
+    fromInterpretationId,
+    toInterpretationId,
   });
+}
+
+export function getCompatibilityStatus(): Promise<CompatibilityStatus> {
+  return invoke<CompatibilityStatus>("get_compatibility_status");
+}
+
+export function createLocalCompatibilityOverride(): Promise<CompatibilityUpdate> {
+  return invoke<CompatibilityUpdate>("create_local_compatibility_override");
+}
+
+export function reloadLocalCompatibilityOverride(): Promise<CompatibilityUpdate> {
+  return invoke<CompatibilityUpdate>("reload_local_compatibility_override");
+}
+
+export function reinterpretLatestSave(): Promise<ObservationImportResult> {
+  return invoke<ObservationImportResult>("reinterpret_latest_save");
+}
+
+export function getReinterpretationProgress(): Promise<ReinterpretationProgress> {
+  return invoke<ReinterpretationProgress>("get_reinterpretation_progress");
+}
+
+export function listenForCompatibilityUpdates(
+  accept: (update: CompatibilityUpdate) => void,
+): Promise<UnlistenFn> {
+  return listen<CompatibilityUpdate>("compatibility-update", (event) =>
+    accept(event.payload),
+  );
+}
+
+export function listenForReinterpretationProgress(
+  accept: (progress: ReinterpretationProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<ReinterpretationProgress>(
+    "compatibility-reinterpretation-progress",
+    (event) => accept(event.payload),
+  );
 }
 
 export function observerErrorCode(error: unknown): ObserverErrorCode {

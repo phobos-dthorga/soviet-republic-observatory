@@ -6,7 +6,7 @@ use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
     CoverageReport, CoverageStatus, ReceiverRecord, RecorderCandidateStatus,
     RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
-    SnapshotScopeKind, SourceLineSet,
+    SnapshotScopeKind, SourceFieldSet, SourceLineSet,
 };
 
 #[test]
@@ -30,6 +30,44 @@ fn stores_normalised_metrics_and_separates_files_from_distinct_states() {
     assert_eq!(dataset.points.len(), 3);
     assert_eq!(dataset.source_fields.len(), 4);
     assert_eq!(dataset.branch_id, "main");
+}
+
+#[test]
+fn reinterpretation_is_idempotent_per_profile_and_immutable_across_profiles() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("reinterpret.sqlite3"))
+        .expect("storage");
+    let reviewed = inspection("same-raw-save", "state.zip", &[1, 2, 3]);
+    assert!(storage.save_inspection(&reviewed).expect("reviewed import"));
+    assert!(
+        !storage
+            .save_reinterpretation(&reviewed)
+            .expect("same profile remains idempotent")
+    );
+
+    let mut local = reviewed.clone();
+    local.interpretation_id = "local-profile-interpretation".to_owned();
+    local.compatibility.profile_id = "local.republic-observatory.override".to_owned();
+    local.compatibility.profile_version = "1.0.0".to_owned();
+    local.compatibility.profile_content_hash = "b".repeat(64);
+    local.compatibility.resolved_profile_hash = "c".repeat(64);
+    local.compatibility.base_profile_hash = Some(reviewed.compatibility.profile_content_hash);
+    local.compatibility.profile_source = "local_override".to_owned();
+    local.compatibility.mapping_classification = "player_mapped".to_owned();
+    assert!(
+        storage
+            .save_reinterpretation(&local)
+            .expect("alternate profile interpretation")
+    );
+
+    assert_eq!(storage.file_observation_count().expect("file count"), 1);
+    assert_eq!(storage.distinct_state_count().expect("state count"), 2);
+    let archive = storage.load_archive_overview().expect("archive");
+    assert_eq!(archive.observations.len(), 2);
+    assert!(archive.observations.iter().any(|observation| {
+        observation.interpretation_id == "local-profile-interpretation"
+            && observation.mapping_classification == "player_mapped"
+    }));
 }
 
 #[test]
@@ -460,6 +498,12 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
             [],
         )
         .expect("legacy record");
+    let legacy_source_fields = [
+        "$Citizens_EletronicNone",
+        "$Citizens_EletrinicRadio",
+        "$Citizens_EletronicTV",
+        "$Citizens_EletronicComputer",
+    ];
     for (index, metric) in crate::model::RECEIVER_METRICS.iter().enumerate() {
         connection
             .execute(
@@ -470,7 +514,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 params![
                     metric.id,
                     11 + index as i64 * 10,
-                    metric.source_field,
+                    legacy_source_fields[index],
                     index as i64 + 1
                 ],
             )
@@ -485,6 +529,23 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
     assert_eq!(archive.unresolved_state_count, 0);
     assert_eq!(archive.selected_branch_id, "main");
     assert_eq!(archive.observations[0].relationship, "root");
+    assert_ne!(archive.observations[0].interpretation_id, "legacy-state");
+    assert_eq!(
+        archive.observations[0].profile_id,
+        "org.republic-observatory.wrsr-1.1.1.9"
+    );
+    let migrated = storage.connect().expect("migration evidence");
+    assert_eq!(
+        migrated
+            .query_row(
+                "SELECT COUNT(*) FROM warehouse_projection_jobs \
+                 WHERE projection_kind = 'rebuild' AND status = 'pending'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("compatibility rebuild"),
+        1
+    );
 }
 
 fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
@@ -509,11 +570,22 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
                     television: base_line + 2,
                     computer: base_line + 3,
                 },
+                source_fields: SourceFieldSet {
+                    none: "$Citizens_EletronicNone".to_owned(),
+                    radio: "$Citizens_EletrinicRadio".to_owned(),
+                    television: "$Citizens_EletronicTV".to_owned(),
+                    computer: "$Citizens_EletronicComputer".to_owned(),
+                },
             }
         })
         .collect::<Vec<_>>();
     SaveInspection {
         payload_hash: hash.to_owned(),
+        interpretation_id: hash.to_owned(),
+        compatibility:
+            crate::compatibility_profile::ResolvedCompatibilityProfile::reviewed_builtin()
+                .expect("profile")
+                .provenance(),
         source_file_name: file_name.to_owned(),
         source_file_size: 100,
         source_modified_ms: 1,
@@ -527,13 +599,14 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         },
         records,
         snapshots: Vec::new(),
+        binary_facts: Vec::new(),
     }
 }
 
 fn snapshot_fact(fact_id: &'static str, source_field: &'static str, value: u64) -> SnapshotFact {
     SnapshotFact {
-        fact_id,
-        source_field,
+        fact_id: fact_id.to_owned(),
+        source_field: source_field.to_owned(),
         value,
         source_line: 100,
     }
@@ -746,8 +819,8 @@ fn benchmark_snapshots(save_index: u64) -> Vec<SaveSnapshot> {
             .filter(|definition| definition.republic)
             .enumerate()
             .map(|(index, definition)| SnapshotFact {
-                fact_id: definition.id,
-                source_field: definition.source_field,
+                fact_id: definition.id.to_owned(),
+                source_field: definition.id.to_owned(),
                 value: save_index + index as u64,
                 source_line: index as u64 + 1,
             })
@@ -764,8 +837,8 @@ fn benchmark_snapshots(save_index: u64) -> Vec<SaveSnapshot> {
                 .filter(|definition| definition.city)
                 .enumerate()
                 .map(|(index, definition)| SnapshotFact {
-                    fact_id: definition.id,
-                    source_field: definition.source_field,
+                    fact_id: definition.id.to_owned(),
+                    source_field: definition.id.to_owned(),
                     value: save_index + city_id as u64 + index as u64,
                     source_line: 100 + index as u64,
                 })

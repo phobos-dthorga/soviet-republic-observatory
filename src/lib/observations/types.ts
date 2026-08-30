@@ -33,12 +33,14 @@ export type ReceiverHistoryPoint = {
 
 export type ReceiverDataset = {
   payload_hash: string;
+  interpretation_id: string;
   source_file_name: string;
   source_file_size: number;
   source_modified_ms: number;
   imported_at_ms: number;
   parser_version: string;
   format_profile: string;
+  compatibility: CompatibilityProvenance;
   branch_id: string;
   geographic_scope: string;
   coverage: CoverageReport;
@@ -59,6 +61,11 @@ export type TimelineBranch = {
 
 export type ArchiveObservation = {
   payload_hash: string;
+  interpretation_id: string;
+  mapping_classification: string;
+  profile_id: string;
+  profile_version: string;
+  resolved_profile_hash: string;
   source_file_name: string;
   imported_at_ms: number;
   branch_id: string;
@@ -97,6 +104,7 @@ export type BranchSelectionResult = {
 
 export type ComparisonObservation = {
   payload_hash: string;
+  interpretation_id: string;
   source_file_name: string;
   branch_id: string;
   year: number;
@@ -145,6 +153,87 @@ export type SetupState = {
   distinct_states: number;
   game_vocabularies: GameVocabularySource[];
   automatic_observer: AutomaticObserverStatus;
+  compatibility: CompatibilityStatus;
+};
+
+export type CompatibilityProvenance = {
+  profile_id: string;
+  profile_version: string;
+  profile_content_hash: string;
+  resolved_profile_hash: string;
+  base_profile_hash: string | null;
+  profile_source: "reviewed_builtin" | "local_override";
+  mapping_classification: "reviewed_mapping" | "player_mapped";
+  parser_engine_version: string;
+};
+
+export type CompatibilityProfileSummary = {
+  id: string;
+  version: string;
+  content_hash: string;
+  resolved_hash: string;
+  source: "reviewed_builtin" | "local_override";
+  mapping_classification: "reviewed_mapping" | "player_mapped";
+  base_profile_id: string | null;
+  base_profile_version: string | null;
+  base_profile_hash: string | null;
+  target_game_versions: string[];
+  target_build_ids: string[];
+  target_stats_formats: number[];
+};
+
+export type CompatibilityStatus = {
+  active: CompatibilityProfileSummary;
+  reviewed_base: CompatibilityProfileSummary;
+  local_file_path: string;
+  local_file_exists: boolean;
+  local_validation: "missing" | "valid" | "invalid";
+  last_validation_error: string | null;
+  last_validated_at_ms: number | null;
+  detected_game_version: string | null;
+  detected_build_id: string | null;
+  coverage: {
+    stats_markers: number;
+    stats_fields: number;
+    definition_operations: number;
+    binary_layouts: number;
+    catalogue_scopes: number;
+  };
+  catalogue_scopes: CompatibilityCatalogueScopeStatus[];
+};
+
+export type CompatibilityCatalogueScopeStatus = {
+  id: string;
+  source_id: string;
+  package_name: string | null;
+  update_policy: "exact" | "track_updates";
+  acknowledged_content_hash: string;
+  current_content_hash: string | null;
+  mapping_count: number;
+  state: "matched" | "dormant" | "updated_unreviewed" | "conflict";
+};
+
+export type CompatibilityUpdate = {
+  status: CompatibilityStatus;
+  profile_changed: boolean;
+  definition_mapping_changed: boolean;
+};
+
+export type ReinterpretationProgress = {
+  phase:
+    | "idle"
+    | "reading"
+    | "parsing"
+    | "persisting"
+    | "queueing_warehouse"
+    | "complete"
+    | "failed";
+  progress_percent: number | null;
+  started_at_ms: number | null;
+  updated_at_ms: number | null;
+  current_file: string | null;
+  interpretation_id: string | null;
+  error_code: string | null;
 };
 
 export type ImportOutcome = "imported" | "duplicate";
@@ -247,6 +336,9 @@ export type ObserverErrorCode =
   | "incompatible_comparison"
   | "same_observation_comparison"
   | "unknown_observation"
+  | "invalid_compatibility_profile"
+  | "binary_compatibility_mismatch"
+  | "critical_task_busy"
   | "unknown";
 
 export type WarehousePhase = "ready" | "lagging" | "rebuilding" | "attention";
@@ -273,6 +365,10 @@ export type CatalogueGenerationSummary = {
   property_count: number;
   relation_count: number;
   warning_count: number;
+  compatibility_profile_id: string;
+  compatibility_profile_version: string;
+  compatibility_profile_hash: string;
+  mapping_classification: string;
 };
 
 export type CatalogueRefreshPhase =
@@ -392,6 +488,7 @@ export type DefinitionFact = {
   evidence_kind: string;
   resolution: string;
   conflict_code: string | null;
+  mapping: DefinitionMappingProvenance;
 };
 
 export type DefinitionRelation = {
@@ -405,6 +502,17 @@ export type DefinitionRelation = {
   source_line: number;
   raw_arguments: string;
   resolution: string;
+  mapping: DefinitionMappingProvenance;
+};
+
+export type DefinitionMappingProvenance = {
+  mapping_id: string;
+  catalogue_scope_id: string | null;
+  mapping_classification: string;
+  scope_state: "matched" | "dormant" | "updated_unreviewed" | "conflict" | null;
+  update_policy: "exact" | "track_updates" | null;
+  acknowledged_content_hash: string | null;
+  current_content_hash: string | null;
 };
 
 export type DefinitionDossier = {
@@ -425,6 +533,10 @@ export type OverlayInspection = {
 
 export type WarehouseSnapshot = {
   catalogue_generation_id: string;
+  compatibility_profile_id: string;
+  compatibility_profile_version: string;
+  compatibility_profile_hash: string;
+  mapping_classification: string;
   overlay_profile_id: string | null;
   overlay_revision: number | null;
   observation_watermark: string | null;

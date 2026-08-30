@@ -19,7 +19,10 @@ Configured save directory
   Read-only observer ──► archive validation and stable-file gate
           │
           ▼
-  stats.ini parser ────► application-owned facts + coverage report
+  compatibility map ──► reviewed or player-mapped source vocabulary
+          │
+          ▼
+  stats/binary parser ─► application-owned facts + coverage report
           │
           ▼
   content dedupe ──────► neutral observation identity
@@ -65,9 +68,16 @@ candidates are processed in deterministic modification-time and filename order.
 
 ### Parser
 
-Translates supported source fields into stable facts. It emits coverage and
-unsupported-field evidence rather than leaking raw parser maps throughout the
-application. Sanitised fixtures establish compatibility.
+Translates supported source fields into stable facts. Version-sensitive archive
+aliases, stats markers/fields, definition directives, and reviewed fixed binary
+layouts come from a strict inert compatibility profile. Stable meanings,
+operations, limits, and scope rules remain compiled host contracts. It emits
+coverage and unsupported-field evidence rather than leaking raw parser maps
+throughout the application. Sanitised fixtures establish compatibility.
+Definition mappings may additionally reference a source-qualified Workshop/WIP
+scope. Exact pins stop publication after definition changes; tracked scopes
+remain active with an unreviewed-update warning. Save mappings cannot inherit
+catalogue scopes.
 
 ### Timeline service
 
@@ -115,6 +125,13 @@ revisions, and per-pack enabled-revision state. Pack JSON is bounded and
 canonicalised before storage. It is operational extension state, not a third
 analytical store; the host parses it again before evaluation and isolates a
 failed revision.
+
+The eighth SQLite migration separates raw payload identity from immutable
+interpretation identity and records exact compatibility-profile provenance.
+One app-local override can activate immediately as visibly `player_mapped`
+evidence; invalid edits retain the last valid profile. Legacy observations are
+backfilled to the reviewed W&R 1.1.1.9 mapping without changing values or branch
+labels, then re-projected through an idempotent warehouse rebuild.
 
 ### Analytics
 
@@ -177,6 +194,7 @@ replacement boundary.
 - `ExtensionContentIdentity`
 - `LanguagePackManifest` and `LanguageSelection`
 - `GameVocabularyCatalogue`
+- `CompatibilityProfile`, `CompatibilityProvenance`, and `InterpretationIdentity`
 - `CatalogueGeneration`, `DefinitionDossier`, and `PlanningOverlayRevision`
 - `ProjectionJob` and `WarehouseSnapshot`
 
@@ -199,4 +217,6 @@ display catalogue; display text is not the database key.
 - A catalogue refresh failure preserves the last published generation.
 - A warehouse write failure creates visible lag and leaves the recorder,
   Archive, and SQLite-backed charts usable.
+- An invalid compatibility edit leaves the last valid mapping active; a valid
+  change creates a new interpretation and never rewrites earlier evidence.
 - The interface remains useful offline and when the game is not running.

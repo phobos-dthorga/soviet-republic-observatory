@@ -8,12 +8,23 @@ const t: Translator = (key, arguments_) =>
 
 const dataset: ReceiverDataset = {
   payload_hash: "a".repeat(64),
+  interpretation_id: "b".repeat(64),
   source_file_name: "synthetic.zip",
   source_file_size: 100,
   source_modified_ms: 1,
   imported_at_ms: 2,
   parser_version: "test-parser",
   format_profile: "test-profile",
+  compatibility: {
+    profile_id: "org.example.test",
+    profile_version: "1.0.0",
+    profile_content_hash: "c".repeat(64),
+    resolved_profile_hash: "d".repeat(64),
+    base_profile_hash: null,
+    profile_source: "reviewed_builtin",
+    mapping_classification: "reviewed_mapping",
+    parser_engine_version: "1.0.0",
+  },
   branch_id: "unassigned",
   geographic_scope: "republic",
   coverage: {

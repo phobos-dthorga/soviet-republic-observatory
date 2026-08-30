@@ -107,6 +107,27 @@
     return value.unit ? `${payload} ${value.unit}` : String(payload);
   }
 
+  function mappingLabel(classification: string): string {
+    return classification === "player_mapped"
+      ? $translation("compatibility-player-mapped")
+      : $translation("compatibility-reviewed");
+  }
+
+  function scopeStateLabel(state: string | null): string {
+    switch (state) {
+      case "matched":
+        return $translation("compatibility-scope-matched");
+      case "dormant":
+        return $translation("compatibility-scope-dormant");
+      case "updated_unreviewed":
+        return $translation("compatibility-scope-updated");
+      case "conflict":
+        return $translation("compatibility-scope-conflict");
+      default:
+        return "";
+    }
+  }
+
   async function loadStatus(): Promise<void> {
     if (!desktopAvailable) return;
     const nextStatus = await getCatalogueStatus();
@@ -147,10 +168,16 @@
       await action();
       await loadStatus();
     } catch (error) {
-      message =
-        typeof error === "object" && error !== null && "diagnostic" in error
-          ? String(error.diagnostic)
-          : $translation("catalogue-action-failed");
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "catalogue_compatibility_conflict"
+      ) {
+        message = $translation("error-catalogue-compatibility-conflict");
+      } else {
+        message = $translation("catalogue-action-failed");
+      }
     } finally {
       busy = false;
     }
@@ -529,6 +556,14 @@
                     ? ` · ${fact.conflict_code}`
                     : ""}</small
                 >
+                <small
+                  class:mapping-warning={fact.mapping.scope_state ===
+                    "updated_unreviewed"}
+                  >{mappingLabel(fact.mapping.mapping_classification)} ·
+                  {fact.mapping.mapping_id}{fact.mapping.catalogue_scope_id
+                    ? ` · ${fact.mapping.catalogue_scope_id} · ${scopeStateLabel(fact.mapping.scope_state)}`
+                    : ""}</small
+                >
               </article>
             {/each}
           </div>
@@ -542,6 +577,15 @@
                   >{relation.quantity ?? "?"}
                   {relation.unit ?? ""} · {relation.phase_id ??
                     $translation("catalogue-no-phase")}</small
+                >
+                <small
+                  class:mapping-warning={relation.mapping.scope_state ===
+                    "updated_unreviewed"}
+                  >{mappingLabel(relation.mapping.mapping_classification)} ·
+                  {relation.mapping.mapping_id}{relation.mapping
+                    .catalogue_scope_id
+                    ? ` · ${relation.mapping.catalogue_scope_id} · ${scopeStateLabel(relation.mapping.scope_state)}`
+                    : ""}</small
                 >
               </article>{/each}
           </div>
@@ -736,6 +780,13 @@
         >
       </div>
       <div>
+        <strong>{$translation("compatibility-profile-evidence")}</strong><span
+          >{status?.generation
+            ? `${status.generation.mapping_classification === "player_mapped" ? $translation("compatibility-player-mapped") : $translation("compatibility-reviewed")} · ${status.generation.compatibility_profile_id} v${status.generation.compatibility_profile_version}`
+            : "—"}</span
+        >
+      </div>
+      <div>
         <strong>{$translation("catalogue-watermark")}</strong><span
           >{status?.warehouse.observation_watermark?.slice(0, 12) ?? "—"}</span
         >
@@ -914,6 +965,11 @@
   .relation-ledger small {
     color: var(--colour-muted);
     font-size: 9px;
+  }
+  .fact-ledger small.mapping-warning,
+  .relation-ledger small.mapping-warning {
+    margin-top: 5px;
+    color: var(--colour-gold);
   }
   details {
     margin-top: 10px;

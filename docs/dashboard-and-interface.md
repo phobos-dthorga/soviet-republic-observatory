@@ -73,6 +73,18 @@ normal browser the same dialog explains that native observation is unavailable
 and retains the synthetic preview. Closing the dialog returns focus to the
 command-bar control.
 
+The same dialog contains a Compatibility section with detected build evidence,
+active reviewed/local profile, semantic version, short hash, exact base,
+validation state, mapping coverage, and the app-local override location.
+**Create starter override**, **Reload override**, and **Reinterpret newest save**
+are separate keyboard-operable actions. Invalid edits preserve the last valid
+profile and show a warning. The application does not embed a JSON editor or
+hide `player_mapped` evidence behind ordinary save-fact styling.
+Configured mod scopes appear as matched, dormant, updated-unreviewed, or exact
+conflicts with package identity, short acknowledged/current hashes, policy,
+mapping count, and remediation guidance. Materials dossiers identify the exact
+mapping and scope that produced each affected fact.
+
 ### Observer Health and Republic Pulse
 
 Monitor is source-backed and contains no synthetic fallback values. Observer

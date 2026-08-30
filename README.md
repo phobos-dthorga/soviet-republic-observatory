@@ -20,6 +20,9 @@ questions:
 > prefixes in app-local SQLite, records a crash-recoverable candidate ledger,
 > projects idempotently into a bundled DuckDB analytical warehouse, catalogues
 > local base/DLC/Workshop/WIP definitions, and supports inert planning overlays.
+> Version-sensitive W&R keys now come from reviewed inert compatibility
+> profiles, with one watched app-local repair file and immutable
+> reviewed-versus-player-mapped provenance.
 > It resolves branches, compares states on one branch, and presents Observer
 > Health, Republic Pulse, and the Industrial Catalogue. Unrelated dashboard
 > values remain visibly synthetic.
@@ -103,6 +106,12 @@ active critical work; **Materials** provides the staged Catalogue ledger with
 bounded per-file detail, and **Diagnostics** exposes the local operational
 record when a run needs investigation. Startup work is recovered from a durable
 native snapshot, so mounting the interface late does not hide an active task.
+The Save observer's **Game compatibility profile** section shows the active
+reviewed/local mapping, exact hash and base, mapping coverage, validation state,
+and controls to create or reload a local repair and explicitly reinterpret the
+newest save. Unusual mod vocabulary can be scoped to one exact Workshop or WIP
+identity with either a strict content pin or an explicit track-updates warning;
+ordinary mod definitions need no override.
 
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.
@@ -145,6 +154,7 @@ small Tauri command boundary and are unavailable to ordinary browser code.
 - [Broadcast Desk](docs/broadcast-desk.md)
 - [Community Extensions](docs/extensions/overview.md)
 - [Localisation and language-pack authoring](docs/localization/README.md)
+- [W&R compatibility-profile authoring](docs/compatibility-profiles.md)
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)

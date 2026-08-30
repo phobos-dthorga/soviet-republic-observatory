@@ -1,13 +1,16 @@
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::fs::{self, File};
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
 
+use crate::compatibility_profile::ResolvedCompatibilityProfile;
 use crate::error::ObservatoryError;
+use crate::fixed_binary::decode_layout;
 use crate::model::SaveInspection;
 use crate::stats_parser::parse_stats;
 
@@ -15,7 +18,10 @@ const MAX_ARCHIVE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_COMPRESSED_STATS_BYTES: u64 = 64 * 1024 * 1024;
 
-pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryError> {
+pub fn inspect_save_archive(
+    path: &Path,
+    profile: &ResolvedCompatibilityProfile,
+) -> Result<SaveInspection, ObservatoryError> {
     let before = fs::metadata(path).map_err(|_| ObservatoryError::InvalidSaveCandidate)?;
     if !before.is_file()
         || before.len() == 0
@@ -32,22 +38,46 @@ pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryEr
     let mut archive =
         ZipArchive::new(BufReader::new(file)).map_err(|_| ObservatoryError::InvalidArchive)?;
     let mut stats_index = None;
+    let mut binary_indices = HashMap::<String, usize>::new();
 
     for index in 0..archive.len() {
         let entry = archive
             .by_index(index)
             .map_err(|_| ObservatoryError::InvalidArchive)?;
-        if entry.name().replace('\\', "/") != "stats.ini" {
-            continue;
+        let normalized_name = entry.name().replace('\\', "/");
+        let is_stats = profile
+            .stats_archive_aliases()
+            .iter()
+            .any(|alias| alias == &normalized_name);
+        if is_stats {
+            if stats_index.replace(index).is_some() {
+                return Err(ObservatoryError::DuplicateStatsPayload);
+            }
+            if entry.size() == 0 {
+                return Err(ObservatoryError::MissingStatsPayload);
+            }
+            if entry.size() > MAX_STATS_BYTES
+                || entry.compressed_size() > MAX_COMPRESSED_STATS_BYTES
+            {
+                return Err(ObservatoryError::StatsPayloadTooLarge);
+            }
         }
-        if stats_index.replace(index).is_some() {
-            return Err(ObservatoryError::DuplicateStatsPayload);
-        }
-        if entry.size() == 0 {
-            return Err(ObservatoryError::MissingStatsPayload);
-        }
-        if entry.size() > MAX_STATS_BYTES || entry.compressed_size() > MAX_COMPRESSED_STATS_BYTES {
-            return Err(ObservatoryError::StatsPayloadTooLarge);
+        if profile
+            .binary_layouts()
+            .iter()
+            .any(|layout| layout.entry_name == normalized_name)
+        {
+            if binary_indices.insert(normalized_name, index).is_some() {
+                return Err(ObservatoryError::BinaryCompatibilityMismatch(
+                    "duplicate_entry",
+                ));
+            }
+            if entry.size() == 0
+                || entry.size() > MAX_STATS_BYTES
+                || entry.compressed_size() > MAX_COMPRESSED_STATS_BYTES
+            {
+                return Err(ObservatoryError::BinaryCompatibilityMismatch("entry_size"));
+            }
         }
     }
 
@@ -56,8 +86,29 @@ pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryEr
         let entry = archive
             .by_index(stats_index)
             .map_err(|_| ObservatoryError::InvalidArchive)?;
-        parse_stats(BufReader::new(entry))?
+        parse_stats(BufReader::new(entry), profile)?
     };
+    let mut binary_facts = Vec::new();
+    for layout in profile.binary_layouts() {
+        let Some(index) = binary_indices.get(&layout.entry_name).copied() else {
+            continue;
+        };
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        let capacity = usize::try_from(entry.size())
+            .map_err(|_| ObservatoryError::BinaryCompatibilityMismatch("entry_size"))?;
+        let mut bytes = Vec::with_capacity(capacity);
+        entry
+            .read_to_end(&mut bytes)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        if bytes.len() != capacity {
+            return Err(ObservatoryError::BinaryCompatibilityMismatch(
+                "truncated_entry",
+            ));
+        }
+        binary_facts.extend(decode_layout(layout, &bytes)?);
+    }
     drop(archive);
 
     let after = fs::metadata(path).map_err(|_| ObservatoryError::SaveChangedDuringRead)?;
@@ -74,8 +125,11 @@ pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryEr
         .ok_or(ObservatoryError::InvalidSaveCandidate)?
         .to_owned();
 
+    let interpretation_id = profile.interpretation_id(&parsed.payload_hash);
     Ok(SaveInspection {
         payload_hash: parsed.payload_hash,
+        interpretation_id,
+        compatibility: profile.provenance(),
         source_file_name,
         source_file_size: after.len(),
         source_modified_ms: system_time_ms(after.modified().unwrap_or(UNIX_EPOCH)),
@@ -86,6 +140,7 @@ pub fn inspect_save_archive(path: &Path) -> Result<SaveInspection, ObservatoryEr
         records: parsed.records,
         coverage: parsed.coverage,
         snapshots: parsed.snapshots,
+        binary_facts,
     })
 }
 
@@ -119,6 +174,7 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::inspect_save_archive;
+    use crate::compatibility_profile::ResolvedCompatibilityProfile;
     use crate::error::ObservatoryError;
 
     #[test]
@@ -138,7 +194,8 @@ mod tests {
             .expect("stats content");
         archive.finish().expect("finish archive");
 
-        let inspection = inspect_save_archive(&path).expect("read-only inspection");
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let inspection = inspect_save_archive(&path, &profile).expect("read-only inspection");
         assert_eq!(inspection.records.len(), 3);
         assert_eq!(inspection.source_file_name, "synthetic-save.zip");
     }
@@ -156,7 +213,10 @@ mod tests {
         archive.finish().expect("finish archive");
 
         assert!(matches!(
-            inspect_save_archive(&path),
+            inspect_save_archive(
+                &path,
+                &ResolvedCompatibilityProfile::reviewed_builtin().expect("profile")
+            ),
             Err(ObservatoryError::MissingStatsPayload)
         ));
     }
@@ -167,7 +227,8 @@ mod tests {
             return;
         };
 
-        let inspection = inspect_save_archive(Path::new(&path))
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let inspection = inspect_save_archive(Path::new(&path), &profile)
             .expect("configured local save should satisfy the supported receiver profile");
 
         assert!(!inspection.records.is_empty());

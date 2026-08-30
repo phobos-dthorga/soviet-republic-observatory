@@ -27,7 +27,12 @@ DuckDB, projects save observations through a durable SQLite outbox, and supports
 strict inert planning overlays. The first local Analysis Pack lifecycle now
 validates, stores, enables, evaluates, and renders declarative packs without
 giving them code or database access. Binary station telemetry is not yet
-implemented.
+implemented. Version-sensitive game keys are supplied by a reviewed inert W&R
+1.1.1.9 compatibility profile; one local exact-base repair may activate as
+visibly `player_mapped` evidence without rewriting an earlier observation.
+Definition aliases for unusual mods may be source-scoped to an exact Workshop
+or WIP identity and explicit update policy; the mechanism does not configure
+mods, infer load order, or claim that an installed mod appears in a save.
 
 ## Player loop
 
@@ -169,6 +174,8 @@ bad news, invent a causal story, or turn opaque scores into authority.
 9. First-party and community extensions use the same bounded public contracts.
 10. The interface can be translated without changing save identity, metric
     meaning, evidence classification, or extension authorship.
+11. Game-version mappings remain inspectable, inert, versioned evidence; local
+    repairs never masquerade as reviewed first-party facts.
 
 ## Non-goals for the first releases
 

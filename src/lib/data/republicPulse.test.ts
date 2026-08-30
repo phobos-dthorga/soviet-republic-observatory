@@ -69,6 +69,11 @@ function observation(
 ) {
   return {
     payload_hash,
+    interpretation_id: `${payload_hash}-interpretation`,
+    mapping_classification: "reviewed_mapping",
+    profile_id: "org.example.test",
+    profile_version: "1.0.0",
+    resolved_profile_hash: "a".repeat(64),
     source_file_name: `${payload_hash}.zip`,
     imported_at_ms,
     branch_id,

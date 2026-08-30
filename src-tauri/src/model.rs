@@ -1,110 +1,68 @@
 use serde::{Deserialize, Serialize};
 
 pub const PARSER_VERSION: &str = "stats-ini.receiver-history.v1";
-pub const FORMAT_PROFILE: &str = "wrsr-stats-implicit-v1";
 pub const REPUBLIC_SCOPE: &str = "republic";
 
 pub const RECEIVER_METRICS: [MetricDefinition; 4] = [
     MetricDefinition {
         id: "core.citizens.electronics.none",
-        source_field: "$Citizens_EletronicNone",
     },
     MetricDefinition {
         id: "core.citizens.electronics.radio",
-        source_field: "$Citizens_EletrinicRadio",
     },
     MetricDefinition {
         id: "core.citizens.electronics.television",
-        source_field: "$Citizens_EletronicTV",
     },
     MetricDefinition {
         id: "core.citizens.electronics.computer",
-        source_field: "$Citizens_EletronicComputer",
     },
 ];
 
 pub const SNAPSHOT_FACTS: [SnapshotFactDefinition; 18] = [
-    SnapshotFactDefinition::republic("core.citizens.electronics.none", "$Citizens_EletronicNone"),
-    SnapshotFactDefinition::republic(
-        "core.citizens.electronics.radio",
-        "$Citizens_EletrinicRadio",
-    ),
-    SnapshotFactDefinition::republic(
-        "core.citizens.electronics.television",
-        "$Citizens_EletronicTV",
-    ),
-    SnapshotFactDefinition::republic(
-        "core.citizens.electronics.computer",
-        "$Citizens_EletronicComputer",
-    ),
-    SnapshotFactDefinition::shared("source.stats.citizens.born", "$Citizens_Born"),
-    SnapshotFactDefinition::shared("source.stats.citizens.dead", "$Citizens_Dead"),
-    SnapshotFactDefinition::shared("source.stats.citizens.escaped", "$Citizens_Escaped"),
-    SnapshotFactDefinition::shared(
-        "source.stats.citizens.immigrant_soviet",
-        "$Citizens_ImigrantSoviet",
-    ),
-    SnapshotFactDefinition::shared(
-        "source.stats.citizens.immigrant_africa",
-        "$Citizens_ImigrantAfrica",
-    ),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.small_children",
-        "$Citizens_SmallChilds",
-    ),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.medium_children",
-        "$Citizens_MediumChilds",
-    ),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.adults_parent",
-        "$Citizens_AdultsParent",
-    ),
-    SnapshotFactDefinition::republic("source.stats.citizens.adults", "$Citizens_Adults"),
-    SnapshotFactDefinition::republic("source.stats.citizens.unemployed", "$Citizens_Unemployed"),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.no_education",
-        "$Citizens_NoEducation",
-    ),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.basic_education",
-        "$Citizens_BasicEducationNum",
-    ),
-    SnapshotFactDefinition::republic(
-        "source.stats.citizens.higher_education",
-        "$Citizens_HighEducationNum",
-    ),
-    SnapshotFactDefinition::republic("source.stats.citizens.car_owners", "$Citizens_CarOwners"),
+    SnapshotFactDefinition::republic("core.citizens.electronics.none"),
+    SnapshotFactDefinition::republic("core.citizens.electronics.radio"),
+    SnapshotFactDefinition::republic("core.citizens.electronics.television"),
+    SnapshotFactDefinition::republic("core.citizens.electronics.computer"),
+    SnapshotFactDefinition::shared("source.stats.citizens.born"),
+    SnapshotFactDefinition::shared("source.stats.citizens.dead"),
+    SnapshotFactDefinition::shared("source.stats.citizens.escaped"),
+    SnapshotFactDefinition::shared("source.stats.citizens.immigrant_soviet"),
+    SnapshotFactDefinition::shared("source.stats.citizens.immigrant_africa"),
+    SnapshotFactDefinition::republic("source.stats.citizens.small_children"),
+    SnapshotFactDefinition::republic("source.stats.citizens.medium_children"),
+    SnapshotFactDefinition::republic("source.stats.citizens.adults_parent"),
+    SnapshotFactDefinition::republic("source.stats.citizens.adults"),
+    SnapshotFactDefinition::republic("source.stats.citizens.unemployed"),
+    SnapshotFactDefinition::republic("source.stats.citizens.no_education"),
+    SnapshotFactDefinition::republic("source.stats.citizens.basic_education"),
+    SnapshotFactDefinition::republic("source.stats.citizens.higher_education"),
+    SnapshotFactDefinition::republic("source.stats.citizens.car_owners"),
 ];
 
 #[derive(Clone, Copy, Debug)]
 pub struct MetricDefinition {
     pub id: &'static str,
-    pub source_field: &'static str,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct SnapshotFactDefinition {
     pub id: &'static str,
-    pub source_field: &'static str,
     pub republic: bool,
     pub city: bool,
 }
 
 impl SnapshotFactDefinition {
-    const fn republic(id: &'static str, source_field: &'static str) -> Self {
+    const fn republic(id: &'static str) -> Self {
         Self {
             id,
-            source_field,
             republic: true,
             city: false,
         }
     }
 
-    const fn shared(id: &'static str, source_field: &'static str) -> Self {
+    const fn shared(id: &'static str) -> Self {
         Self {
             id,
-            source_field,
             republic: true,
             city: true,
         }
@@ -120,6 +78,14 @@ pub struct SourceLineSet {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct SourceFieldSet {
+    pub none: String,
+    pub radio: String,
+    pub television: String,
+    pub computer: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct ReceiverRecord {
     pub record_id: u32,
     pub year: i32,
@@ -131,6 +97,7 @@ pub struct ReceiverRecord {
     pub computer: u64,
     pub classified_total: u64,
     pub source_lines: SourceLineSet,
+    pub source_fields: SourceFieldSet,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -150,8 +117,8 @@ impl SnapshotScopeKind {
 
 #[derive(Clone, Debug)]
 pub struct SnapshotFact {
-    pub fact_id: &'static str,
-    pub source_field: &'static str,
+    pub fact_id: String,
+    pub source_field: String,
     pub value: u64,
     pub source_line: u64,
 }
@@ -204,9 +171,23 @@ pub struct ParsedStats {
     pub snapshots: Vec<SaveSnapshot>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CompatibilityProvenance {
+    pub profile_id: String,
+    pub profile_version: String,
+    pub profile_content_hash: String,
+    pub resolved_profile_hash: String,
+    pub base_profile_hash: Option<String>,
+    pub profile_source: String,
+    pub mapping_classification: String,
+    pub parser_engine_version: String,
+}
+
 #[derive(Clone, Debug)]
 pub struct SaveInspection {
     pub payload_hash: String,
+    pub interpretation_id: String,
+    pub compatibility: CompatibilityProvenance,
     pub source_file_name: String,
     pub source_file_size: u64,
     pub source_modified_ms: i64,
@@ -214,6 +195,16 @@ pub struct SaveInspection {
     pub records: Vec<ReceiverRecord>,
     pub coverage: CoverageReport,
     pub snapshots: Vec<SaveSnapshot>,
+    pub binary_facts: Vec<BinaryMappedFact>,
+}
+
+#[derive(Clone, Debug)]
+pub struct BinaryMappedFact {
+    pub layout_id: String,
+    pub record_index: u32,
+    pub host_slot: String,
+    pub value: Option<f64>,
+    pub source_offset: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -239,12 +230,14 @@ pub struct ReceiverHistoryPoint {
 #[derive(Clone, Debug, Serialize)]
 pub struct ReceiverDataset {
     pub payload_hash: String,
+    pub interpretation_id: String,
     pub source_file_name: String,
     pub source_file_size: u64,
     pub source_modified_ms: i64,
     pub imported_at_ms: i64,
     pub parser_version: String,
     pub format_profile: String,
+    pub compatibility: CompatibilityProvenance,
     pub branch_id: String,
     pub geographic_scope: String,
     pub coverage: CoverageReport,
@@ -267,6 +260,11 @@ pub struct TimelineBranch {
 #[derive(Clone, Debug, Serialize)]
 pub struct ArchiveObservation {
     pub payload_hash: String,
+    pub interpretation_id: String,
+    pub mapping_classification: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
     pub source_file_name: String,
     pub imported_at_ms: i64,
     pub branch_id: String,
@@ -302,6 +300,7 @@ pub struct BranchSelectionResult {
 #[derive(Clone, Debug, Serialize)]
 pub struct ComparisonObservation {
     pub payload_hash: String,
+    pub interpretation_id: String,
     pub source_file_name: String,
     pub branch_id: String,
     pub year: i32,
@@ -311,6 +310,106 @@ pub struct ComparisonObservation {
     pub republic_snapshot_fields: u32,
     pub city_snapshot_count: u32,
     pub city_snapshot_fields: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompatibilityValidationState {
+    Missing,
+    Valid,
+    Invalid,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CompatibilityProfileSummary {
+    pub id: String,
+    pub version: String,
+    pub content_hash: String,
+    pub resolved_hash: String,
+    pub source: String,
+    pub mapping_classification: String,
+    pub base_profile_id: Option<String>,
+    pub base_profile_version: Option<String>,
+    pub base_profile_hash: Option<String>,
+    pub target_game_versions: Vec<String>,
+    pub target_build_ids: Vec<String>,
+    pub target_stats_formats: Vec<u16>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CompatibilityMappingCoverage {
+    pub stats_markers: u32,
+    pub stats_fields: u32,
+    pub definition_operations: u32,
+    pub binary_layouts: u32,
+    pub catalogue_scopes: u32,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompatibilityCatalogueScopeState {
+    Matched,
+    Dormant,
+    UpdatedUnreviewed,
+    Conflict,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CompatibilityCatalogueScopeStatus {
+    pub id: String,
+    pub source_id: String,
+    pub package_name: Option<String>,
+    pub update_policy: String,
+    pub acknowledged_content_hash: String,
+    pub current_content_hash: Option<String>,
+    pub mapping_count: u32,
+    pub state: CompatibilityCatalogueScopeState,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CompatibilityStatus {
+    pub active: CompatibilityProfileSummary,
+    pub reviewed_base: CompatibilityProfileSummary,
+    pub local_file_path: String,
+    pub local_file_exists: bool,
+    pub local_validation: CompatibilityValidationState,
+    pub last_validation_error: Option<String>,
+    pub last_validated_at_ms: Option<i64>,
+    pub detected_game_version: Option<String>,
+    pub detected_build_id: Option<String>,
+    pub coverage: CompatibilityMappingCoverage,
+    pub catalogue_scopes: Vec<CompatibilityCatalogueScopeStatus>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CompatibilityUpdate {
+    pub status: CompatibilityStatus,
+    pub profile_changed: bool,
+    pub definition_mapping_changed: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReinterpretationPhase {
+    #[default]
+    Idle,
+    Reading,
+    Parsing,
+    Persisting,
+    QueueingWarehouse,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+pub struct ReinterpretationProgress {
+    pub phase: ReinterpretationPhase,
+    pub progress_percent: Option<u8>,
+    pub started_at_ms: Option<i64>,
+    pub updated_at_ms: Option<i64>,
+    pub current_file: Option<String>,
+    pub interpretation_id: Option<String>,
+    pub error_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -518,6 +617,7 @@ pub struct SetupState {
     pub distinct_states: u32,
     pub game_vocabularies: Vec<GameVocabularySource>,
     pub automatic_observer: AutomaticObserverStatus,
+    pub compatibility: CompatibilityStatus,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -561,6 +661,10 @@ pub struct CatalogueGenerationSummary {
     pub property_count: u32,
     pub relation_count: u32,
     pub warning_count: u32,
+    pub compatibility_profile_id: String,
+    pub compatibility_profile_version: String,
+    pub compatibility_profile_hash: String,
+    pub mapping_classification: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -701,6 +805,17 @@ pub struct DefinitionValue {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct DefinitionMappingProvenance {
+    pub mapping_id: String,
+    pub catalogue_scope_id: Option<String>,
+    pub mapping_classification: String,
+    pub scope_state: Option<CompatibilityCatalogueScopeState>,
+    pub update_policy: Option<String>,
+    pub acknowledged_content_hash: Option<String>,
+    pub current_content_hash: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct DefinitionFact {
     pub field_id: String,
     pub occurrence: u32,
@@ -713,6 +828,7 @@ pub struct DefinitionFact {
     pub evidence_kind: String,
     pub resolution: String,
     pub conflict_code: Option<String>,
+    pub mapping: DefinitionMappingProvenance,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -727,6 +843,7 @@ pub struct DefinitionRelation {
     pub source_line: u32,
     pub raw_arguments: String,
     pub resolution: String,
+    pub mapping: DefinitionMappingProvenance,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -769,6 +886,10 @@ pub struct OverlayInspection {
 #[derive(Clone, Debug, Serialize)]
 pub struct WarehouseSnapshot {
     pub catalogue_generation_id: String,
+    pub compatibility_profile_id: String,
+    pub compatibility_profile_version: String,
+    pub compatibility_profile_hash: String,
+    pub mapping_classification: String,
     pub overlay_profile_id: Option<String>,
     pub overlay_revision: Option<u32>,
     pub observation_watermark: Option<String>,

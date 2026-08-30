@@ -7,6 +7,7 @@ use crate::analysis_pack::{
     AnalysisPackContribution, AnalysisPackDocument, AnalysisPackInspection, AnalysisPackSummary,
 };
 use crate::automatic_observer::{AutomaticObserver, latest_save_candidate_path};
+use crate::compatibility_runtime::CompatibilityRuntime;
 use crate::definition_catalogue::{
     CatalogueDiscoveryPhase, catalogue_watch_roots, discover_catalogue_with_reuse_and_progress,
 };
@@ -16,10 +17,11 @@ use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_dire
 use crate::model::{
     ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate, BranchSelectionResult,
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
-    CatalogueSearchFilter, CatalogueStatus, ConfiguredDirectorySummary, DefinitionDossier,
-    DirectoryKind, ImportOutcome, ObservationImportResult, OverlayInspection,
-    OverlayProfileSummary, ReceiverDataset, RecorderDiscoverySource, RecorderHealth,
-    RecorderUpdate, SetupState, WarehouseSnapshot,
+    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
+    ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, ReceiverDataset,
+    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
+    ReinterpretationProgress, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -63,6 +65,9 @@ pub struct ObservatoryApplication {
     storage: ObservatoryStorage,
     warehouse: AnalyticalWarehouse,
     automatic_observer: Mutex<AutomaticObserver>,
+    compatibility: CompatibilityRuntime,
+    reinterpretation: Mutex<()>,
+    reinterpretation_progress: Mutex<ReinterpretationProgress>,
     catalogue_refresh: Mutex<()>,
     catalogue_progress: Mutex<CatalogueRefreshProgress>,
 }
@@ -72,7 +77,12 @@ impl ObservatoryApplication {
         database_path: PathBuf,
         warehouse_path: PathBuf,
     ) -> Result<Self, ObservatoryError> {
+        let data_directory = database_path
+            .parent()
+            .ok_or(ObservatoryError::InvalidDirectory)?;
+        let compatibility = CompatibilityRuntime::initialise(data_directory)?;
         let storage = ObservatoryStorage::initialise(database_path)?;
+        storage.record_compatibility_runtime(&compatibility.active()?, &compatibility.status()?)?;
         let warehouse = match AnalyticalWarehouse::initialise(warehouse_path.clone()) {
             Ok(warehouse) => warehouse,
             Err(_) => {
@@ -95,6 +105,9 @@ impl ObservatoryApplication {
             storage,
             warehouse,
             automatic_observer: Mutex::new(automatic_observer),
+            compatibility,
+            reinterpretation: Mutex::new(()),
+            reinterpretation_progress: Mutex::new(ReinterpretationProgress::default()),
             catalogue_refresh: Mutex::new(()),
             catalogue_progress: Mutex::new(CatalogueRefreshProgress::default()),
         })
@@ -145,11 +158,157 @@ impl ObservatoryApplication {
             distinct_states: self.storage.distinct_state_count()?,
             game_vocabularies,
             automatic_observer: self.observer_status()?,
+            compatibility: self.compatibility_status()?,
         })
     }
 
     pub fn latest_receiver_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
         self.storage.load_latest_dataset()
+    }
+
+    pub fn compatibility_status(&self) -> Result<CompatibilityStatus, ObservatoryError> {
+        let mut status = self.compatibility.status()?;
+        if let Ok(Some(generation)) = self.warehouse.catalogue_generation() {
+            status.detected_build_id = generation.game_build_id;
+            if generation.compatibility_profile_hash == status.active.resolved_hash
+                && status.catalogue_scopes.iter().all(|scope| {
+                    scope.state == crate::model::CompatibilityCatalogueScopeState::Dormant
+                })
+                && let Ok(scopes) = self.warehouse.catalogue_scope_statuses()
+                && !scopes.is_empty()
+            {
+                status.catalogue_scopes = scopes;
+            }
+        }
+        Ok(status)
+    }
+
+    pub fn create_compatibility_override(&self) -> Result<CompatibilityUpdate, ObservatoryError> {
+        let mut update = self.compatibility.create_starter_override()?;
+        update.status = self.compatibility_status()?;
+        self.storage
+            .record_compatibility_runtime(&self.compatibility.active()?, &update.status)?;
+        Ok(update)
+    }
+
+    pub fn reload_compatibility(&self) -> Result<CompatibilityUpdate, ObservatoryError> {
+        let mut update = self.compatibility.reload()?;
+        update.status = self.compatibility_status()?;
+        self.storage
+            .record_compatibility_runtime(&self.compatibility.active()?, &update.status)?;
+        Ok(update)
+    }
+
+    pub fn reinterpretation_progress(&self) -> Result<ReinterpretationProgress, ObservatoryError> {
+        self.reinterpretation_progress
+            .lock()
+            .map(|progress| progress.clone())
+            .map_err(|_| ObservatoryError::StorageUnavailable)
+    }
+
+    pub fn reinterpret_latest_save(
+        &self,
+        mut notify: impl FnMut(ReinterpretationProgress),
+    ) -> Result<ObservationImportResult, ObservatoryError> {
+        let _guard = match self.reinterpretation.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return Err(ObservatoryError::CriticalTaskBusy),
+            Err(TryLockError::Poisoned(_)) => return Err(ObservatoryError::StorageUnavailable),
+        };
+        let started_at_ms = now_ms();
+        diagnostics::record(
+            "info",
+            "compatibility.reinterpret_started",
+            "save_reinterpretation",
+            "Save reinterpretation started with the active compatibility profile.",
+        );
+        let directory = self
+            .storage
+            .get_setting(SAVE_DIRECTORY_KEY)?
+            .ok_or(ObservatoryError::SaveDirectoryNotConfigured)?;
+        let path = latest_save_candidate_path(&directory)?;
+        let current_file = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("save.zip")
+            .to_owned();
+        let mut progress = ReinterpretationProgress {
+            phase: ReinterpretationPhase::Reading,
+            progress_percent: Some(10),
+            started_at_ms: Some(started_at_ms),
+            updated_at_ms: Some(started_at_ms),
+            current_file: Some(current_file),
+            interpretation_id: None,
+            error_code: None,
+        };
+        self.report_reinterpretation_progress(&progress, &mut notify);
+        let result: Result<ObservationImportResult, ObservatoryError> = (|| {
+            progress.phase = ReinterpretationPhase::Parsing;
+            progress.progress_percent = Some(40);
+            progress.updated_at_ms = Some(now_ms());
+            self.report_reinterpretation_progress(&progress, &mut notify);
+            let profile = self.compatibility.active()?;
+            let inspection = inspect_save_archive(&path, &profile)?;
+            progress.phase = ReinterpretationPhase::Persisting;
+            progress.progress_percent = Some(75);
+            progress.updated_at_ms = Some(now_ms());
+            progress.interpretation_id = Some(inspection.interpretation_id.clone());
+            self.report_reinterpretation_progress(&progress, &mut notify);
+            let inserted = self.storage.save_reinterpretation(&inspection)?;
+            progress.phase = ReinterpretationPhase::QueueingWarehouse;
+            progress.progress_percent = Some(92);
+            progress.updated_at_ms = Some(now_ms());
+            self.report_reinterpretation_progress(&progress, &mut notify);
+            let dataset = self.storage.load_dataset(&inspection.interpretation_id)?;
+            Ok(ObservationImportResult {
+                outcome: if inserted {
+                    ImportOutcome::Imported
+                } else {
+                    ImportOutcome::Duplicate
+                },
+                dataset,
+            })
+        })();
+        match result {
+            Ok(result) => {
+                progress.phase = ReinterpretationPhase::Complete;
+                progress.progress_percent = Some(100);
+                progress.updated_at_ms = Some(now_ms());
+                self.report_reinterpretation_progress(&progress, &mut notify);
+                diagnostics::record(
+                    "info",
+                    "compatibility.reinterpret_complete",
+                    "save_reinterpretation",
+                    "Save reinterpretation completed and its analytical projection was queued.",
+                );
+                Ok(result)
+            }
+            Err(error) => {
+                progress.phase = ReinterpretationPhase::Failed;
+                progress.progress_percent = None;
+                progress.updated_at_ms = Some(now_ms());
+                progress.error_code = Some(error.code().to_owned());
+                self.report_reinterpretation_progress(&progress, &mut notify);
+                diagnostics::record(
+                    "error",
+                    "compatibility.reinterpret_failed",
+                    "save_reinterpretation",
+                    "Save reinterpretation stopped; earlier observations remain available.",
+                );
+                Err(error)
+            }
+        }
+    }
+
+    fn report_reinterpretation_progress(
+        &self,
+        progress: &ReinterpretationProgress,
+        notify: &mut impl FnMut(ReinterpretationProgress),
+    ) {
+        if let Ok(mut current) = self.reinterpretation_progress.lock() {
+            *current = progress.clone();
+        }
+        notify(progress.clone());
     }
 
     pub fn inspect_analysis_pack(&self, json: &str) -> AnalysisPackInspection {
@@ -305,9 +464,10 @@ impl ObservatoryApplication {
             .get_setting(SAVE_DIRECTORY_KEY)?
             .ok_or(ObservatoryError::SaveDirectoryNotConfigured)?;
         let path = latest_save_candidate_path(&directory)?;
-        let inspection = inspect_save_archive(&path)?;
+        let profile = self.compatibility.active()?;
+        let inspection = inspect_save_archive(&path, &profile)?;
         let inserted = self.storage.save_inspection(&inspection)?;
-        let dataset = self.storage.load_dataset(&inspection.payload_hash)?;
+        let dataset = self.storage.load_dataset(&inspection.interpretation_id)?;
         self.automatic_observer
             .lock()
             .map_err(|_| ObservatoryError::StorageUnavailable)?
@@ -355,11 +515,12 @@ impl ObservatoryApplication {
         self.automatic_observer
             .lock()
             .map_err(|_| ObservatoryError::StorageUnavailable)?
-            .poll(
+            .poll_with_profile(
                 &self.storage,
                 directory.as_deref(),
                 now_ms(),
                 discovery_source,
+                &self.compatibility.active()?,
             )
     }
 
@@ -483,11 +644,13 @@ impl ObservatoryApplication {
                 .get_setting(WORKSHOP_DIRECTORY_KEY)?
                 .filter(|path| path.is_dir());
             let reuse = self.warehouse.catalogue_reuse_cache()?;
+            let compatibility = self.compatibility.active()?;
             let generation = discover_catalogue_with_reuse_and_progress(
                 &game_directory,
                 workshop_directory.as_deref(),
                 requested_at,
                 &reuse,
+                &compatibility,
                 |discovery| {
                     progress.phase = match discovery.phase {
                         CatalogueDiscoveryPhase::Discovering => CatalogueRefreshPhase::Discovering,
@@ -525,6 +688,29 @@ impl ObservatoryApplication {
                     self.report_catalogue_progress(&progress, &mut notify);
                 },
             )?;
+            self.compatibility
+                .record_catalogue_scopes(generation.compatibility_scopes.clone())?;
+            if generation.compatibility_scopes.iter().any(|scope| {
+                scope.state == crate::model::CompatibilityCatalogueScopeState::Conflict
+            }) {
+                diagnostics::record(
+                    "warning",
+                    "compatibility.catalogue_scope_conflict",
+                    "refresh_catalogue",
+                    "An exact mod compatibility scope no longer matches its acknowledged definition content; the previous catalogue generation remains active.",
+                );
+                return Err(ObservatoryError::CatalogueCompatibilityConflict);
+            }
+            if generation.compatibility_scopes.iter().any(|scope| {
+                scope.state == crate::model::CompatibilityCatalogueScopeState::UpdatedUnreviewed
+            }) {
+                diagnostics::record(
+                    "warning",
+                    "compatibility.catalogue_scope_updated",
+                    "refresh_catalogue",
+                    "A tracked mod compatibility scope was applied to updated definition content that has not yet been acknowledged.",
+                );
+            }
             diagnostics::record(
                 "info",
                 "catalogue.scan_complete",
@@ -760,6 +946,13 @@ impl ObservatoryApplication {
 
     pub(crate) fn catalogue_configuration(&self) -> Result<Option<PathBuf>, ObservatoryError> {
         self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)
+    }
+
+    pub(crate) fn compatibility_watch_root(&self) -> Option<PathBuf> {
+        self.compatibility
+            .local_path()
+            .parent()
+            .map(Path::to_path_buf)
     }
 
     pub(crate) fn catalogue_watch_roots(&self) -> Result<Vec<PathBuf>, ObservatoryError> {

@@ -34,8 +34,10 @@ Archive, and core receiver charts continue to work. Rebuild clears only derived
 observation projections and redelivers retained SQLite observations.
 
 Every model request must obtain one `WarehouseSnapshot`: catalogue generation,
-active overlay profile and revision, observation watermark, warehouse schema,
-and projector version. A model may not combine rows from different snapshots.
+compatibility profile ID/version/resolved hash and mapping classification,
+active planning-overlay profile and revision, observation watermark, warehouse
+schema, and projector version. A model may not combine rows from different
+snapshots.
 
 ## Catalogue generations
 
@@ -74,6 +76,15 @@ are unresolved rules until their game conversion is verified. Repair and
 maintenance enter the catalogue only when an explicit directive or reviewed
 rule exists.
 
+An optional compatibility mapping may target one exact `workshop.*` or `wip.*`
+source. The warehouse records the mapping ID, scope ID, reviewed/player origin,
+acknowledged definition hash, observed definition hash, update policy, and
+scope state beside the affected facts. An `exact` hash conflict prevents the
+new generation transaction from beginning; `track_updates` publishes with an
+`updated_unreviewed` warning. Missing sources are dormant. Scope hashes cover
+only supported definition files, so models and textures do not create false
+mapping conflicts.
+
 Historical generations remain authoritative for reproducing old model runs.
 The current installed catalogue can be rebuilt; retained historical generations
 cannot be reconstructed safely after mods or the game change.
@@ -109,6 +120,10 @@ SQLite schema, DuckDB schema, projector, parser, overlay schema, application,
 Analysis Pack, and future plugin protocol versions are separate compatibility
 decisions. Both migration series are append-only. A warehouse created by a
 newer unsupported schema is refused rather than guessed at.
+
+The optional app-local compatibility file should be backed up with the two
+databases when reproducible player mappings matter. A profile change schedules
+a new catalogue generation; it never updates a retained generation in place.
 
 The bundled DuckDB client is pinned. Extension autoload, automatic installation,
 and external access are disabled on connection; the application does not use

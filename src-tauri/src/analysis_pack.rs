@@ -827,12 +827,17 @@ mod tests {
     fn dataset() -> ReceiverDataset {
         ReceiverDataset {
             payload_hash: "a".repeat(64),
+            interpretation_id: "b".repeat(64),
             source_file_name: "synthetic.zip".to_owned(),
             source_file_size: 1,
             source_modified_ms: 1,
             imported_at_ms: 1,
             parser_version: "test".to_owned(),
             format_profile: "test".to_owned(),
+            compatibility:
+                crate::compatibility_profile::ResolvedCompatibilityProfile::reviewed_builtin()
+                    .expect("profile")
+                    .provenance(),
             branch_id: "main".to_owned(),
             geographic_scope: "republic".to_owned(),
             coverage: CoverageReport {

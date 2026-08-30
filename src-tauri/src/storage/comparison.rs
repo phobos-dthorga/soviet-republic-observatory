@@ -10,15 +10,15 @@ use crate::model::{
 impl ObservatoryStorage {
     pub fn compare_observations(
         &self,
-        from_payload_hash: &str,
-        to_payload_hash: &str,
+        from_interpretation_id: &str,
+        to_interpretation_id: &str,
     ) -> Result<ArchiveComparison, ObservatoryError> {
-        if from_payload_hash == to_payload_hash {
+        if from_interpretation_id == to_interpretation_id {
             return Err(ObservatoryError::SameObservationComparison);
         }
         let connection = self.connect()?;
-        let (from, from_record) = load_comparison_observation(&connection, from_payload_hash)?;
-        let (to, to_record) = load_comparison_observation(&connection, to_payload_hash)?;
+        let (from, from_record) = load_comparison_observation(&connection, from_interpretation_id)?;
+        let (to, to_record) = load_comparison_observation(&connection, to_interpretation_id)?;
         if from.branch_id != to.branch_id || from.branch_id == "unassigned" {
             return Err(ObservatoryError::IncompatibleComparison);
         }
@@ -62,24 +62,26 @@ impl ObservatoryStorage {
 
 fn load_comparison_observation(
     connection: &Connection,
-    payload_hash: &str,
+    interpretation_id: &str,
 ) -> Result<(ComparisonObservation, HistoryRecord), ObservatoryError> {
     let source = connection
         .query_row(
-            "SELECT source_file_name, branch_id, coverage_status \
-             FROM observation_sources WHERE payload_hash = ?1",
-            [payload_hash],
+            "SELECT payload_hash, raw_payload_hash, source_file_name, branch_id, coverage_status \
+             FROM observation_sources WHERE interpretation_id = ?1",
+            [interpretation_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
                 ))
             },
         )
         .optional()?
         .ok_or(ObservatoryError::UnknownObservation)?;
-    let record = load_history(connection, payload_hash)?
+    let record = load_history(connection, &source.0)?
         .pop()
         .ok_or(ObservatoryError::UnknownObservation)?;
     let snapshot = connection.query_row(
@@ -90,7 +92,7 @@ fn load_comparison_observation(
                WHERE payload_hash = ?1 AND scope_kind = 'city'), \
              COALESCE((SELECT SUM(supported_fact_count) FROM snapshot_scopes \
                WHERE payload_hash = ?1 AND scope_kind = 'city'), 0)",
-        [payload_hash],
+        [&source.0],
         |row| {
             Ok((
                 row.get::<_, u32>(0)?,
@@ -101,13 +103,14 @@ fn load_comparison_observation(
     )?;
     Ok((
         ComparisonObservation {
-            payload_hash: payload_hash.to_owned(),
-            source_file_name: source.0,
-            branch_id: source.1,
+            payload_hash: source.1,
+            interpretation_id: interpretation_id.to_owned(),
+            source_file_name: source.2,
+            branch_id: source.3,
             year: record.year,
             day: record.day,
             game_day: record.game_day,
-            coverage_status: if source.2 == "complete" {
+            coverage_status: if source.4 == "complete" {
                 CoverageStatus::Complete
             } else {
                 CoverageStatus::Partial

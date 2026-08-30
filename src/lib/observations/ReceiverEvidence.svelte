@@ -54,6 +54,18 @@
       <strong>{dataset.parser_version}</strong>
     </div>
     <div>
+      <span>{$translation("compatibility-profile-evidence")}</span>
+      <strong
+        >{dataset.compatibility.mapping_classification === "player_mapped"
+          ? $translation("compatibility-player-mapped")
+          : $translation("compatibility-reviewed")}</strong
+      >
+      <small
+        >{dataset.compatibility.profile_id} v{dataset.compatibility
+          .profile_version}</small
+      >
+    </div>
+    <div>
       <span>{$translation("evidence-branch-pending")}</span>
       <strong
         >{dataset.branch_id === "unassigned"
@@ -72,6 +84,11 @@
     <div class="receiver-evidence-wide">
       <span>{$translation("evidence-payload-sha")}</span>
       <code>{dataset.payload_hash}</code>
+    </div>
+    <div class="receiver-evidence-wide">
+      <span>{$translation("compatibility-interpretation-id")}</span>
+      <code>{dataset.interpretation_id}</code>
+      <small>{$translation("compatibility-change-note")}</small>
     </div>
     <div class="receiver-evidence-wide">
       <span>{$translation("evidence-record-coverage")}</span>

@@ -47,8 +47,8 @@
     const nextBranch = archive?.selected_branch_id ?? "";
     if (nextBranch === comparisonBranch) return;
     comparisonBranch = nextBranch;
-    comparisonFrom = branchObservations.at(-1)?.payload_hash ?? "";
-    comparisonTo = branchObservations[0]?.payload_hash ?? "";
+    comparisonFrom = branchObservations.at(-1)?.interpretation_id ?? "";
+    comparisonTo = branchObservations[0]?.interpretation_id ?? "";
     comparison = null;
     comparisonError = false;
   });
@@ -305,7 +305,7 @@
               <span>{$translation("archive-comparison-baseline")}</span>
               <select bind:value={comparisonFrom} disabled={comparisonBusy}>
                 {#each branchObservations as observation}
-                  <option value={observation.payload_hash}>
+                  <option value={observation.interpretation_id}>
                     {observationOption(observation)}
                   </option>
                 {/each}
@@ -316,7 +316,7 @@
               <span>{$translation("archive-comparison-target")}</span>
               <select bind:value={comparisonTo} disabled={comparisonBusy}>
                 {#each branchObservations as observation}
-                  <option value={observation.payload_hash}>
+                  <option value={observation.interpretation_id}>
                     {observationOption(observation)}
                   </option>
                 {/each}
@@ -496,22 +496,27 @@
             <div>
               <span
                 class="status-chip"
-                data-status={observation.coverage_status === "complete"
-                  ? "stable"
-                  : "watch"}
+                data-status={observation.mapping_classification ===
+                "player_mapped"
+                  ? "watch"
+                  : observation.coverage_status === "complete"
+                    ? "stable"
+                    : "watch"}
               >
                 {$translation(
-                  observation.coverage_status === "complete"
-                    ? "coverage-complete"
-                    : "coverage-partial",
+                  observation.mapping_classification === "player_mapped"
+                    ? "compatibility-player-mapped"
+                    : "compatibility-reviewed",
                 )}
               </span>
-              <code>{observation.payload_hash.slice(0, 12)}</code>
+              <code title={observation.interpretation_id}
+                >{observation.interpretation_id.slice(0, 12)}</code
+              >
               <small
                 >{$translation("archive-snapshot-evidence", {
                   republic: observation.republic_snapshot_fields,
                   cities: observation.city_snapshot_count,
-                })}</small
+                })} · {observation.profile_id} v{observation.profile_version}</small
               >
             </div>
           </article>

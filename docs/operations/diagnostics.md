@@ -83,7 +83,9 @@ sharing them.
 
 The first implemented producers are application startup, warehouse startup
 degradation, and catalogue refresh start, scan completion, success, and
-failure. Future background services should use the same boundary and add only
+failure. Compatibility adds controlled codes for valid/invalid local profiles,
+exact mod-scope conflicts, and tracked unreviewed definition updates; it never
+logs package contents, paths, or profile JSON. Future background services should use the same boundary and add only
 stable, low-cardinality events that answer a concrete support question.
 
 ## Performance boundary
