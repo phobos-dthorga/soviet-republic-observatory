@@ -5,7 +5,7 @@
     createReceiverChangeChart,
     largestObservationInterval,
     selectedBranchObservations,
-  } from "../data/republicPulse";
+  } from "../presentation/republicPulse";
   import { formatDate, formatNumber } from "../i18n/format";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";

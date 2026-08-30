@@ -67,6 +67,7 @@ an engineering requirement.
 - [ADR-0013: governed DuckDB write boundary](architecture/decisions/0013-governed-duckdb-write-boundary.md)
 - [ADR-0014: exceptional visuals through explicit analytical contracts](architecture/decisions/0014-exceptional-visuals-doctrine.md)
 - [ADR-0015: inert community themes with native validation](architecture/decisions/0015-inert-community-themes.md)
+- [ADR-0016: enforce the domain and presentation boundary](architecture/decisions/0016-domain-presentation-boundary.md)
 
 ## Evidence status vocabulary
 

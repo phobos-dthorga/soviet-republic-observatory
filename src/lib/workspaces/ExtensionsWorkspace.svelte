@@ -1,7 +1,7 @@
 <script lang="ts">
   import receiverExampleJson from "../../../examples/analysis-packs/receiver-adoption-laboratory.roanalysis.json?raw";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import { receiverPackPreview } from "../data/extensionPreview";
+  import { receiverPackPreview } from "../presentation/extensionPreview";
   import {
     chartSpecForAnalysisContribution,
     type AnalysisPackContribution,

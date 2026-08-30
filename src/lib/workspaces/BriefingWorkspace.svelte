@@ -1,7 +1,10 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import type { EvidenceCoverage, EvidenceKind } from "../charts/types";
-  import { createBriefingPreview, type MaterialCell } from "../data/sample";
+  import {
+    createBriefingPreview,
+    type MaterialCell,
+  } from "../presentation/sample";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import { createBroadcastPreview } from "../data/broadcastPreview";
-  import { createObservedReceiverChart } from "../data/receiverObservation";
+  import { createBroadcastPreview } from "../presentation/broadcastPreview";
+  import { createObservedReceiverChart } from "../presentation/receiverObservation";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";

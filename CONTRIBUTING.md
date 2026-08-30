@@ -16,6 +16,16 @@ accessibility, security, provenance, progress, or failure-isolation rule are
 signals to extract the smallest reusable service. Do not generalise solely for
 hypothetical use.
 
+Rust/domain services own parsing, lineage, persistence, validation, evidence,
+analytics, recommendations, and lifecycle decisions. `desktopClient.ts` is the
+only Tauri boundary. TypeScript presentation adapters may map bounded host
+models into view and chart models but cannot invoke services or decide domain
+meaning. Svelte owns rendering, localisation, accessibility, navigation,
+ephemeral interaction state, and service invocation. CSS consumes semantic
+state and validated theme roles; it never establishes business meaning. The
+automated architecture audit enforces these import and mutation seams. See
+[ADR-0016](docs/architecture/decisions/0016-domain-presentation-boundary.md).
+
 Use the shared notification centre for transient outcomes, the critical-task
 components for long-running progress, and inline messages for validation tied
 to a particular field or operation. Contextual explanations use the shared

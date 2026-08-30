@@ -2,12 +2,12 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import { createMaterialFlowPreview } from "../data/materialFlowPreview";
+  import { createMaterialFlowPreview } from "../presentation/materialFlowPreview";
   import {
     createProductionRouteChart,
     productionResourceLabel,
     productionRouteUnit,
-  } from "../data/productionRoute";
+  } from "../presentation/productionRoute";
   import {
     getProductionRoute,
     getProductionRouteCoverage,
