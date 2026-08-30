@@ -29,6 +29,33 @@ pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
+#[derive(Clone, Debug, Default)]
+struct WarehouseStatusCache {
+    catalogue_generation: Option<CatalogueGenerationSummary>,
+    catalogue_scopes: Vec<CompatibilityCatalogueScopeStatus>,
+    catalogue_runtime: CatalogueRuntime,
+    last_projected_at_ms: Option<i64>,
+    observation_watermark: Option<String>,
+}
+
+impl WarehouseStatusCache {
+    fn load(connection: &Connection) -> Result<Self, ObservatoryError> {
+        let (last_projected_at_ms, observation_watermark) = connection.query_row(
+            "SELECT last_projection_ms, observation_watermark FROM warehouse_metadata \
+             WHERE singleton_id = 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok(Self {
+            catalogue_generation: catalogue_generation_from(connection)?,
+            catalogue_scopes: catalogue_scope_statuses_from(connection)?,
+            catalogue_runtime: catalogue_runtime_from(connection)?,
+            last_projected_at_ms,
+            observation_watermark,
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WarehousePublishProgress {
     pub rows_written: u64,
@@ -110,6 +137,7 @@ const MIGRATIONS: &[(u32, &str)] = &[
 pub struct AnalyticalWarehouse {
     database_path: PathBuf,
     connection: Mutex<Connection>,
+    status_cache: Mutex<WarehouseStatusCache>,
     governor: WarehouseGovernor,
     available: bool,
 }
@@ -139,9 +167,11 @@ impl AnalyticalWarehouse {
              SET enable_external_access = false;",
         )?;
         migrate(&mut connection)?;
+        let status_cache = WarehouseStatusCache::load(&connection)?;
         Ok(Self {
             database_path,
             connection: Mutex::new(connection),
+            status_cache: Mutex::new(status_cache),
             governor: WarehouseGovernor::default(),
             available: true,
         })
@@ -156,6 +186,7 @@ impl AnalyticalWarehouse {
             connection: Mutex::new(
                 Connection::open_in_memory().expect("an in-memory DuckDB connection must open"),
             ),
+            status_cache: Mutex::new(WarehouseStatusCache::default()),
             governor: WarehouseGovernor::default(),
             available: false,
         }
@@ -843,6 +874,12 @@ impl AnalyticalWarehouse {
             return fallback;
         }
         let Ok(connection) = self.connection.try_lock() else {
+            let cached = self.status_cache.lock().ok().map(|cache| {
+                (
+                    cache.last_projected_at_ms,
+                    cache.observation_watermark.clone(),
+                )
+            });
             return WarehouseHealth {
                 phase: if fallback.phase == WarehousePhase::Attention {
                     WarehousePhase::Attention
@@ -851,16 +888,28 @@ impl AnalyticalWarehouse {
                 } else {
                     WarehousePhase::Lagging
                 },
+                last_projected_at_ms: cached.as_ref().and_then(|value| value.0),
+                observation_watermark: cached.and_then(|value| value.1),
                 ..fallback
             };
         };
         let Ok((last_projected_at_ms, observation_watermark)) = connection.query_row(
             "SELECT last_projection_ms, observation_watermark FROM warehouse_metadata WHERE singleton_id = 1",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, Option<i64>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
         ) else {
             return fallback;
         };
+        drop(connection);
+        if let Ok(mut cache) = self.status_cache.lock() {
+            cache.last_projected_at_ms = last_projected_at_ms;
+            cache.observation_watermark = observation_watermark.clone();
+        }
         WarehouseHealth {
             last_projected_at_ms,
             observation_watermark,
@@ -905,8 +954,19 @@ impl AnalyticalWarehouse {
         if !self.available {
             return None;
         }
-        let connection = self.connection.try_lock().ok()?;
-        catalogue_generation_from(&connection).ok().flatten()
+        let Ok(connection) = self.connection.try_lock() else {
+            return self
+                .status_cache
+                .lock()
+                .ok()
+                .and_then(|cache| cache.catalogue_generation.clone());
+        };
+        let generation = catalogue_generation_from(&connection).ok()?;
+        drop(connection);
+        if let Ok(mut cache) = self.status_cache.lock() {
+            cache.catalogue_generation = generation.clone();
+        }
+        generation
     }
 
     pub fn catalogue_scope_statuses_if_ready(
@@ -915,16 +975,38 @@ impl AnalyticalWarehouse {
         if !self.available {
             return None;
         }
-        let connection = self.connection.try_lock().ok()?;
-        catalogue_scope_statuses_from(&connection).ok()
+        let Ok(connection) = self.connection.try_lock() else {
+            return self
+                .status_cache
+                .lock()
+                .ok()
+                .map(|cache| cache.catalogue_scopes.clone());
+        };
+        let scopes = catalogue_scope_statuses_from(&connection).ok()?;
+        drop(connection);
+        if let Ok(mut cache) = self.status_cache.lock() {
+            cache.catalogue_scopes = scopes.clone();
+        }
+        Some(scopes)
     }
 
     pub fn catalogue_runtime_if_ready(&self) -> Option<CatalogueRuntime> {
         if !self.available {
             return None;
         }
-        let connection = self.connection.try_lock().ok()?;
-        catalogue_runtime_from(&connection).ok()
+        let Ok(connection) = self.connection.try_lock() else {
+            return self
+                .status_cache
+                .lock()
+                .ok()
+                .map(|cache| cache.catalogue_runtime.clone());
+        };
+        let runtime = catalogue_runtime_from(&connection).ok()?;
+        drop(connection);
+        if let Ok(mut cache) = self.status_cache.lock() {
+            cache.catalogue_runtime = runtime.clone();
+        }
+        Some(runtime)
     }
 
     #[cfg(test)]
@@ -1969,10 +2051,31 @@ mod tests {
     }
 
     #[test]
-    fn status_snapshots_do_not_wait_for_an_active_warehouse_writer() {
+    fn status_snapshots_preserve_confirmed_evidence_during_an_active_warehouse_writer() {
         let directory = tempdir().expect("temporary directory");
-        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("busy.duckdb"))
-            .expect("warehouse");
+        let path = directory.path().join("busy.duckdb");
+        {
+            let warehouse = AnalyticalWarehouse::initialise(path.clone()).expect("warehouse");
+            warehouse
+                .lock()
+                .expect("connection")
+                .execute_batch(
+                    "INSERT INTO catalogue_generations VALUES(
+                         'cached-generation', 'test-build', 'parser.v1', 10,
+                         1, 2, 3, 4, 5, 0,
+                         'org.example.profile', '1.0.0', 'profile-hash', 'reviewed_mapping'
+                     );
+                     UPDATE warehouse_metadata SET
+                         current_catalogue_generation_id = 'cached-generation',
+                         last_catalogue_check_ms = 11,
+                         last_catalogue_refresh_ms = 12,
+                         last_projection_ms = 13,
+                         observation_watermark = 'confirmed-watermark'
+                     WHERE singleton_id = 1;",
+                )
+                .expect("confirmed metadata");
+        }
+        let warehouse = AnalyticalWarehouse::initialise(path).expect("reopened warehouse");
         let _writer = warehouse.lock().expect("writer lock");
         let permit = warehouse
             .governor
@@ -1994,8 +2097,17 @@ mod tests {
                 .map(|activity| activity.rows_processed),
             Some(2_000)
         );
-        assert!(generation.is_none());
-        assert!(runtime.is_none());
+        assert_eq!(
+            health.observation_watermark.as_deref(),
+            Some("confirmed-watermark")
+        );
+        assert_eq!(
+            generation
+                .as_ref()
+                .map(|value| value.generation_id.as_str()),
+            Some("cached-generation")
+        );
+        assert_eq!(runtime, Some((Some(11), Some(12), None)));
         permit.complete();
     }
 

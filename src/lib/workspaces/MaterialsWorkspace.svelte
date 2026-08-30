@@ -66,6 +66,8 @@
   let supplementId = $state("planning_material");
   let supplementName = $state("Planning material");
   let clockMs = $state(Date.now());
+  let searchRequest = 0;
+  let dossierRequest = 0;
   const refreshActive = $derived(
     refreshProgress != null &&
       ["discovering", "scanning", "publishing", "finalising"].includes(
@@ -155,19 +157,52 @@
   async function loadStatus(): Promise<void> {
     if (!desktopAvailable) return;
     const nextStatus = await getCatalogueStatus();
+    const accepted = acceptCatalogueStatus(nextStatus);
+    profiles = await listPlanningOverlays();
+    if (accepted.reload && accepted.generationId)
+      await runSearch(accepted.generationId);
+  }
+
+  function catalogueSnapshotIdentity(
+    catalogueStatus: CatalogueStatus | null,
+  ): string | null {
+    const generationId = catalogueStatus?.generation?.generation_id;
+    if (!generationId) return null;
+    const overlay = catalogueStatus?.active_overlay;
+    return `${generationId}|${overlay?.profile_id ?? "none"}|${overlay?.active_revision ?? 0}`;
+  }
+
+  function acceptCatalogueStatus(nextStatus: CatalogueStatus): {
+    generationId: string | null;
+    reload: boolean;
+  } {
+    const previousIdentity = catalogueSnapshotIdentity(status);
+    const nextIdentity = catalogueSnapshotIdentity(nextStatus);
+    const nextGenerationId = nextStatus.generation?.generation_id ?? null;
     status = nextStatus;
     acceptRefreshProgress(nextStatus.refresh);
-    profiles = await listPlanningOverlays();
-    if (status.generation) await runSearch();
+    if (!nextIdentity || previousIdentity !== nextIdentity) {
+      searchRequest += 1;
+      dossierRequest += 1;
+      page = null;
+      dossier = null;
+    }
+    return {
+      generationId: nextGenerationId,
+      reload: nextIdentity !== null && previousIdentity !== nextIdentity,
+    };
   }
 
   function acceptRefreshProgress(next: CatalogueRefreshProgress): void {
     refreshProgress = selectLatestTaskProgress(refreshProgress, next);
   }
 
-  async function runSearch(): Promise<void> {
-    if (!desktopAvailable || !status?.generation) return;
-    page = await searchCatalogue({
+  async function runSearch(
+    expectedGenerationId = status?.generation?.generation_id,
+  ): Promise<void> {
+    if (!desktopAvailable || !expectedGenerationId) return;
+    const request = ++searchRequest;
+    const nextPage = await searchCatalogue({
       query: query || undefined,
       entity_kind: kind
         ? (kind as "resource" | "building" | "vehicle" | "recipe")
@@ -178,11 +213,29 @@
       available_year: availableYear ? Number(availableYear) : undefined,
       limit: 75,
     });
-    if (!dossier && page.items[0]) await selectEntity(page.items[0].entity_id);
+    if (
+      request !== searchRequest ||
+      status?.generation?.generation_id !== expectedGenerationId
+    )
+      return;
+    page = nextPage;
+    if (!dossier && nextPage.items[0])
+      await selectEntity(nextPage.items[0].entity_id, expectedGenerationId);
   }
 
-  async function selectEntity(entityId: string): Promise<void> {
-    dossier = await getDefinitionDossier(entityId);
+  async function selectEntity(
+    entityId: string,
+    expectedGenerationId = status?.generation?.generation_id,
+  ): Promise<void> {
+    if (!expectedGenerationId) return;
+    const request = ++dossierRequest;
+    const nextDossier = await getDefinitionDossier(entityId);
+    if (
+      request === dossierRequest &&
+      status?.generation?.generation_id === expectedGenerationId
+    ) {
+      dossier = nextDossier;
+    }
   }
 
   async function runAction(action: () => Promise<unknown>): Promise<void> {
@@ -289,9 +342,9 @@
     ]) {
       void listen((next) => {
         if (!disposed) {
-          status = next;
-          acceptRefreshProgress(next.refresh);
-          void runSearch();
+          const accepted = acceptCatalogueStatus(next);
+          if (accepted.reload && accepted.generationId)
+            void runSearch(accepted.generationId);
         }
       }).then((stop) => (disposed ? stop() : stops.push(stop)));
     }

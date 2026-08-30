@@ -45,6 +45,7 @@
   let busy = $state(false);
   let error = $state(false);
   let loadedSnapshot = $state<string | null>(null);
+  let requestSequence = 0;
   const chart = $derived(
     route
       ? createProductionRouteChart(route, $translation, $activeLocale)
@@ -59,19 +60,46 @@
   );
 
   $effect(() => {
-    const snapshotIdentity = generationId
-      ? `${generationId}|${overlayProfileName ?? "none"}|${overlayRevision ?? 0}`
-      : null;
-    if (
-      desktopAvailable &&
-      gameConfigured &&
-      snapshotIdentity &&
-      snapshotIdentity !== loadedSnapshot
-    ) {
+    const snapshotIdentity = currentSnapshotIdentity();
+    if (!desktopAvailable || !gameConfigured || !snapshotIdentity) {
+      requestSequence += 1;
+      loadedSnapshot = null;
+      recipes = [];
+      route = null;
+      coverage = null;
+      selectedRouteId = "";
+      selectedOutputId = "";
+      targetValue = "";
+      busy = false;
+      error = false;
+    } else if (snapshotIdentity !== loadedSnapshot) {
+      requestSequence += 1;
       loadedSnapshot = snapshotIdentity;
-      void loadRecipes();
+      recipes = [];
+      route = null;
+      coverage = null;
+      selectedRouteId = "";
+      selectedOutputId = "";
+      targetValue = "";
+      void loadRecipes(snapshotIdentity);
     }
   });
+
+  function currentSnapshotIdentity(): string | null {
+    return generationId
+      ? `${generationId}|${overlayProfileName ?? "none"}|${overlayRevision ?? 0}`
+      : null;
+  }
+
+  function requestIsCurrent(
+    request: number,
+    snapshotIdentity: string,
+  ): boolean {
+    return (
+      request === requestSequence &&
+      currentSnapshotIdentity() === snapshotIdentity
+    );
+  }
 
   function statusLabel(status: ProductionRouteStatus): string {
     switch (status) {
@@ -136,8 +164,11 @@
       : $translation("production-route-basis-different-unit");
   }
 
-  async function loadRecipes(): Promise<void> {
-    if (!desktopAvailable || !generationId) return;
+  async function loadRecipes(
+    expectedSnapshot = currentSnapshotIdentity(),
+  ): Promise<void> {
+    if (!desktopAvailable || !generationId || !expectedSnapshot) return;
+    const request = ++requestSequence;
     busy = true;
     error = false;
     try {
@@ -149,22 +180,27 @@
         }),
         getProductionRouteCoverage(),
       ]);
+      if (!requestIsCurrent(request, expectedSnapshot)) return;
       coverage = nextCoverage;
       recipes = page.items;
       if (!recipes.some((item) => item.entity_id === selectedRouteId)) {
         selectedRouteId = recipes[0]?.entity_id ?? "";
       }
-      if (selectedRouteId) await loadRoute(false);
+      if (selectedRouteId) await loadRoute(false, expectedSnapshot);
       else route = null;
     } catch {
-      error = true;
+      if (requestIsCurrent(request, expectedSnapshot)) error = true;
     } finally {
-      busy = false;
+      if (requestIsCurrent(request, expectedSnapshot)) busy = false;
     }
   }
 
-  async function loadRoute(useSelection = true): Promise<void> {
-    if (!selectedRouteId) return;
+  async function loadRoute(
+    useSelection = true,
+    expectedSnapshot = currentSnapshotIdentity(),
+  ): Promise<void> {
+    if (!selectedRouteId || !expectedSnapshot) return;
+    const request = ++requestSequence;
     busy = true;
     error = false;
     try {
@@ -178,13 +214,14 @@
             ? target
             : undefined,
       });
+      if (!requestIsCurrent(request, expectedSnapshot)) return;
       route = next;
       selectedOutputId = next.selected_output_resource_id ?? "";
       targetValue = next.target_quantity?.toString() ?? "";
     } catch {
-      error = true;
+      if (requestIsCurrent(request, expectedSnapshot)) error = true;
     } finally {
-      busy = false;
+      if (requestIsCurrent(request, expectedSnapshot)) busy = false;
     }
   }
 
