@@ -26,6 +26,9 @@ an engineering requirement.
 - [Citizen Lives and Family Trajectories feasibility](citizen-lives-feasibility.md)
   — worker-table research, stable-identity gate, aggregate vertical slice,
   future data contract, scale, and privacy boundary
+- [TesmioLoader reverse-engineering assessment](research/tesmioloader-reverse-engineering.md)
+  — live instrumentation, binary-serializer research, upstream citizen-field
+  candidates, safety boundaries, and the proposed read-only research bridge
 - [Dependency decisions](dependencies.md) — current libraries, licences, and
   complexity budget
 - [Definition Catalogue and Planning Warehouse](definition-catalogue-and-warehouse.md)

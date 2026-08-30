@@ -13,6 +13,16 @@ The save clearly contains more citizen structure than the public interface
 currently uses. Stable identity and field meaning must be proved before that
 structure becomes a biography.
 
+The subsequent
+[TesmioLoader reverse-engineering assessment](research/tesmioloader-reverse-engineering.md)
+substantially improves the available research method. Upstream code identifies
+a live `Person` vector and several candidate fields, including age, education,
+status values, demands, and current building. Those findings remain external
+research candidates until reproduced locally and correlated with exact
+`workers.bin` records. No upstream finding yet proves a persistent citizen key,
+family link, residence, sentence, or cross-save identity, so this decision does
+not change prematurely.
+
 ## Research scope and evidence quality
 
 The investigation used representative local saves from one observed republic
@@ -126,16 +136,21 @@ result or idempotently reproduces the same event.
 ## Next research protocol
 
 1. Create controlled private saves around one known change at a time.
-2. Establish the worker-table envelope, trailer, primitive types, sentinels, and
+2. Use an optional, read-only TesmioLoader research probe to locate the
+   `workers.bin` serializer and correlate bounded live `Person` objects with
+   exact saved records.
+3. Establish the worker-table envelope, trailer, primitive types, sentinels, and
    record-count limits for a pinned game build.
-3. Search for a persistent source key and disprove collisions and reuse across
+4. Reproduce candidate age, education, status, demand, citizen-class, and
+   current-building fields before treating the upstream offsets as mappings.
+5. Search for a persistent source key and disprove collisions and reuse across
    removal/birth cases.
-4. Validate candidate relationship keys symmetrically across parent and child.
-5. Validate each requested fact independently against in-game inspection and
+6. Validate candidate relationship keys symmetrically across parent and child.
+7. Validate each requested fact independently against in-game inspection and
    repeat it across saves and restarts.
-6. Build sanitised synthetic fixtures containing the binary shape without
+8. Build sanitised synthetic fixtures containing the binary shape without
    redistributing game or player data.
-7. Publish only the smallest field family that passes compatibility, storage,
+9. Publish only the smallest field family that passes compatibility, storage,
    privacy, and false-link tests.
 
 If stable identity cannot be established, the research concludes with
