@@ -7,12 +7,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:web && npm run audit:contrast",
+    "build:web": "vite build",
     "desktop": "node scripts/run-with-short-cargo-target.mjs npx tauri dev",
     "desktop:build": "node scripts/run-with-short-cargo-target.mjs npx tauri build",
     "rust:check": "node scripts/run-with-short-cargo-target.mjs cargo check --manifest-path src-tauri/Cargo.toml",
     "rust:test": "node scripts/run-with-short-cargo-target.mjs cargo test --manifest-path src-tauri/Cargo.toml",
     "audit:localization": "node scripts/audit-localization.mjs",
+    "audit:contrast": "playwright test",
     "check": "npm run audit:localization && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "format": "prettier --write .",
@@ -28,6 +30,8 @@
     "svelte": "^5.56.6"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.62.1",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "26.1.1",

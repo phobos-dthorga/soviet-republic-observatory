@@ -14,6 +14,7 @@ use crate::model::{
     ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState,
     WarehouseSnapshot,
 };
+use crate::theme::{ThemeInspection, ThemeStatus};
 
 #[derive(Debug)]
 pub struct AppState {
@@ -485,5 +486,64 @@ pub fn handover_legacy_language_packs(
     state
         .application
         .handover_legacy_language_packs(&handover)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn theme_status(state: State<'_, AppState>) -> Result<ThemeStatus, CommandError> {
+    state.application.theme_status().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn inspect_theme(document: String, state: State<'_, AppState>) -> ThemeInspection {
+    state.application.inspect_theme(&document)
+}
+
+#[tauri::command]
+pub fn import_theme(
+    document: String,
+    state: State<'_, AppState>,
+) -> Result<ThemeStatus, CommandError> {
+    state
+        .application
+        .import_theme(&document)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn select_theme(
+    theme_id: String,
+    version: String,
+    content_hash: String,
+    state: State<'_, AppState>,
+) -> Result<ThemeStatus, CommandError> {
+    state
+        .application
+        .select_theme(&theme_id, &version, &content_hash)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn export_theme(
+    theme_id: String,
+    version: String,
+    content_hash: String,
+    state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    state
+        .application
+        .export_theme(&theme_id, &version, &content_hash)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_theme(
+    theme_id: String,
+    version: String,
+    state: State<'_, AppState>,
+) -> Result<ThemeStatus, CommandError> {
+    state
+        .application
+        .remove_theme(&theme_id, &version)
         .map_err(Into::into)
 }

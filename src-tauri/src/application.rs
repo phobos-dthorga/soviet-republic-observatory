@@ -30,6 +30,7 @@ use crate::model::{
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
 use crate::storage::{ObservatoryStorage, now_ms};
+use crate::theme::{ThemeInspection, ThemeStatus, inspect_theme_document};
 use crate::warehouse::AnalyticalWarehouse;
 
 const SAVE_DIRECTORY_KEY: &str = "save_directory";
@@ -172,6 +173,44 @@ impl ObservatoryApplication {
 
     pub fn language_status(&self) -> Result<LanguageStatus, ObservatoryError> {
         self.storage.language_status()
+    }
+
+    pub fn theme_status(&self) -> Result<ThemeStatus, ObservatoryError> {
+        self.storage.theme_status()
+    }
+
+    pub fn inspect_theme(&self, document: &str) -> ThemeInspection {
+        inspect_theme_document(document)
+    }
+
+    pub fn import_theme(&self, document: &str) -> Result<ThemeStatus, ObservatoryError> {
+        self.storage.import_theme(document)
+    }
+
+    pub fn select_theme(
+        &self,
+        theme_id: &str,
+        version: &str,
+        content_hash: &str,
+    ) -> Result<ThemeStatus, ObservatoryError> {
+        self.storage.select_theme(theme_id, version, content_hash)
+    }
+
+    pub fn export_theme(
+        &self,
+        theme_id: &str,
+        version: &str,
+        content_hash: &str,
+    ) -> Result<String, ObservatoryError> {
+        self.storage.export_theme(theme_id, version, content_hash)
+    }
+
+    pub fn remove_theme(
+        &self,
+        theme_id: &str,
+        version: &str,
+    ) -> Result<ThemeStatus, ObservatoryError> {
+        self.storage.remove_theme(theme_id, version)
     }
 
     pub fn inspect_language_pack(&self, json: &str) -> LanguagePackInspection {

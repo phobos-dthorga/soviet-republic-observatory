@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "org.example.midnight-ministry",
+  "version": "1.0.0",
+  "name": "Midnight Ministry",
+  "author": "Unverified community author",
+  "description": "A data-only example theme for Republic Observatory.",
+  "colours": {
+    "canvas": "#050A12",
+    "surface": "#0C1726",
+    "surface_raised": "#13243A",
+    "surface_soft": "#1B304A",
+    "text": "#F2F7FF",
+    "text_muted": "#B8C8DC",
+    "line": "#71849C",
+    "accent": "#F2C66D",
+    "observed": "#72D6E5",
+    "risk": "#FF8F86",
+    "success": "#78DFA8",
+    "comparison": "#C7B8E2"
+  },
+  "chart_palette": ["#72D6E5", "#F2C66D", "#FF8F86", "#78DFA8", "#C7B8E2"]
+}

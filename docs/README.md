@@ -45,6 +45,9 @@ an engineering requirement.
 - [Accessibility, contextual guidance, and notifications](accessibility-guidance-and-notifications.md)
   — readable typography, tutorial-ready help, app-wide feedback, shared-service
   criteria, and debugging policy
+- [Safe community themes and contrast assurance](themes.md) — inert semantic
+  colour roles, native validation, immutable revisions, fallback, authoring,
+  and every-build interface audits
 
 ## Architecture
 
@@ -63,6 +66,7 @@ an engineering requirement.
 - [ADR-0012: versioned inert game compatibility profiles](architecture/decisions/0012-versioned-game-compatibility-profiles.md)
 - [ADR-0013: governed DuckDB write boundary](architecture/decisions/0013-governed-duckdb-write-boundary.md)
 - [ADR-0014: exceptional visuals through explicit analytical contracts](architecture/decisions/0014-exceptional-visuals-doctrine.md)
+- [ADR-0015: inert community themes with native validation](architecture/decisions/0015-inert-community-themes.md)
 
 ## Evidence status vocabulary
 

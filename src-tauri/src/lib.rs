@@ -18,6 +18,7 @@ mod recorder_service;
 mod save_archive;
 mod stats_parser;
 mod storage;
+mod theme;
 mod warehouse;
 mod warehouse_governor;
 mod warehouse_service;
@@ -108,6 +109,12 @@ pub fn run() {
             commands::remove_language_pack,
             commands::export_language_pack,
             commands::handover_legacy_language_packs,
+            commands::theme_status,
+            commands::inspect_theme,
+            commands::import_theme,
+            commands::select_theme,
+            commands::export_theme,
+            commands::remove_theme,
         ])
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");

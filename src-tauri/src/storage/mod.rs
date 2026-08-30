@@ -11,6 +11,7 @@ mod planning_overlays;
 mod recorder;
 mod settings;
 mod snapshots;
+mod themes;
 mod warehouse_jobs;
 
 #[cfg(test)]

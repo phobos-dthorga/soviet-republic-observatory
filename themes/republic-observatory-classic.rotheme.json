@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "org.republic-observatory.classic",
+  "version": "1.0.0",
+  "name": "Republic Observatory Classic",
+  "author": "Republic Observatory contributors",
+  "description": "A reviewed built-in Republic Observatory appearance.",
+  "colours": {
+    "canvas": "#080E15",
+    "surface": "#0D1721",
+    "surface_raised": "#12212D",
+    "surface_soft": "#172936",
+    "text": "#EDF2F5",
+    "text_muted": "#98A8B2",
+    "line": "#627986",
+    "accent": "#D8B86A",
+    "observed": "#80C6D8",
+    "risk": "#D88474",
+    "success": "#82D9A0",
+    "comparison": "#B6A8CE"
+  },
+  "chart_palette": ["#80C6D8", "#D8B86A", "#D88474", "#8DA6C9", "#B6A8CE"]
+}

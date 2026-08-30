@@ -541,7 +541,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        9
+        10
     );
     assert_eq!(
         migrated

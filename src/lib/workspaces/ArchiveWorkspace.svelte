@@ -171,6 +171,7 @@
 
     <div
       class="archive-branch-list"
+      role="group"
       aria-label={$translation("archive-branch-list-label")}
     >
       {#each archive?.branches ?? [] as branch}
@@ -525,7 +526,13 @@
     {/if}
   </section>
 
-  <aside class="inspector" aria-label={$translation("archive-inspector-label")}>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-focusable scroll region) -->
+  <aside
+    class="inspector"
+    role="region"
+    tabindex="0"
+    aria-label={$translation("archive-inspector-label")}
+  >
     <div class="aside-heading">
       <div>
         <span class="eyebrow">{$translation("archive-inspector-eyebrow")}</span>

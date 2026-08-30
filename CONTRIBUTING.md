@@ -33,6 +33,7 @@ other private data.
 
 ```powershell
 npm install
+npx playwright install chromium
 npm run format:check
 npm run check
 npm test
@@ -42,6 +43,20 @@ npm run rust:test
 cargo fmt --manifest-path src-tauri\Cargo.toml --check
 npm run rust:clippy
 ```
+
+`npm run build` includes the production contrast audit. A contrast failure must
+be fixed at the semantic theme role or shared component foundation whenever the
+defect is shared. A temporary exception may identify only one exact element,
+must include a written justification and expiry, and must never exclude a
+workspace or selector family. Desktop release checks must also open at least
+one native select menu on Windows because the operating-system popup is outside
+browser automation.
+
+Themes are inert data. Rust owns schema, contrast, duplicate-appearance,
+lifecycle, persistence, and fallback decisions. Svelte may render the returned
+report and the theme runtime may apply accepted semantic roles, but frontend
+code must not admit, repair, or silently activate a theme. See
+[ADR-0015](docs/architecture/decisions/0015-inert-community-themes.md).
 
 Maintainers may additionally point `RO_LIVE_SAVE` at a local save ZIP and run
 the opt-in conformance path by test name. Never put that path in a

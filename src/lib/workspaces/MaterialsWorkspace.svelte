@@ -834,7 +834,13 @@
     {#if message}<p class="catalogue-message" role="alert">{message}</p>{/if}
   </section>
 
-  <aside class="inspector" aria-label={$translation("catalogue-health-label")}>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-focusable scroll region) -->
+  <aside
+    class="inspector"
+    role="region"
+    tabindex="0"
+    aria-label={$translation("catalogue-health-label")}
+  >
     <div class="aside-heading">
       <div>
         <span class="eyebrow">{$translation("catalogue-observer-health")}</span>

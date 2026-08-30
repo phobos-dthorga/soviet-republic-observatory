@@ -49,6 +49,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "authoritative language packs and language preference",
         include_str!("../../migrations/0009_language_packs.sql"),
     ),
+    (
+        10,
+        "safe immutable theme revisions and selected theme preference",
+        include_str!("../../migrations/0010_theme_revisions.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

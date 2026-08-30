@@ -13,6 +13,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { activeTheme } from "../theme/runtime";
   import {
     condensedSeriesSummary,
     optionForChart,
@@ -29,6 +30,7 @@
     EvidenceKind,
     ObservatoryChartSpec,
   } from "./types";
+  import { chartThemeFor } from "./themeAdapter";
 
   echarts.use([
     BarChart,
@@ -113,10 +115,15 @@
     ).matches;
     chart.setOption(
       spec.kind === "sankey"
-        ? optionForSankey(spec, undefined, reducedMotion, $activeLocale)
+        ? optionForSankey(
+            spec,
+            chartThemeFor($activeTheme),
+            reducedMotion,
+            $activeLocale,
+          )
         : optionForChart(
             spec,
-            undefined,
+            chartThemeFor($activeTheme),
             reducedMotion,
             $activeLocale,
             $translation("chart-unavailable"),
@@ -134,6 +141,7 @@
   $effect(() => {
     spec;
     $activeLocale;
+    $activeTheme;
     $translation;
     refreshChart();
   });

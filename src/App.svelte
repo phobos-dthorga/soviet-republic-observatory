@@ -7,6 +7,8 @@
   import MonitorWorkspace from "./lib/workspaces/MonitorWorkspace.svelte";
   import MaterialsWorkspace from "./lib/workspaces/MaterialsWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
+  import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
+  import { initialiseThemes } from "./lib/theme/service";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
   import { formatNumber } from "./lib/i18n/format";
@@ -14,6 +16,7 @@
   import DiagnosticsDialog from "./lib/diagnostics/DiagnosticsDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
+  import { notify } from "./lib/notifications/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
   import {
@@ -79,6 +82,7 @@
 
   let activeWorkspace = $state<WorkspaceName>("briefing");
   let languageDialogOpen = $state(false);
+  let themeDialogOpen = $state(false);
   let observationDialogOpen = $state(false);
   let diagnosticsDialogOpen = $state(false);
   let diagnosticsBusy = $state(false);
@@ -229,6 +233,23 @@
   }
 
   onMount(() => {
+    void initialiseThemes()
+      .then((status) => {
+        if (status?.fallback_applied) {
+          notify({
+            title: $translation("theme-fallback-title"),
+            message: $translation("theme-fallback-message"),
+            tone: "warning",
+          });
+        }
+      })
+      .catch(() => {
+        notify({
+          title: $translation("theme-fallback-title"),
+          message: $translation("theme-storage-unavailable"),
+          tone: "error",
+        });
+      });
     if (!desktopAvailable) return;
     let disposed = false;
     let stopListening: (() => void) | undefined;
@@ -437,6 +458,14 @@
       </button>
       <button
         type="button"
+        class="theme-button"
+        disabled={!desktopAvailable}
+        onclick={() => (themeDialogOpen = true)}
+      >
+        {$translation("theme-open")}
+      </button>
+      <button
+        type="button"
         class="scanner-state"
         aria-label={$translation("scanner-status-label")}
         title={$translation("observer-open")}
@@ -541,6 +570,8 @@
   open={languageDialogOpen}
   onclose={() => (languageDialogOpen = false)}
 />
+
+<ThemeDialog open={themeDialogOpen} onclose={() => (themeDialogOpen = false)} />
 
 <ObservationDialog
   open={observationDialogOpen}

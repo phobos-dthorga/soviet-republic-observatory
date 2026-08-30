@@ -218,8 +218,11 @@
     </section>
   </section>
 
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-focusable scroll region) -->
   <aside
     class="inspector"
+    role="region"
+    tabindex="0"
     aria-label={$translation("briefing-inspector-label")}
   >
     <div class="aside-heading">

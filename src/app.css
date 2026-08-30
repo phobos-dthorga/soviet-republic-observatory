@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   font-family:
     Inter,
     ui-sans-serif,
@@ -19,12 +20,13 @@
   --colour-text: #edf2f5;
   --colour-muted: #98a8b2;
   --colour-line: #627986;
-  --colour-line-faint: rgba(98, 121, 134, 0.2);
+  --colour-line-faint: rgba(98, 121, 134, 0.45);
   --colour-observed: #80c6d8;
   --colour-observed-soft: rgba(128, 198, 216, 0.11);
   --colour-gold: #d8b86a;
   --colour-gold-soft: rgba(216, 184, 106, 0.11);
   --colour-risk: #d88474;
+  --colour-success: #82cfa2;
   --colour-risk-soft: rgba(216, 132, 116, 0.11);
   --colour-violet: #b6a8ce;
   --colour-overlay: rgba(8, 14, 21, 0.94);
@@ -59,6 +61,30 @@ button,
 select,
 input {
   font: inherit;
+}
+
+select,
+option,
+optgroup {
+  color: var(--colour-text);
+  background: var(--colour-surface-raised);
+}
+
+select {
+  border-color: var(--colour-line);
+}
+
+select:disabled,
+input:disabled,
+button:disabled {
+  color: var(--colour-muted);
+  -webkit-text-fill-color: var(--colour-muted);
+}
+
+option:disabled,
+optgroup:disabled {
+  color: var(--colour-muted);
+  background: var(--colour-surface-soft);
 }
 
 button,
@@ -279,6 +305,7 @@ h3 {
 }
 
 .language-button,
+.theme-button,
 .diagnostics-button {
   border: 1px solid var(--colour-line-faint);
   padding: 7px 9px;
@@ -297,9 +324,34 @@ h3 {
   background: var(--colour-gold-soft);
 }
 
-.diagnostics-button:disabled {
+.theme-button {
+  color: var(--colour-violet);
+  background: var(--colour-surface-raised);
+}
+
+.diagnostics-button:disabled,
+.theme-button:disabled {
   cursor: default;
-  opacity: 0.45;
+}
+
+@media (forced-colors: active) {
+  select,
+  option,
+  optgroup,
+  input,
+  button {
+    color: CanvasText;
+    background: Canvas;
+    border-color: ButtonBorder;
+    forced-color-adjust: auto;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 3px solid Highlight;
+  }
 }
 
 .scanner-state {

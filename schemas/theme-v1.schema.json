@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://republic-observatory.local/schemas/theme-v1.schema.json",
+  "title": "Republic Observatory theme manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "name",
+    "colours",
+    "chart_palette"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "id": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "author": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 320
+    },
+    "colours": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canvas",
+        "surface",
+        "surface_raised",
+        "surface_soft",
+        "text",
+        "text_muted",
+        "line",
+        "accent",
+        "observed",
+        "risk",
+        "success",
+        "comparison"
+      ],
+      "properties": {
+        "canvas": { "$ref": "#/$defs/colour" },
+        "surface": { "$ref": "#/$defs/colour" },
+        "surface_raised": { "$ref": "#/$defs/colour" },
+        "surface_soft": { "$ref": "#/$defs/colour" },
+        "text": { "$ref": "#/$defs/colour" },
+        "text_muted": { "$ref": "#/$defs/colour" },
+        "line": { "$ref": "#/$defs/colour" },
+        "accent": { "$ref": "#/$defs/colour" },
+        "observed": { "$ref": "#/$defs/colour" },
+        "risk": { "$ref": "#/$defs/colour" },
+        "success": { "$ref": "#/$defs/colour" },
+        "comparison": { "$ref": "#/$defs/colour" }
+      }
+    },
+    "chart_palette": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/colour" }
+    }
+  },
+  "$defs": {
+    "colour": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+  }
+}

@@ -91,6 +91,32 @@ pub enum ObservatoryError {
     UnknownLanguagePack,
     #[error("The built-in English catalogue cannot be removed.")]
     BuiltInLanguagePackRemove,
+    #[error("That theme is larger than the 32 KiB safety limit.")]
+    ThemeManifestTooLarge,
+    #[error("That file is not a valid Republic Observatory theme manifest.")]
+    InvalidThemeManifest,
+    #[error("That theme targets an unsupported schema version.")]
+    UnsupportedThemeVersion,
+    #[error("That theme identifier is invalid or reserved by Republic Observatory.")]
+    InvalidThemeIdentifier,
+    #[error("That theme contains invalid version, name, author, or description metadata.")]
+    InvalidThemeMetadata,
+    #[error("Theme colours must use the #RRGGBB format and provide a bounded chart palette.")]
+    InvalidThemeColour,
+    #[error("That theme does not provide enough contrast for the Observatory interface.")]
+    ThemeInsufficientContrast,
+    #[error(
+        "That exact theme revision is already installed or duplicates another theme's appearance."
+    )]
+    DuplicateTheme,
+    #[error("That theme ID and version already identify different content.")]
+    ThemeRevisionConflict,
+    #[error("Choose a theme revision that is currently available.")]
+    UnknownTheme,
+    #[error("The active theme revision cannot be removed.")]
+    ActiveThemeRemove,
+    #[error("Built-in themes cannot be removed.")]
+    BuiltInThemeRemove,
 }
 
 impl ObservatoryError {
@@ -139,6 +165,18 @@ impl ObservatoryError {
             Self::ProtectedLanguageMessage => "protected_message",
             Self::UnknownLanguagePack => "unknown_pack",
             Self::BuiltInLanguagePackRemove => "built_in_remove",
+            Self::ThemeManifestTooLarge => "theme_manifest_too_large",
+            Self::InvalidThemeManifest => "invalid_theme_manifest",
+            Self::UnsupportedThemeVersion => "unsupported_theme_version",
+            Self::InvalidThemeIdentifier => "invalid_theme_identifier",
+            Self::InvalidThemeMetadata => "invalid_theme_metadata",
+            Self::InvalidThemeColour => "invalid_theme_colour",
+            Self::ThemeInsufficientContrast => "theme_insufficient_contrast",
+            Self::DuplicateTheme => "duplicate_theme",
+            Self::ThemeRevisionConflict => "theme_revision_conflict",
+            Self::UnknownTheme => "unknown_theme",
+            Self::ActiveThemeRemove => "active_theme_remove",
+            Self::BuiltInThemeRemove => "built_in_theme_remove",
         }
     }
 

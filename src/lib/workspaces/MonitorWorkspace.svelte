@@ -471,7 +471,13 @@
     {/if}
   </section>
 
-  <aside class="inspector" aria-label={$translation("monitor-inspector-label")}>
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-focusable scroll region) -->
+  <aside
+    class="inspector"
+    role="region"
+    tabindex="0"
+    aria-label={$translation("monitor-inspector-label")}
+  >
     <div class="aside-heading">
       <div>
         <span class="eyebrow">{$translation("monitor-inspector-eyebrow")}</span>
