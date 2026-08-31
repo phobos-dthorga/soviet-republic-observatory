@@ -1272,6 +1272,49 @@ export type MarketScenarioDraft = {
   included_income_components: string[];
 };
 
+export type MarketCoverageFacet = {
+  facet_id: string;
+  status: "observed" | "partial" | "not_observed";
+  observed_slots: number;
+  expected_slots: number;
+  resource_count: number;
+  currencies: string[];
+  channels: string[];
+  source_fields: string[];
+};
+
+export type MarketCommissioningSummary = {
+  recorded_save_count: number;
+  indexed_save_count: number;
+  current_engine_indexed_save_count: number;
+  pending_current_engine_save_count: number;
+  active_engine_current: boolean;
+  active_parser_engine_version: string | null;
+  recommended_currency: string | null;
+  recommended_channel: string | null;
+  recommended_price_resource: string | null;
+  facets: MarketCoverageFacet[];
+};
+
+export type MarketPriceSeriesPoint = {
+  record_hash: string;
+  year: number;
+  day: number;
+  game_day: number;
+  purchase_price: number | null;
+  sell_price: number | null;
+  base_price: number | null;
+};
+
+export type MarketPriceSeries = {
+  available: boolean;
+  currency: string;
+  resource_token: string;
+  points: MarketPriceSeriesPoint[];
+  context: MarketMetricContext;
+  limitation: string | null;
+};
+
 export type MarketWorkspace = {
   analysis_context: AnalysisContext;
   available: boolean;
@@ -1295,4 +1338,5 @@ export type MarketWorkspace = {
   reserves_available: boolean;
   terms_of_trade_available: boolean;
   limitations: string[];
+  commissioning: MarketCommissioningSummary;
 };

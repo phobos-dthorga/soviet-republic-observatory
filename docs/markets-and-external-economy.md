@@ -23,6 +23,38 @@ when Markets is partial or unavailable. Compact token interning prevents each
 of thousands of retained records from owning another copy of every resource and
 source-field string.
 
+The commissioning pass against retained local evidence found that W&R writes a
+hyphen-only separator after each structured market block. Earlier parser builds
+classified those decorative lines as malformed rows, producing one false warning
+per block while still retaining the valid facts. Parser engine v2 recognises only
+separator-only lines as decoration; genuinely malformed content still reports a
+warning. Because parser-engine identity is part of an interpretation, indexing an
+available save under v2 creates a new immutable variant instead of rewriting the
+older partial interpretation.
+
+## Evidence commissioning
+
+The workspace reports three different coverage questions rather than compressing
+them into one optimistic status:
+
+- how many immutable save payloads the Observatory has recorded;
+- how many have any Market interpretation; and
+- how many have been interpreted by the current parser engine.
+
+It also assays prices, trade, delivery/labour costs, tourism, loans, vehicles, and
+city sources separately. `Not observed` means no supported source field for that
+family was present at the selected head. It is not displayed as zero and it is not
+treated as a parser failure. `Partial` means some allowlisted roles were observed
+while others were absent. Original source-field identifiers remain available in
+the bounded commissioning model for provenance and compatibility research.
+
+The initial retained-save assay established strong purchase, sell, and base-price
+coverage in RUB and USD; standard trade in both currencies; international trade
+primarily in USD; delivery, labour, tourism-spending, and vehicle-account scalars;
+and city snapshots. The inspected save did not establish a supported loan balance,
+loan interest, tourism visitor count, hotel-night count, or immigrant-cost field.
+Those families therefore remain unavailable until a save actually proves them.
+
 RUB and USD are separate evidence domains. Standard and international trade
 channels are separate until source research proves their relationship. Negative
 export account values remain signed source evidence and are also identified as
@@ -71,6 +103,12 @@ selected-head SQLite ledger and labels historical models as lagging. Rebuilds
 clear only derived market partitions and requeue SQLite authority. A warehouse
 outage cannot block save recording, Archive, historical selection, or exact
 selected-head SQLite ledgers.
+
+Price history is fetched on demand for one selected currency/resource pair and is
+bounded to 10,000 records. The workspace never materialises the entire historical
+price matrix in the renderer. This preserves the same DuckDB flood boundary that
+keeps application startup responsive while still letting the selected resource
+come alive as purchase, sell, and base-price lines.
 
 ## Calculations
 

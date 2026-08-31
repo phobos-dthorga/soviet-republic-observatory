@@ -5,6 +5,7 @@
   import { notify } from "../notifications/service";
   import {
     clearMarketSelection,
+    getMarketPriceSeries,
     indexAvailableSavesForMarkets,
     removeMarketDefinition,
     rollbackMarketDefinition,
@@ -15,11 +16,13 @@
   import type {
     MarketBasketDraft,
     MarketIndexingProgress,
+    MarketPriceSeries,
     MarketScenarioDraft,
     MarketWorkspace,
   } from "../observations/types";
   import {
     createCityTradeChart,
+    createMarketPriceHistoryChart,
     createMarketTradeChart,
     createPositiveExportChart,
     marketIndexingProgressView,
@@ -72,6 +75,11 @@
   let includeStandardExports = $state(true);
   let includeInternationalExports = $state(false);
   let includeTourism = $state(false);
+  let priceResource = $state("");
+  let priceSeries = $state<MarketPriceSeries | null>(null);
+  let priceSeriesLoading = $state(false);
+  let priceRequest = 0;
+  let smartDefaultContext = $state("");
 
   const pulse = $derived(
     workspace?.currencies.find(
@@ -97,6 +105,13 @@
     createCityTradeChart(
       workspace ?? emptyWorkspace(),
       selectedCurrency,
+      $translation,
+    ),
+  );
+  const priceChart = $derived(
+    createMarketPriceHistoryChart(
+      workspace ?? emptyWorkspace(),
+      priceSeries,
       $translation,
     ),
   );
@@ -162,6 +177,37 @@
       )
       .slice(0, 150),
   );
+  const tradeSelectionAvailable = $derived(
+    (workspace?.trade_history ?? []).some(
+      (row) =>
+        row.currency === selectedCurrency && row.channel === selectedChannel,
+    ) ||
+      (workspace?.resource_ledger ?? []).some(
+        (row) =>
+          row.currency === selectedCurrency && row.channel === selectedChannel,
+      ),
+  );
+
+  $effect(() => {
+    const contextId = workspace?.analysis_context.context_id ?? "";
+    if (!contextId || smartDefaultContext === contextId) return;
+    smartDefaultContext = contextId;
+    const recommendedCurrency = workspace?.commissioning.recommended_currency;
+    const recommendedChannel = workspace?.commissioning.recommended_channel;
+    const recommendedResource =
+      workspace?.commissioning.recommended_price_resource;
+    if (recommendedCurrency === "rub" || recommendedCurrency === "usd") {
+      selectedCurrency = recommendedCurrency;
+      scenarioCurrency = recommendedCurrency;
+    }
+    if (
+      recommendedChannel === "standard" ||
+      recommendedChannel === "international"
+    ) {
+      selectedChannel = recommendedChannel;
+    }
+    if (recommendedResource) priceResource = recommendedResource;
+  });
 
   $effect(() => {
     if (!baseRecords.some((record) => record.hash === basketBase)) {
@@ -170,7 +216,38 @@
     if (!availableWeightResources.includes(weightResource)) {
       weightResource = availableWeightResources[0] ?? "";
     }
+    if (!availableWeightResources.includes(priceResource)) {
+      priceResource = availableWeightResources[0] ?? "";
+    }
   });
+
+  $effect(() => {
+    const contextId = workspace?.analysis_context.context_id ?? "";
+    const currency = selectedCurrency;
+    const resource = priceResource;
+    if (!desktopAvailable || !contextId || !resource) {
+      priceSeries = null;
+      priceSeriesLoading = false;
+      return;
+    }
+    void loadPriceSeries(currency, resource);
+  });
+
+  async function loadPriceSeries(
+    currency: "rub" | "usd",
+    resource: string,
+  ): Promise<void> {
+    const request = ++priceRequest;
+    priceSeriesLoading = true;
+    try {
+      const series = await getMarketPriceSeries(currency, resource);
+      if (request === priceRequest) priceSeries = series;
+    } catch {
+      if (request === priceRequest) priceSeries = null;
+    } finally {
+      if (request === priceRequest) priceSeriesLoading = false;
+    }
+  }
 
   function emptyWorkspace(): MarketWorkspace {
     return {
@@ -210,6 +287,18 @@
       reserves_available: false,
       terms_of_trade_available: false,
       limitations: [],
+      commissioning: {
+        recorded_save_count: 0,
+        indexed_save_count: 0,
+        current_engine_indexed_save_count: 0,
+        pending_current_engine_save_count: 0,
+        active_engine_current: false,
+        active_parser_engine_version: null,
+        recommended_currency: null,
+        recommended_channel: null,
+        recommended_price_resource: null,
+        facets: [],
+      },
     };
   }
 
@@ -443,6 +532,33 @@
       keys[code as keyof typeof keys] ?? "markets-limit-unknown",
     );
   }
+
+  function coverageFacetLabel(facetId: string): string {
+    const keys = {
+      prices: "markets-coverage-prices",
+      trade: "markets-coverage-trade",
+      costs: "markets-coverage-costs",
+      tourism: "markets-coverage-tourism",
+      loans: "markets-coverage-loans",
+      vehicles: "markets-coverage-vehicles",
+      cities: "markets-coverage-cities",
+    } as const;
+    return $translation(
+      keys[facetId as keyof typeof keys] ?? "markets-coverage-unknown",
+    );
+  }
+
+  function coverageStatusLabel(status: string): string {
+    const keys = {
+      observed: "markets-coverage-status-observed",
+      partial: "markets-coverage-status-partial",
+      not_observed: "markets-coverage-status-not-observed",
+    } as const;
+    return $translation(
+      keys[status as keyof typeof keys] ??
+        "markets-coverage-status-not-observed",
+    );
+  }
 </script>
 
 <section class="workspace markets-workspace">
@@ -533,6 +649,83 @@
       <TaskProgressPanel view={indexView} headingId="markets-index-progress" />
     {/if}
 
+    {#if workspace}
+      <section
+        class="market-commissioning"
+        aria-labelledby="markets-commissioning-title"
+      >
+        <header class="panel-heading">
+          <div>
+            <span class="eyebrow"
+              >{$translation("markets-commissioning-eyebrow")}</span
+            >
+            <h2 id="markets-commissioning-title">
+              {$translation("markets-commissioning-title")}
+            </h2>
+            <p>{$translation("markets-commissioning-detail")}</p>
+          </div>
+          <span
+            class:current={workspace.commissioning.active_engine_current}
+            class="status-chip"
+          >
+            {$translation(
+              workspace.commissioning.active_engine_current
+                ? "markets-commissioning-current"
+                : "markets-commissioning-reindex-required",
+            )}
+          </span>
+        </header>
+        <div class="commissioning-counts">
+          <article>
+            <span>{$translation("markets-commissioning-recorded")}</span><strong
+              >{workspace.commissioning.recorded_save_count}</strong
+            >
+          </article>
+          <article>
+            <span>{$translation("markets-commissioning-indexed")}</span><strong
+              >{workspace.commissioning.indexed_save_count}</strong
+            >
+          </article>
+          <article>
+            <span>{$translation("markets-commissioning-current-engine")}</span
+            ><strong
+              >{workspace.commissioning
+                .current_engine_indexed_save_count}</strong
+            >
+          </article>
+          <article>
+            <span>{$translation("markets-commissioning-pending")}</span><strong
+              >{workspace.commissioning
+                .pending_current_engine_save_count}</strong
+            >
+          </article>
+        </div>
+        <div class="coverage-grid">
+          {#each workspace.commissioning.facets as facet}
+            <article
+              class:observed={facet.status === "observed"}
+              class:partial={facet.status === "partial"}
+            >
+              <span>{coverageFacetLabel(facet.facet_id)}</span>
+              <strong>{coverageStatusLabel(facet.status)}</strong>
+              <small
+                >{$translation("markets-coverage-slots", {
+                  observed: facet.observed_slots,
+                  expected: facet.expected_slots,
+                  resources: facet.resource_count,
+                })}</small
+              >
+            </article>
+          {/each}
+        </div>
+        <GuidanceSurface kind="boundary" layout="compact">
+          <strong>{$translation("markets-commissioning-boundary-title")}</strong
+          >
+          <span>{$translation("markets-commissioning-boundary-detail")}</span>
+        </GuidanceSurface>
+      </section>
+    {/if}
+
     {#if !desktopAvailable}
       <section class="archive-empty-state">
         <span class="eyebrow">{$translation("archive-desktop-required")}</span>
@@ -586,6 +779,22 @@
         </label>
       </div>
 
+      {#if !tradeSelectionAvailable}
+        <GuidanceSurface kind="boundary" layout="compact">
+          <strong>{$translation("markets-channel-unobserved-title")}</strong>
+          <span
+            >{$translation("markets-channel-unobserved-detail", {
+              currency: selectedCurrency.toUpperCase(),
+              channel: $translation(
+                selectedChannel === "standard"
+                  ? "markets-channel-standard"
+                  : "markets-channel-international",
+              ),
+            })}</span
+          >
+        </GuidanceSurface>
+      {/if}
+
       <section
         id="markets-pulse"
         class="kpi-grid market-kpis"
@@ -598,9 +807,11 @@
           </header>
           <strong
             >{money(
-              selectedChannel === "standard"
-                ? pulse?.standard_import_value
-                : pulse?.international_import_value,
+              !tradeSelectionAvailable
+                ? null
+                : selectedChannel === "standard"
+                  ? pulse?.standard_import_value
+                  : pulse?.international_import_value,
             )}</strong
           >
           <p>
@@ -618,9 +829,11 @@
           </header>
           <strong
             >{money(
-              selectedChannel === "standard"
-                ? pulse?.standard_export_value
-                : pulse?.international_export_value,
+              !tradeSelectionAvailable
+                ? null
+                : selectedChannel === "standard"
+                  ? pulse?.standard_export_value
+                  : pulse?.international_export_value,
             )}</strong
           >
           <p>{$translation("markets-signed-source-values")}</p>
@@ -631,11 +844,13 @@
             >{#if pulseHelp}<ContextHelp {...pulseHelp} placement="left" />{/if}
           </header>
           <strong
-            >{signed(
-              selectedChannel === "standard"
-                ? (pulse?.standard_trade_result ?? 0)
-                : (pulse?.international_trade_result ?? 0),
-            )}</strong
+            >{tradeSelectionAvailable
+              ? signed(
+                  selectedChannel === "standard"
+                    ? (pulse?.standard_trade_result ?? 0)
+                    : (pulse?.international_trade_result ?? 0),
+                )
+              : "—"}</strong
           >
           <p>{$translation("markets-formula-trade-result")}</p>
         </article>
@@ -745,7 +960,35 @@
             </h2>
             <p>{$translation("markets-prices-detail")}</p>
           </div>
+          <label class="price-resource-selector">
+            <span>{$translation("markets-price-resource")}</span>
+            <select bind:value={priceResource}>
+              {#each availableWeightResources as resource}
+                <option value={resource}>{resource}</option>
+              {/each}
+            </select>
+          </label>
         </header>
+        {#if priceSeriesLoading}
+          <GuidanceSurface kind="instruction" layout="compact">
+            <strong>{$translation("markets-price-history-loading")}</strong>
+            <span>{$translation("markets-price-history-loading-detail")}</span>
+          </GuidanceSurface>
+        {:else if priceSeries?.available}
+          <ObservatoryChart
+            spec={priceChart}
+            height="300px"
+            eyebrow={$translation("markets-price-history-eyebrow")}
+            help={priceHelp ? marketMetricHelp(priceHelp, $translation) : null}
+          />
+        {:else}
+          <GuidanceSurface kind="boundary" layout="compact">
+            <strong>{$translation("markets-price-history-unavailable")}</strong>
+            <span
+              >{$translation("markets-price-history-unavailable-detail")}</span
+            >
+          </GuidanceSurface>
+        {/if}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="table-scroll"
@@ -1291,11 +1534,46 @@
   }
   .market-panel,
   .market-lab,
-  .market-limitations {
+  .market-limitations,
+  .market-commissioning {
     margin-top: 9px;
     border: 1px solid var(--colour-line-faint);
     background: var(--colour-surface-raised);
     padding: 14px;
+  }
+  .commissioning-counts,
+  .coverage-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+    margin: 8px 0;
+  }
+  .coverage-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .commissioning-counts article,
+  .coverage-grid article {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    border: 1px solid var(--colour-line-faint);
+    padding: 9px;
+    background: var(--colour-surface-soft);
+  }
+  .coverage-grid article.observed {
+    border-inline-start: 3px solid var(--colour-success);
+  }
+  .coverage-grid article.partial {
+    border-inline-start: 3px solid var(--colour-risk);
+  }
+  .commissioning-counts span,
+  .coverage-grid span,
+  .coverage-grid small {
+    color: var(--colour-muted);
+    overflow-wrap: anywhere;
+  }
+  .status-chip.current {
+    color: var(--colour-success);
   }
   .table-scroll {
     max-height: 430px;
@@ -1453,7 +1731,9 @@
     }
     .market-kpis,
     .scalar-grid,
-    .terms-grid {
+    .terms-grid,
+    .commissioning-counts,
+    .coverage-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
@@ -1463,6 +1743,10 @@
     .terms-grid,
     .form-grid,
     .weight-editor {
+      grid-template-columns: 1fr;
+    }
+    .commissioning-counts,
+    .coverage-grid {
       grid-template-columns: 1fr;
     }
     .market-controls {

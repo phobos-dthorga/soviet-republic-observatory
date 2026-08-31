@@ -40,6 +40,7 @@ import type {
   RepublicPlanWorkspace,
   MarketBasketDraft,
   MarketIndexingProgress,
+  MarketPriceSeries,
   MarketScenarioDraft,
   MarketWorkspace,
 } from "./types";
@@ -93,6 +94,16 @@ export function getRepublicPlanWorkspace(): Promise<RepublicPlanWorkspace> {
 
 export function getMarketWorkspace(): Promise<MarketWorkspace> {
   return invoke<MarketWorkspace>("get_market_workspace");
+}
+
+export function getMarketPriceSeries(
+  currency: "rub" | "usd",
+  resourceToken: string,
+): Promise<MarketPriceSeries> {
+  return invoke<MarketPriceSeries>("get_market_price_series", {
+    currency,
+    resourceToken,
+  });
 }
 
 export function getMarketIndexingProgress(): Promise<MarketIndexingProgress> {

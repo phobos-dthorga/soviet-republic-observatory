@@ -6,6 +6,7 @@ import {
 } from "../ui-review/fixtures";
 import {
   createMarketTradeChart,
+  createMarketPriceHistoryChart,
   createPositiveExportChart,
   marketIndexingProgressView,
   marketMetricHelp,
@@ -88,5 +89,46 @@ describe("Markets presentation", () => {
       help.details?.find((detail) => detail.label === "metric-context-unit")
         ?.value,
     ).toBe("markets-unit-resource-price");
+  });
+
+  it("renders only recorded values in a bounded selected-resource price history", () => {
+    const workspace = reviewMarketWorkspace();
+    const chart = createMarketPriceHistoryChart(
+      workspace,
+      {
+        available: true,
+        currency: "rub",
+        resource_token: "oil",
+        limitation: null,
+        context: workspace.metric_contexts.find(
+          (context) => context.metric_id === "market.price.rub",
+        )!,
+        points: [
+          {
+            record_hash: "a".repeat(64),
+            year: 2015,
+            day: 60,
+            game_day: 735360,
+            purchase_price: 110,
+            sell_price: null,
+            base_price: 100,
+          },
+          {
+            record_hash: "b".repeat(64),
+            year: 2015,
+            day: 77,
+            game_day: 735377,
+            purchase_price: 112,
+            sell_price: 97,
+            base_price: 100,
+          },
+        ],
+      },
+      translate,
+    );
+
+    expect(chart.series[0].points).toHaveLength(2);
+    expect(chart.series[1].points).toHaveLength(1);
+    expect(chart.series[2].points).toHaveLength(2);
   });
 });

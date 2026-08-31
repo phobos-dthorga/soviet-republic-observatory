@@ -3,6 +3,7 @@ import type { Translator } from "../i18n/runtime";
 import type {
   MarketIndexingProgress,
   MarketMetricContext,
+  MarketPriceSeries,
   MarketWorkspace,
 } from "../observations/types";
 import type { TaskProgressStage, TaskProgressView } from "../tasks/progress";
@@ -316,6 +317,60 @@ export function createMarketTradeChart(
       seriesFor("import_value", translate("markets-imports")),
       seriesFor("export_value", translate("markets-exports")),
       seriesFor("trade_result", translate("markets-trade-result")),
+    ],
+    provenance: chartProvenance,
+  };
+}
+
+export function createMarketPriceHistoryChart(
+  workspace: MarketWorkspace,
+  priceSeries: MarketPriceSeries | null,
+  translate: Translator,
+): ChartSpec {
+  const chartProvenance = provenance(workspace, translate);
+  const rows = priceSeries?.points ?? [];
+  const seriesFor = (
+    id: "purchase_price" | "sell_price" | "base_price",
+    label: string,
+  ) => ({
+    id,
+    label,
+    style: id === "base_price" ? ("dashed" as const) : ("solid" as const),
+    provenance: chartProvenance,
+    points: rows.flatMap((point) => {
+      const value = point[id];
+      return value == null
+        ? []
+        : [
+            {
+              category: translate("observation-game-date-compact", {
+                year: point.year,
+                day: String(point.day).padStart(3, "0"),
+              }),
+              category_value: point.game_day,
+              value,
+            },
+          ];
+    }),
+  });
+  const currency = priceSeries?.currency.toUpperCase() ?? "—";
+  return {
+    schema_version: 1,
+    id: `markets-price-history-${priceSeries?.currency ?? "none"}-${priceSeries?.resource_token ?? "none"}`,
+    title: translate("markets-price-history-chart-title", {
+      resource: priceSeries?.resource_token ?? translate("chart-unavailable"),
+      currency,
+    }),
+    description: translate("markets-price-history-chart-description"),
+    kind: "line",
+    category_axis_scale: "game_day",
+    category_axis_label: translate("chart-axis-game-date"),
+    value_axis_label: translate("markets-axis-resource-price"),
+    unit: currency,
+    series: [
+      seriesFor("purchase_price", translate("markets-purchase-price")),
+      seriesFor("sell_price", translate("markets-sell-price")),
+      seriesFor("base_price", translate("markets-base-price")),
     ],
     provenance: chartProvenance,
   };

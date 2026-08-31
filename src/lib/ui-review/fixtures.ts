@@ -261,6 +261,61 @@ export function reviewMarketWorkspace(
       "loan_tourism_denominator_required",
       "no_annualisation_or_interpolation",
     ],
+    commissioning: {
+      recorded_save_count: 25,
+      indexed_save_count: available ? 23 : 0,
+      current_engine_indexed_save_count: available ? 21 : 0,
+      pending_current_engine_save_count: available ? 4 : 25,
+      active_engine_current: available,
+      active_parser_engine_version: available
+        ? "compatibility-profile-engine.v2"
+        : null,
+      recommended_currency: available ? "rub" : null,
+      recommended_channel: available ? "standard" : null,
+      recommended_price_resource: available ? "oil" : null,
+      facets: [
+        {
+          facet_id: "prices",
+          status: available ? "observed" : "not_observed",
+          observed_slots: available ? 6 : 0,
+          expected_slots: 6,
+          resource_count: available ? 56 : 0,
+          currencies: available ? ["rub", "usd"] : [],
+          channels: [],
+          source_fields: available ? ["$Economy_PurchaseCostRUB"] : [],
+        },
+        {
+          facet_id: "trade",
+          status:
+            state === "partial"
+              ? "partial"
+              : available
+                ? "observed"
+                : "not_observed",
+          observed_slots: available ? (state === "partial" ? 4 : 8) : 0,
+          expected_slots: 8,
+          resource_count: available ? 41 : 0,
+          currencies: available ? ["rub", "usd"] : [],
+          channels: available ? ["standard", "international"] : [],
+          source_fields: available ? ["$Resources_ImportRUB"] : [],
+        },
+        ...["costs", "tourism", "loans", "vehicles", "cities"].map(
+          (facetId) => ({
+            facet_id: facetId,
+            status: available
+              ? ("partial" as const)
+              : ("not_observed" as const),
+            observed_slots: available ? 2 : 0,
+            expected_slots:
+              facetId === "cities" ? 3 : facetId === "costs" ? 6 : 4,
+            resource_count: 0,
+            currencies: available ? ["rub", "usd"] : [],
+            channels: [],
+            source_fields: [],
+          }),
+        ),
+      ],
+    },
   };
 }
 
