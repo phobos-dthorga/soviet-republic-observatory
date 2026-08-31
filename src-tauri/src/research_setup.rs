@@ -15,6 +15,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
+use crate::diagnostics;
 use crate::error::ObservatoryError;
 use crate::storage::{StoredResearchSetup, now_ms};
 
@@ -38,6 +39,16 @@ pub enum ResearchCheckoutState {
     Unsupported,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchArtifactState {
+    Absent,
+    Unrecorded,
+    Verified,
+    Changed,
+    Missing,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ResearchSetupStatus {
     pub notice_revision: u32,
@@ -45,12 +56,13 @@ pub struct ResearchSetupStatus {
     pub source_available: bool,
     pub compiler_available: bool,
     pub checkout_state: ResearchCheckoutState,
-    pub checkout_path: Option<String>,
+    pub checkout_name: Option<String>,
     pub reviewed_tesmio_revision: String,
     pub probe_built: bool,
+    pub artifact_state: ResearchArtifactState,
     pub probe_content_hash: Option<String>,
     pub probe_size_bytes: Option<u64>,
-    pub output_path: Option<String>,
+    pub output_display_path: Option<String>,
     pub last_built_at_ms: Option<i64>,
     pub can_build: bool,
     pub blockers: Vec<String>,
@@ -91,6 +103,9 @@ pub struct ResearchBuildProgress {
     pub current_item: Option<String>,
     pub log_lines: Vec<String>,
     pub error_code: Option<String>,
+    pub failed_stage: Option<String>,
+    pub compiler_exit_code: Option<i32>,
+    pub remediation_code: Option<String>,
 }
 
 impl Default for ResearchBuildProgress {
@@ -106,6 +121,9 @@ impl Default for ResearchBuildProgress {
             current_item: None,
             log_lines: Vec::new(),
             error_code: None,
+            failed_stage: None,
+            compiler_exit_code: None,
+            remediation_code: None,
         }
     }
 }
@@ -139,9 +157,7 @@ impl ResearchSetupService {
         if !metadata.is_dir() || metadata.file_type().is_symlink() {
             return Err(ObservatoryError::InvalidResearchCheckout);
         }
-        let canonical = path
-            .canonicalize()
-            .map_err(|_| ObservatoryError::InvalidResearchCheckout)?;
+        let canonical = canonical_checkout_path(path)?;
         if checkout_state(Some(&canonical)) != ResearchCheckoutState::Reviewed {
             return Err(ObservatoryError::InvalidResearchCheckout);
         }
@@ -151,7 +167,12 @@ impl ResearchSetupService {
     pub fn status(&self, stored: &StoredResearchSetup) -> ResearchSetupStatus {
         let source_available = self.source_root.as_deref().is_some_and(source_ready);
         let compiler_available = compiler_ready();
-        let checkout_state = checkout_state(stored.tesmio_checkout_path.as_deref());
+        let checkout_state = match stored.tesmio_checkout_path.as_deref() {
+            None => ResearchCheckoutState::NotSelected,
+            Some(path) if !path.is_dir() => ResearchCheckoutState::Missing,
+            Some(path) if self.validate_checkout(path).is_ok() => ResearchCheckoutState::Reviewed,
+            Some(_) => ResearchCheckoutState::Unsupported,
+        };
         let notice_accepted = stored.accepted_notice_revision == RESEARCH_NOTICE_REVISION;
         let artifact = self.source_root.as_deref().and_then(inspect_artifact);
         let mut blockers = Vec::new();
@@ -175,11 +196,26 @@ impl ResearchSetupService {
         if is_building {
             blockers.push("build_running".to_owned());
         }
-        if let (Some(recorded), Some(current)) =
-            (stored.last_probe_hash.as_deref(), artifact.as_ref())
-            && recorded != current.hash
-        {
-            warnings.push("artifact_changed_outside_assistant".to_owned());
+        let artifact_state = match (stored.last_probe_hash.as_deref(), artifact.as_ref()) {
+            (None, None) => ResearchArtifactState::Absent,
+            (None, Some(_)) => ResearchArtifactState::Unrecorded,
+            (Some(recorded), Some(current)) if recorded == current.hash => {
+                ResearchArtifactState::Verified
+            }
+            (Some(_), Some(_)) => ResearchArtifactState::Changed,
+            (Some(_), None) => ResearchArtifactState::Missing,
+        };
+        match artifact_state {
+            ResearchArtifactState::Unrecorded => {
+                warnings.push("artifact_not_recorded_by_assistant".to_owned())
+            }
+            ResearchArtifactState::Changed => {
+                warnings.push("artifact_changed_outside_assistant".to_owned())
+            }
+            ResearchArtifactState::Missing => {
+                warnings.push("artifact_missing_after_verified_build".to_owned())
+            }
+            ResearchArtifactState::Absent | ResearchArtifactState::Verified => {}
         }
         ResearchSetupStatus {
             notice_revision: RESEARCH_NOTICE_REVISION,
@@ -187,17 +223,19 @@ impl ResearchSetupService {
             source_available,
             compiler_available,
             checkout_state,
-            checkout_path: stored
+            checkout_name: stored
                 .tesmio_checkout_path
                 .as_ref()
-                .map(|path| path.to_string_lossy().into_owned()),
+                .and_then(|path| path.file_name())
+                .map(|name| name.to_string_lossy().into_owned()),
             reviewed_tesmio_revision: REVIEWED_TESMIO_REVISION.to_owned(),
-            probe_built: artifact.is_some(),
+            probe_built: artifact_state == ResearchArtifactState::Verified,
+            artifact_state,
             probe_content_hash: artifact.as_ref().map(|artifact| artifact.hash.clone()),
             probe_size_bytes: artifact.as_ref().map(|artifact| artifact.size),
-            output_path: artifact
+            output_display_path: artifact
                 .as_ref()
-                .map(|artifact| artifact.path.to_string_lossy().into_owned()),
+                .map(|_| "research/tesmioloader-probe/build/observatory_probe.dll".to_owned()),
             last_built_at_ms: stored.last_built_at_ms,
             can_build: blockers.is_empty(),
             blockers,
@@ -242,12 +280,22 @@ impl ResearchSetupService {
                 current_item: Some("reviewed_contract".to_owned()),
                 log_lines: Vec::new(),
                 error_code: None,
+                failed_stage: None,
+                compiler_exit_code: None,
+                remediation_code: None,
             },
+        );
+        diagnostics::record(
+            "info",
+            "research_build_started",
+            "build_research_probe",
+            "The bounded research-probe build entered preflight.",
         );
         if stored.accepted_notice_revision != RESEARCH_NOTICE_REVISION {
             return self.fail(
                 app,
                 "research_notice_required",
+                "review_research_notice",
                 ObservatoryError::ResearchNoticeRequired,
             );
         }
@@ -259,6 +307,7 @@ impl ResearchSetupService {
             return self.fail(
                 app,
                 "research_source_unavailable",
+                "repair_application_installation",
                 ObservatoryError::ResearchSourceUnavailable,
             );
         };
@@ -266,17 +315,27 @@ impl ResearchSetupService {
             return self.fail(
                 app,
                 "research_checkout_required",
+                "choose_reviewed_checkout",
                 ObservatoryError::InvalidResearchCheckout,
             );
         };
         let checkout = match self.validate_checkout(checkout_path) {
             Ok(checkout) => checkout,
-            Err(error) => return self.fail(app, "research_checkout_invalid", error),
+            Err(error) => {
+                let code = if checkout_path.is_dir() {
+                    "research_checkout_unsupported"
+                } else {
+                    "research_checkout_missing"
+                };
+                return self.fail(app, code, "choose_reviewed_checkout", error);
+            }
         };
+        let compiler_checkout = compiler_checkout_path(&checkout);
         let Some(powershell) = find_powershell() else {
             return self.fail(
                 app,
                 "research_toolchain_unavailable",
+                "install_visual_cpp_build_tools",
                 ObservatoryError::ResearchToolchainUnavailable,
             );
         };
@@ -284,6 +343,7 @@ impl ResearchSetupService {
             return self.fail(
                 app,
                 "research_toolchain_unavailable",
+                "install_visual_cpp_build_tools",
                 ObservatoryError::ResearchToolchainUnavailable,
             );
         }
@@ -311,7 +371,7 @@ impl ResearchSetupService {
             ])
             .arg(&script)
             .arg("-TesmioLoaderRoot")
-            .arg(&checkout)
+            .arg(&compiler_checkout)
             .current_dir(source_root)
             .output()
         {
@@ -320,16 +380,23 @@ impl ResearchSetupService {
                 return self.fail(
                     app,
                     "research_build_failed",
+                    "inspect_build_diagnostics",
                     ObservatoryError::ResearchBuildFailed,
                 );
             }
         };
-        let logs = sanitise_build_output(&output.stdout, &output.stderr, source_root, &checkout);
+        let logs = sanitise_build_output(
+            &output.stdout,
+            &output.stderr,
+            source_root,
+            &compiler_checkout,
+        );
         if !output.status.success() {
-            self.set_logs(app, logs);
+            self.set_logs_and_exit_code(app, logs, output.status.code());
             return self.fail(
                 app,
                 "research_build_failed",
+                "inspect_build_diagnostics",
                 ObservatoryError::ResearchBuildFailed,
             );
         }
@@ -339,6 +406,7 @@ impl ResearchSetupService {
             return self.fail(
                 app,
                 "research_artifact_invalid",
+                "inspect_build_diagnostics",
                 ObservatoryError::ResearchBuildFailed,
             );
         };
@@ -349,6 +417,15 @@ impl ResearchSetupService {
         progress.updated_at_ms = Some(now_ms());
         progress.current_item = Some("build_complete".to_owned());
         self.update_progress(app, progress);
+        diagnostics::record(
+            "info",
+            "research_build_complete",
+            "build_research_probe",
+            &format!(
+                "The bounded research probe was verified ({} bytes).",
+                artifact.size
+            ),
+        );
         Ok(artifact)
     }
 
@@ -368,18 +445,57 @@ impl ResearchSetupService {
         self.update_progress(app, progress);
     }
 
+    fn set_logs_and_exit_code(&self, app: &AppHandle, logs: Vec<String>, exit_code: Option<i32>) {
+        let mut progress = self.progress();
+        progress.log_lines = logs;
+        progress.compiler_exit_code = exit_code;
+        progress.updated_at_ms = Some(now_ms());
+        self.update_progress(app, progress);
+    }
+
     fn fail<T>(
         &self,
         app: &AppHandle,
         error_code: &str,
+        remediation_code: &str,
         error: ObservatoryError,
     ) -> Result<T, ObservatoryError> {
         let mut progress = self.progress();
+        let failed_stage = format!("{:?}", progress.phase).to_ascii_lowercase();
         progress.state = ResearchBuildState::Failed;
         progress.phase = ResearchBuildPhase::Failed;
         progress.updated_at_ms = Some(now_ms());
         progress.error_code = Some(error_code.to_owned());
+        progress.failed_stage = Some(failed_stage.clone());
+        progress.remediation_code = Some(remediation_code.to_owned());
         self.update_progress(app, progress);
+        let failed = self.progress();
+        let exit = failed
+            .compiler_exit_code
+            .map(|code| format!(" Compiler exit code: {code}."))
+            .unwrap_or_default();
+        let excerpt = failed
+            .log_lines
+            .iter()
+            .rev()
+            .take(2)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let excerpt = if excerpt.is_empty() {
+            String::new()
+        } else {
+            format!(" Sanitised output: {excerpt}")
+        };
+        diagnostics::record(
+            "error",
+            error_code,
+            "build_research_probe",
+            &format!(
+                "The research build stopped during {failed_stage}. Remediation: {remediation_code}.{exit}{excerpt}"
+            ),
+        );
         Err(error)
     }
 
@@ -391,9 +507,41 @@ impl ResearchSetupService {
     }
 }
 
+fn canonical_checkout_path(path: &Path) -> Result<PathBuf, ObservatoryError> {
+    // Tauri's Windows directory picker already returns an extended-length,
+    // canonical path. Canonicalising that form a second time is not stable
+    // across all Windows filesystem providers, so retain it after the same
+    // bounded metadata checks performed by the caller.
+    #[cfg(windows)]
+    if path.to_string_lossy().starts_with(r"\\?\") {
+        return Ok(path.to_path_buf());
+    }
+    path.canonicalize()
+        .map_err(|_| ObservatoryError::InvalidResearchCheckout)
+}
+
+fn compiler_checkout_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let display = path.to_string_lossy();
+        if let Some(unc) = display.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(drive) = display.strip_prefix(r"\\?\")
+            && drive.as_bytes().get(1) == Some(&b':')
+            && drive
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic)
+        {
+            return PathBuf::from(drive);
+        }
+    }
+    path.to_path_buf()
+}
+
 #[derive(Clone, Debug)]
 pub struct BuildArtifact {
-    pub path: PathBuf,
     pub hash: String,
     pub size: u64,
 }
@@ -481,7 +629,6 @@ fn inspect_artifact(source_root: &Path) -> Option<BuildArtifact> {
     Some(BuildArtifact {
         hash: bounded_hash(&path, MAX_ARTIFACT_BYTES)?,
         size: metadata.len(),
-        path,
     })
 }
 
@@ -539,7 +686,8 @@ mod tests {
 
     use super::{
         MAX_HEADER_BYTES, REVIEWED_API_HEADER_HASH, REVIEWED_PLUGIN_HEADER_HASH,
-        ResearchCheckoutState, bounded_hash, checkout_state, sanitise_build_output,
+        ResearchCheckoutState, bounded_hash, canonical_checkout_path, checkout_state,
+        compiler_checkout_path, sanitise_build_output,
     };
 
     #[test]
@@ -570,6 +718,26 @@ mod tests {
         assert!(bounded_hash(&oversized, MAX_HEADER_BYTES).is_none());
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn preserves_windows_extended_length_checkout_paths() {
+        let path = std::path::Path::new(r"\\?\D:\reviewed\TesmioLoader");
+        assert_eq!(canonical_checkout_path(path).expect("verbatim path"), path);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn supplies_native_tools_with_a_non_verbatim_windows_path() {
+        assert_eq!(
+            compiler_checkout_path(std::path::Path::new(r"\\?\D:\reviewed\TesmioLoader")),
+            std::path::Path::new(r"D:\reviewed\TesmioLoader")
+        );
+        assert_eq!(
+            compiler_checkout_path(std::path::Path::new(r"\\?\UNC\server\share\TesmioLoader")),
+            std::path::Path::new(r"\\server\share\TesmioLoader")
+        );
+    }
+
     #[test]
     fn build_logs_remove_private_roots_and_control_characters() {
         let source = std::path::Path::new(r"C:\private\observatory");
@@ -582,5 +750,18 @@ mod tests {
         );
         assert_eq!(logs[0], r"<observatory-source>\probe.cpp");
         assert_eq!(logs[1], r"<tesmioloader-checkout>\header.h");
+    }
+
+    #[test]
+    #[ignore = "requires an explicitly supplied local reviewed checkout"]
+    fn live_reviewed_checkout_uses_the_same_status_and_build_validation() {
+        let path = std::env::var_os("RO_REVIEWED_TESMIO_CHECKOUT")
+            .map(std::path::PathBuf::from)
+            .expect("RO_REVIEWED_TESMIO_CHECKOUT");
+        assert_eq!(checkout_state(Some(&path)), ResearchCheckoutState::Reviewed);
+        let service = super::ResearchSetupService::discover();
+        service
+            .validate_checkout(&path)
+            .expect("status-approved checkout must pass build validation");
     }
 }

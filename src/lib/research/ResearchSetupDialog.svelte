@@ -25,10 +25,12 @@
     open,
     onclose,
     onopenlegal,
+    onopendiagnostics,
   }: {
     open: boolean;
     onclose: () => void;
     onopenlegal: () => void;
+    onopendiagnostics: () => void;
   } = $props();
 
   let status = $state<ResearchSetupStatus | null>(null);
@@ -38,6 +40,9 @@
   let stopProgress: (() => void) | null = null;
   const progressView = $derived(
     progress ? researchBuildProgressView(progress, $translation) : null,
+  );
+  const buildFailure = $derived(
+    progress?.state === "failed" ? describeBuildFailure(progress) : null,
   );
 
   $effect(() => {
@@ -84,6 +89,54 @@
     return $translation("research-setup-error", { code: "unknown" });
   }
 
+  function describeBuildFailure(value: ResearchBuildProgress): {
+    detail: string;
+    remediation: string;
+  } {
+    const code = value.error_code ?? "unknown";
+    const detailKey =
+      code === "research_notice_required"
+        ? "research-setup-failure-notice"
+        : code === "research_source_unavailable"
+          ? "research-setup-failure-source"
+          : code === "research_checkout_required" ||
+              code === "research_checkout_missing"
+            ? "research-setup-failure-checkout-missing"
+            : code === "research_checkout_unsupported"
+              ? "research-setup-failure-checkout-unsupported"
+              : code === "research_toolchain_unavailable"
+                ? "research-setup-failure-toolchain"
+                : code === "research_artifact_invalid"
+                  ? "research-setup-failure-artifact"
+                  : code === "research_build_failed"
+                    ? "research-setup-failure-compile"
+                    : "research-setup-failure-unknown";
+    const remediationKey =
+      value.remediation_code === "review_research_notice"
+        ? "research-setup-remediation-notice"
+        : value.remediation_code === "choose_reviewed_checkout"
+          ? "research-setup-remediation-checkout"
+          : value.remediation_code === "install_visual_cpp_build_tools"
+            ? "research-setup-remediation-toolchain"
+            : value.remediation_code === "repair_application_installation"
+              ? "research-setup-remediation-source"
+              : "research-setup-remediation-diagnostics";
+    return {
+      detail: $translation(detailKey),
+      remediation: $translation(remediationKey),
+    };
+  }
+
+  function failureStageLabel(stage: string | null | undefined): string {
+    return stage === "toolchain"
+      ? $translation("research-setup-stage-toolchain")
+      : stage === "compiling"
+        ? $translation("research-setup-stage-compile")
+        : stage === "verifying"
+          ? $translation("research-setup-stage-verify")
+          : $translation("research-setup-stage-preflight");
+  }
+
   async function acceptNotice(accepted: boolean): Promise<void> {
     busy = true;
     errorMessage = "";
@@ -109,6 +162,7 @@
         title: $translation("research-setup-title"),
         message: $translation("research-setup-checkout-reviewed"),
         tone: "success",
+        dedupeKey: "research.checkout.result",
       });
     } catch (error) {
       errorMessage = describeError(error);
@@ -116,6 +170,7 @@
         title: $translation("research-setup-title"),
         message: errorMessage,
         tone: "error",
+        dedupeKey: "research.checkout.result",
       });
     } finally {
       busy = false;
@@ -134,12 +189,17 @@
         tone: "success",
       });
     } catch (error) {
-      errorMessage = describeError(error);
       status = await getResearchSetup().catch(() => status);
+      if (status) progress = status.progress;
+      errorMessage =
+        progress?.state === "failed"
+          ? describeBuildFailure(progress).detail
+          : describeError(error);
       notify({
         title: $translation("research-setup-title"),
         message: errorMessage,
         tone: "error",
+        dedupeKey: "research.build.failure",
       });
     } finally {
       busy = false;
@@ -161,6 +221,11 @@
   function openLegal(): void {
     onclose();
     onopenlegal();
+  }
+
+  function openDiagnostics(): void {
+    onclose();
+    onopendiagnostics();
   }
 </script>
 
@@ -198,7 +263,7 @@
         {$translation("research-setup-boundary-detail")}
       </p>
 
-      {#if errorMessage}
+      {#if errorMessage && !buildFailure}
         <p class="research-error" role="alert">{errorMessage}</p>
       {/if}
 
@@ -243,8 +308,11 @@
             <div>
               <h3>{$translation("research-setup-checkout-title")}</h3>
               <p>{$translation("research-setup-checkout-detail")}</p>
-              {#if status?.checkout_path}
-                <code>{status.checkout_path}</code>
+              {#if status?.checkout_name}
+                <p class="safe-location">
+                  {$translation("research-setup-selected-folder")}
+                  <code>{status.checkout_name}</code>
+                </p>
               {/if}
               <div class="button-row">
                 <button
@@ -321,14 +389,60 @@
                     : $translation("research-setup-build-action")}</button
                 >
               </AttentionCue>
+              {#if status?.artifact_state === "missing"}
+                <p class="artifact-warning">
+                  {$translation("research-setup-artifact-missing")}
+                </p>
+              {/if}
             </div>
-            <strong
-              >{status?.probe_built
+            <strong>
+              {status?.artifact_state === "verified"
                 ? $translation("research-setup-built")
-                : $translation("research-setup-not-built")}</strong
-            >
+                : status?.artifact_state === "unrecorded"
+                  ? $translation("research-setup-detected")
+                  : status?.artifact_state === "changed"
+                    ? $translation("research-setup-changed")
+                    : status?.artifact_state === "missing"
+                      ? $translation("research-setup-missing")
+                      : $translation("research-setup-not-built")}
+            </strong>
           </li>
         </ol>
+
+        {#if buildFailure}
+          <section class="failure-assay" role="alert">
+            <div>
+              <span class="eyebrow"
+                >{$translation("research-setup-failure-eyebrow")}</span
+              >
+              <h3>{$translation("research-setup-failure-title")}</h3>
+            </div>
+            <p>{buildFailure.detail}</p>
+            <p>
+              <strong>{$translation("research-setup-next-step")}</strong>
+              {buildFailure.remediation}
+            </p>
+            <dl>
+              <div>
+                <dt>{$translation("research-setup-failure-stage")}</dt>
+                <dd>{failureStageLabel(progress?.failed_stage)}</dd>
+              </div>
+              <div>
+                <dt>{$translation("research-setup-failure-code")}</dt>
+                <dd><code>{progress?.error_code ?? "unknown"}</code></dd>
+              </div>
+              {#if progress?.compiler_exit_code != null}
+                <div>
+                  <dt>{$translation("research-setup-failure-exit-code")}</dt>
+                  <dd>{progress?.compiler_exit_code}</dd>
+                </div>
+              {/if}
+            </dl>
+            <button type="button" onclick={openDiagnostics}>
+              {$translation("research-setup-open-diagnostics")}
+            </button>
+          </section>
+        {/if}
 
         {#if progressView && progress?.state !== "idle"}
           <TaskProgressPanel
@@ -337,7 +451,7 @@
           />
         {/if}
 
-        {#if status?.probe_built}
+        {#if status && status.artifact_state !== "absent" && status.artifact_state !== "missing"}
           <section class="artifact" aria-labelledby="research-artifact-title">
             <span class="eyebrow"
               >{$translation("research-setup-artifact-eyebrow")}</span
@@ -345,6 +459,13 @@
             <h3 id="research-artifact-title">
               {$translation("research-setup-artifact-title")}
             </h3>
+            {#if status.artifact_state !== "verified"}
+              <p class="artifact-warning">
+                {status.artifact_state === "unrecorded"
+                  ? $translation("research-setup-artifact-unrecorded")
+                  : $translation("research-setup-artifact-changed")}
+              </p>
+            {/if}
             <dl>
               <div>
                 <dt>{$translation("research-setup-artifact-size")}</dt>
@@ -358,7 +479,7 @@
               </div>
               <div>
                 <dt>{$translation("research-setup-artifact-location")}</dt>
-                <dd><code>{status.output_path}</code></dd>
+                <dd><code>{status.output_display_path}</code></dd>
               </div>
             </dl>
           </section>
@@ -399,8 +520,8 @@
     inset: auto;
     width: min(1040px, 100%);
     max-height: calc(100vh - 40px);
-    display: grid;
-    grid-template-rows: auto auto auto auto minmax(180px, 1fr) auto;
+    display: flex;
+    flex-direction: column;
     gap: 10px;
     margin: 0;
     padding: 20px;
@@ -463,6 +584,7 @@
     background: var(--colour-risk-soft);
   }
   .research-content {
+    flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
   }
@@ -493,6 +615,10 @@
   }
   .research-steps > li > strong {
     color: var(--colour-text);
+    align-self: start;
+    padding: 3px 6px;
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface);
     text-transform: uppercase;
   }
   .research-steps p {
@@ -506,6 +632,13 @@
     overflow-wrap: anywhere;
     color: var(--colour-observed);
     font-size: var(--type-caption);
+  }
+  .safe-location {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 2px 0 8px;
   }
   dl {
     display: grid;
@@ -534,6 +667,31 @@
     border: 1px solid var(--colour-line-faint);
     padding: 12px;
     background: var(--colour-surface-raised);
+  }
+  .artifact-warning,
+  .failure-assay {
+    border-inline-start: 3px solid var(--colour-gold);
+    color: var(--colour-text);
+    background: var(--colour-gold-soft);
+  }
+  .artifact-warning {
+    margin: 8px 0 0;
+    padding: 8px 10px;
+  }
+  .failure-assay {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 12px;
+    border-color: var(--colour-risk);
+    background: var(--colour-risk-soft);
+  }
+  .failure-assay p,
+  .failure-assay dl {
+    margin: 0;
+  }
+  .failure-assay button {
+    justify-self: start;
   }
   .artifact h3 {
     margin-top: 4px;

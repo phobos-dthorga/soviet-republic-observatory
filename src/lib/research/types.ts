@@ -1,5 +1,7 @@
 export type ResearchCheckoutState =
   "not_selected" | "missing" | "reviewed" | "unsupported";
+export type ResearchArtifactState =
+  "absent" | "unrecorded" | "verified" | "changed" | "missing";
 
 export type ResearchBuildState = "idle" | "running" | "complete" | "failed";
 export type ResearchBuildPhase =
@@ -22,6 +24,9 @@ export type ResearchBuildProgress = {
   current_item: string | null;
   log_lines: string[];
   error_code: string | null;
+  failed_stage: string | null;
+  compiler_exit_code: number | null;
+  remediation_code: string | null;
 };
 
 export type ResearchSetupStatus = {
@@ -30,12 +35,13 @@ export type ResearchSetupStatus = {
   source_available: boolean;
   compiler_available: boolean;
   checkout_state: ResearchCheckoutState;
-  checkout_path: string | null;
+  checkout_name: string | null;
   reviewed_tesmio_revision: string;
   probe_built: boolean;
+  artifact_state: ResearchArtifactState;
   probe_content_hash: string | null;
   probe_size_bytes: number | null;
-  output_path: string | null;
+  output_display_path: string | null;
   last_built_at_ms: number | null;
   can_build: boolean;
   blockers: string[];

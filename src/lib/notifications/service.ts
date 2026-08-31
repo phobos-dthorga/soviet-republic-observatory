@@ -9,6 +9,7 @@ export type AppNotification = {
   tone: NotificationTone;
   createdAt: number;
   timeoutMs: number;
+  dedupeKey?: string;
 };
 
 export type NotificationRequest = {
@@ -16,6 +17,7 @@ export type NotificationRequest = {
   message: string;
   tone?: NotificationTone;
   timeoutMs?: number;
+  dedupeKey?: string;
 };
 
 const MAX_VISIBLE_NOTIFICATIONS = 5;
@@ -35,20 +37,31 @@ export const notifications = {
 
 export function notify(request: NotificationRequest): string {
   const tone = request.tone ?? "info";
-  const id = `notification-${++sequence}`;
-  const notification: AppNotification = {
-    id,
-    title: request.title,
-    message: request.message,
-    tone,
-    createdAt: Date.now(),
-    timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUTS[tone],
-  };
-
-  notificationStore.update((current) =>
-    [...current, notification].slice(-MAX_VISIBLE_NOTIFICATIONS),
-  );
-  return id;
+  let notificationId = `notification-${++sequence}`;
+  notificationStore.update((current) => {
+    const existing = request.dedupeKey
+      ? current.find(
+          (notification) => notification.dedupeKey === request.dedupeKey,
+        )
+      : undefined;
+    if (existing) notificationId = existing.id;
+    const notification: AppNotification = {
+      id: notificationId,
+      title: request.title,
+      message: request.message,
+      tone,
+      createdAt: Date.now(),
+      timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUTS[tone],
+      dedupeKey: request.dedupeKey,
+    };
+    const withoutDuplicate = existing
+      ? current.filter((item) => item.id !== existing.id)
+      : current;
+    return [...withoutDuplicate, notification].slice(
+      -MAX_VISIBLE_NOTIFICATIONS,
+    );
+  });
+  return notificationId;
 }
 
 export function dismissNotification(id: string): void {

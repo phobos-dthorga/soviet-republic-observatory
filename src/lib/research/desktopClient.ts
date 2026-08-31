@@ -14,6 +14,9 @@ const browserProgress: ResearchBuildProgress = {
   current_item: null,
   log_lines: [],
   error_code: null,
+  failed_stage: null,
+  compiler_exit_code: null,
+  remediation_code: null,
 };
 
 const browserStatus: ResearchSetupStatus = {
@@ -22,12 +25,13 @@ const browserStatus: ResearchSetupStatus = {
   source_available: false,
   compiler_available: false,
   checkout_state: "not_selected",
-  checkout_path: null,
+  checkout_name: null,
   reviewed_tesmio_revision: "3baa141f9f08921aea9c95f0a400289cabd9960a",
   probe_built: false,
+  artifact_state: "absent",
   probe_content_hash: null,
   probe_size_bytes: null,
-  output_path: null,
+  output_display_path: null,
   last_built_at_ms: null,
   can_build: false,
   blockers: ["desktop_required"],

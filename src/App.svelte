@@ -730,4 +730,5 @@
   open={researchSetupDialogOpen}
   onclose={() => (researchSetupDialogOpen = false)}
   onopenlegal={() => (legalDialogOpen = true)}
+  onopendiagnostics={openDiagnostics}
 />

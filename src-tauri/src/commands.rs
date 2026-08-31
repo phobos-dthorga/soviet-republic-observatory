@@ -112,10 +112,25 @@ pub fn configure_research_tesmio_checkout(
     if path.is_empty() || path.len() > 4_096 {
         return Err(crate::error::ObservatoryError::InvalidResearchSetup.into());
     }
-    let canonical = state
-        .research_setup
-        .validate_checkout(&PathBuf::from(path))?;
+    let canonical = match state.research_setup.validate_checkout(&PathBuf::from(path)) {
+        Ok(canonical) => canonical,
+        Err(error) => {
+            crate::diagnostics::record(
+                "warning",
+                "research_checkout_rejected",
+                "configure_research_tesmio_checkout",
+                "The selected checkout did not match the bounded reviewed-header contract.",
+            );
+            return Err(error.into());
+        }
+    };
     state.application.set_research_tesmio_checkout(&canonical)?;
+    crate::diagnostics::record(
+        "info",
+        "research_checkout_reviewed",
+        "configure_research_tesmio_checkout",
+        "The selected checkout matched the bounded reviewed-header contract.",
+    );
     let stored = state.application.research_setup()?;
     Ok(state.research_setup.status(&stored))
 }

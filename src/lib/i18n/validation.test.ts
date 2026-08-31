@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { sourceLanguagePack } from "./catalog";
 import { createPseudoLanguagePack } from "./pseudo";
 import {
+  SOURCE_CATALOG_REVISION,
   eligibleMessageCount,
   validateBuiltInLanguagePack,
   validateCommunityLanguagePackJson,
@@ -64,7 +65,8 @@ describe("language pack v1", () => {
     ],
     [
       "future revision",
-      (pack: Record<string, unknown>) => (pack.source_catalog_revision = 32),
+      (pack: Record<string, unknown>) =>
+        (pack.source_catalog_revision = SOURCE_CATALOG_REVISION + 1),
       "unsupported_version",
     ],
     [

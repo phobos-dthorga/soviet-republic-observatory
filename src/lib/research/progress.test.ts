@@ -17,6 +17,9 @@ function progress(
     current_item: "reviewed_contract",
     log_lines: [],
     error_code: null,
+    failed_stage: null,
+    compiler_exit_code: null,
+    remediation_code: null,
     ...values,
   };
 }

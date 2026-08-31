@@ -49,4 +49,21 @@ describe("application notifications", () => {
       "Second",
     ]);
   });
+
+  it("updates a keyed notification instead of flooding the queue", () => {
+    const first = notify({
+      message: "Preflight stopped",
+      tone: "error",
+      dedupeKey: "research.build.failure",
+    });
+    const second = notify({
+      message: "Compile stopped",
+      tone: "error",
+      dedupeKey: "research.build.failure",
+    });
+
+    expect(second).toBe(first);
+    expect(get(notifications)).toHaveLength(1);
+    expect(get(notifications)[0]?.message).toBe("Compile stopped");
+  });
 });

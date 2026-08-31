@@ -91,6 +91,15 @@ unreviewed definition updates; it never logs package contents, paths, or profile
 JSON. Future background services should use the same boundary and add only
 stable, low-cardinality events that answer a concrete support question.
 
+The Experimental Research Setup records selection validation plus build start,
+safe failure, and verified completion. Failure entries identify the stopped
+stage, a stable remediation code, an available compiler exit code, and at most
+two bounded lines of already sanitised compiler output. The setup dialog shows
+the same stage and next action and links directly to **Diagnostics**. Checkout
+and build-output paths are never placed in the public status model or diagnostic
+record; the interface uses only a folder leaf name and repository-relative
+artifact label.
+
 ## Performance boundary
 
 DuckDB is a bulk analytical engine. Catalogue publication and observation

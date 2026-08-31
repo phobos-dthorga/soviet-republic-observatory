@@ -14,6 +14,12 @@ uses the operating-system highlight colour. Dismissal is stored by stable cue
 ID and content revision in SQLite; revised guidance reappears automatically and
 users can explicitly replay existing guidance.
 
+The default cue layout is compact: its persistent explanation is bounded and
+its pulse traces the actual interactive target, not the full width of whatever
+panel happens to contain it. A deliberate wide layout remains available for a
+real full-width target. This distinction must be checked at desktop and narrow
+viewports whenever a cue is introduced.
+
 Cues never carry validation or business policy. They render only when the
 owning service has already established that the highlighted action is
 available. Essential warnings remain visible outside the cue.
@@ -60,6 +66,11 @@ service and the shell-owned notification centre. The service:
 - never contains domain calculations or changes application state beyond the
   notification queue.
 
+Repeated outcomes from one operation use a stable deduplication key, updating
+the existing notice instead of flooding the queue. This is presentation
+coalescing only: every durable failure attempt may still appear separately in
+the bounded native diagnostic record.
+
 Inline validation remains beside the affected field or operation. Critical
 task progress remains in the shared task-progress system. Notifications report
 an outcome; they do not replace durable diagnostics, evidence, or progress.
@@ -77,10 +88,10 @@ partial-pack coverage, and per-message English fallback. End users can author
 packs from the public schema and example, install them through **Language**, and
 select them independently.
 
-Republic Observatory currently validates and retains community packs in its
-frontend app-local storage. WyrmGrid's mature Rust-and-SQLite validation and
-persistence boundary remains the target for a later native slice. Documentation
-and interface wording must not imply that native authority already exists.
+Republic Observatory validates and retains community packs through its
+authoritative Rust-and-SQLite boundary. The frontend requests bounded lifecycle
+operations and renders returned models; it does not decide whether a pack is
+safe, compatible, installed, or selected.
 
 ## When to make a facility first-class
 

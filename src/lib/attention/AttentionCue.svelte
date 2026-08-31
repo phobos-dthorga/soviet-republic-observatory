@@ -17,6 +17,7 @@
     onaction,
     tone = "information",
     enabled = true,
+    layout = "compact",
     children,
   }: {
     cueId: string;
@@ -28,6 +29,7 @@
     onaction?: () => void;
     tone?: AttentionCueTone;
     enabled?: boolean;
+    layout?: "compact" | "wide";
     children: Snippet;
   } = $props();
 
@@ -77,6 +79,7 @@
   data-attention-cue={cueId}
   data-attention-tone={tone}
   data-attention-loading={loading}
+  data-attention-layout={layout}
   aria-describedby={active ? detailId : undefined}
 >
   <div class="attention-target">{@render children()}</div>
@@ -99,12 +102,22 @@
 <style>
   .attention-cue {
     position: relative;
+    display: grid;
+    width: min(460px, 100%);
     min-width: 0;
+    justify-items: start;
+  }
+
+  .attention-cue[data-attention-layout="wide"] {
+    width: 100%;
   }
 
   .attention-target {
     position: relative;
     z-index: 1;
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
   }
 
   .attention-cue.active .attention-target::after {
@@ -131,6 +144,7 @@
     position: relative;
     z-index: 2;
     display: grid;
+    width: 100%;
     gap: 6px;
     margin-top: 9px;
     border: 1px solid var(--colour-observed);
