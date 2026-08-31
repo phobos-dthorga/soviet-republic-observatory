@@ -177,9 +177,17 @@ publishes catalogue metrics.
 ## Slice 6 — Materials and markets
 
 - Material Periodic Table
-- Price baskets and indexed market views
-- Resource-use matrix and Pareto
-- Currency-specific trade, tourism, debt, and break-even analysis
+- Exact-save guided market indexing, content-addressed retained history, and
+  profile-variant grouping — implemented
+- Currency- and channel-separated trade histories, signed resource ledgers,
+  positive-export Pareto/HHI, and neutral city-source rankings — implemented
+- Nominal prices, resource indices, robust log-price movement, and immutable
+  fixed-quantity Laspeyres baskets — implemented
+- Recorded tourism, debt, vehicle, delivery, labour, and immigrant-cost ledgers
+  with explicit denominator gates — implemented where reviewed source fields
+  are present
+- Immutable player break-even and debt-stress scenario revisions — implemented
+- Resource-use matrix and broader accounted-flow Pareto
 - Measurement coverage and accounted-flow residual presentation
 - Source-to-use Sankey views when one compatible material, scope, and planning
   window can be reconciled; the source-backed definition-coefficient laboratory

@@ -39,6 +39,7 @@ const smokeScenarios: UiReviewScenarioId[] = [
   "materials-warehouse-attention",
   "production-pathway",
   "population-probe-missing",
+  "workspace-markets",
   "critical-task-failed",
   "dialog-theme",
   "dialog-research",

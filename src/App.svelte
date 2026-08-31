@@ -8,6 +8,7 @@
   import MaterialsWorkspace from "./lib/workspaces/MaterialsWorkspace.svelte";
   import PopulationWorkspace from "./lib/workspaces/PopulationWorkspace.svelte";
   import PlanWorkspace from "./lib/workspaces/PlanWorkspace.svelte";
+  import MarketsWorkspace from "./lib/workspaces/MarketsWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
   import { initialiseThemes } from "./lib/theme/service";
@@ -24,6 +25,7 @@
   import { replayAttentionCue } from "./lib/attention/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
+  import { marketIndexingProgressView } from "./lib/presentation/markets";
   import {
     getResearchBuildProgress,
     listenForResearchBuildProgress,
@@ -37,6 +39,8 @@
   import {
     reviewArchiveOverview,
     reviewCatalogueProgress,
+    reviewMarketIndexingProgress,
+    reviewMarketWorkspace,
     reviewPopulationDataset,
     reviewProductionPathway,
     reviewProductionRoute,
@@ -54,6 +58,8 @@
     getDiagnosticLog,
     getLatestReceiverDataset,
     getPopulationDataset,
+    getMarketIndexingProgress,
+    getMarketWorkspace,
     getPublishedMetricContexts,
     getRepublicBrief,
     getRepublicPlanWorkspace,
@@ -65,6 +71,7 @@
     listenForCatalogueProgress,
     listenForCompatibilityUpdates,
     listenForReinterpretationProgress,
+    listenForMarketIndexingProgress,
     listenForWarehouseUpdates,
     selectTimelineBranch,
     returnToBranchTip,
@@ -76,6 +83,8 @@
     CatalogueStatus,
     CompatibilityUpdate,
     DiagnosticLogView,
+    MarketIndexingProgress,
+    MarketWorkspace,
     ReceiverDataset,
     PopulationDataset,
     PublishedMetricContext,
@@ -98,6 +107,7 @@
     | "plan"
     | "materials"
     | "population"
+    | "markets"
     | "archive";
   const workspaces: Array<{
     id:
@@ -117,7 +127,7 @@
     { id: "plan", label: "nav-plan", enabled: true },
     { id: "materials", label: "nav-materials", enabled: true },
     { id: "population", label: "nav-population", enabled: true },
-    { id: "markets", label: "nav-markets", enabled: false },
+    { id: "markets", label: "nav-markets", enabled: true },
     { id: "archive", label: "nav-archive", enabled: true },
   ];
 
@@ -135,6 +145,7 @@
   let warehouseStatus = $state<CatalogueStatus | null>(null);
   let reinterpretationProgress = $state<ReinterpretationProgress | null>(null);
   let researchBuildProgress = $state<ResearchBuildProgress | null>(null);
+  let marketIndexingProgress = $state<MarketIndexingProgress | null>(null);
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -143,6 +154,7 @@
   let recorderHealth = $state<RecorderHealth | null>(null);
   let republicBrief = $state<RepublicBrief | null>(null);
   let republicPlan = $state<RepublicPlanWorkspace | null>(null);
+  let marketWorkspace = $state<MarketWorkspace | null>(null);
   let publishedMetricContexts = $state<PublishedMetricContext[]>([]);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
@@ -158,6 +170,8 @@
         return $translation("catalogue-overlays");
       case "branch_membership_projection":
         return $translation("archive-branches");
+      case "market_projection":
+        return $translation("nav-markets");
       case "observation_rebuild":
         return $translation("catalogue-rebuild");
     }
@@ -219,6 +233,7 @@
     void refreshPopulationDataset();
     void refreshRepublicBrief();
     void refreshRepublicPlan();
+    void refreshMarketWorkspace();
   }
 
   async function refreshPopulationDataset(): Promise<void> {
@@ -245,6 +260,15 @@
       republicPlan = await getRepublicPlanWorkspace();
     } catch {
       republicPlan = null;
+    }
+  }
+
+  async function refreshMarketWorkspace(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      marketWorkspace = await getMarketWorkspace();
+    } catch {
+      marketWorkspace = null;
     }
   }
 
@@ -286,6 +310,7 @@
     void refreshPopulationDataset();
     void refreshRepublicBrief();
     void refreshRepublicPlan();
+    void refreshMarketWorkspace();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -307,6 +332,7 @@
       void refreshPopulationDataset();
       void refreshRepublicBrief();
       void refreshRepublicPlan();
+      void refreshMarketWorkspace();
     }
   }
 
@@ -358,6 +384,8 @@
     warehouseStatus = null;
     reinterpretationProgress = null;
     researchBuildProgress = null;
+    marketIndexingProgress = null;
+    marketWorkspace = null;
     reviewRouteFixture = null;
     reviewPathwayFixture = null;
 
@@ -395,6 +423,32 @@
       case "population-probe-missing":
         activeWorkspace = "population";
         populationDataset = reviewPopulationDataset();
+        break;
+      case "workspace-markets":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("ready");
+        break;
+      case "markets-indexing":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("ready");
+        marketIndexingProgress = reviewMarketIndexingProgress(false);
+        break;
+      case "markets-partial":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("partial");
+        break;
+      case "markets-empty":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("empty");
+        break;
+      case "markets-lagging":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("lagging");
+        break;
+      case "markets-failed":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("partial");
+        marketIndexingProgress = reviewMarketIndexingProgress(true);
         break;
       case "archive-latest":
         activeWorkspace = "archive";
@@ -502,6 +556,7 @@
     let stopCatalogueListening: (() => void) | undefined;
     let stopCompatibilityListening: (() => void) | undefined;
     let stopReinterpretationListening: (() => void) | undefined;
+    let stopMarketIndexingListening: (() => void) | undefined;
     let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
     const initialDataReady = Promise.all([
@@ -512,6 +567,7 @@
       getPopulationDataset().catch(() => null),
       getRepublicBrief().catch(() => null),
       getRepublicPlanWorkspace().catch(() => null),
+      getMarketWorkspace().catch(() => null),
       getPublishedMetricContexts().catch(() => []),
     ]).then(
       ([
@@ -522,6 +578,7 @@
         population,
         brief,
         plan,
+        markets,
         metricContexts,
       ]) => {
         if (disposed) return;
@@ -532,6 +589,7 @@
         populationDataset = population;
         republicBrief = brief;
         republicPlan = plan;
+        marketWorkspace = markets;
         publishedMetricContexts = metricContexts;
       },
     );
@@ -557,6 +615,7 @@
         warehouseStatus = status;
         void refreshRepublicBrief();
         void refreshRepublicPlan();
+        void refreshMarketWorkspace();
       }
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -602,12 +661,28 @@
       if (disposed) unlisten();
       else stopResearchBuildListening = unlisten;
     });
+    void observeLatestTaskProgress(
+      {
+        listen: listenForMarketIndexingProgress,
+        read: getMarketIndexingProgress,
+      },
+      (progress) => {
+        if (!disposed) {
+          marketIndexingProgress = progress;
+          if (progress.phase === "complete") void refreshMarketWorkspace();
+        }
+      },
+    ).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopMarketIndexingListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
       stopCatalogueListening?.();
       stopCompatibilityListening?.();
       stopReinterpretationListening?.();
+      stopMarketIndexingListening?.();
       stopResearchBuildListening?.();
       stopWarehouseListening?.();
       stopUiReview?.();
@@ -744,6 +819,20 @@
           failed={view.state === "failed"}
           currentItem={view.currentItem}
           onclick={() => (researchSetupDialogOpen = true)}
+        />
+      {/if}
+      {#if marketIndexingProgress && ["discovering", "matching", "reading_archive", "parsing_records", "persisting", "queueing_warehouse", "failed"].includes(marketIndexingProgress.phase)}
+        {@const view = marketIndexingProgressView(
+          marketIndexingProgress,
+          $translation,
+        )}
+        <TaskProgressIndicator
+          label={$translation("markets-index-eyebrow")}
+          detail={view.heading}
+          percent={view.progressPercent}
+          failed={view.state === "failed"}
+          currentItem={view.currentItem}
+          onclick={() => (activeWorkspace = "markets")}
         />
       {/if}
       <button
@@ -895,6 +984,17 @@
       metricContexts={publishedMetricContexts}
       {desktopAvailable}
       onopenresearch={() => (researchSetupDialogOpen = true)}
+    />
+  {:else if activeWorkspace === "markets"}
+    <MarketsWorkspace
+      workspace={marketWorkspace}
+      indexingProgress={marketIndexingProgress}
+      {desktopAvailable}
+      onupdate={(updated) => (marketWorkspace = updated)}
+      onprogress={(progress) => {
+        marketIndexingProgress = progress;
+        if (progress.phase === "complete") void refreshMarketWorkspace();
+      }}
     />
   {:else}
     <ArchiveWorkspace

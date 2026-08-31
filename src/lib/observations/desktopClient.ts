@@ -38,6 +38,10 @@ import type {
   PublishedMetricContext,
   RepublicPlanDraft,
   RepublicPlanWorkspace,
+  MarketBasketDraft,
+  MarketIndexingProgress,
+  MarketScenarioDraft,
+  MarketWorkspace,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -85,6 +89,76 @@ export function getPublishedMetricContexts(): Promise<
 
 export function getRepublicPlanWorkspace(): Promise<RepublicPlanWorkspace> {
   return invoke<RepublicPlanWorkspace>("get_republic_plan_workspace");
+}
+
+export function getMarketWorkspace(): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("get_market_workspace");
+}
+
+export function getMarketIndexingProgress(): Promise<MarketIndexingProgress> {
+  return invoke<MarketIndexingProgress>("get_market_indexing_progress");
+}
+
+export function indexAvailableSavesForMarkets(): Promise<MarketIndexingProgress> {
+  return invoke<MarketIndexingProgress>("index_available_saves_for_markets");
+}
+
+export function listenForMarketIndexingProgress(
+  accept: (progress: MarketIndexingProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<MarketIndexingProgress>("market-indexing-progress", (event) =>
+    accept(event.payload),
+  );
+}
+
+export function saveMarketBasket(
+  draft: MarketBasketDraft,
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("save_market_basket", { draft });
+}
+
+export function saveMarketScenario(
+  draft: MarketScenarioDraft,
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("save_market_scenario", { draft });
+}
+
+export function selectMarketDefinition(
+  kind: "basket" | "scenario",
+  definitionId: string,
+  revision: number,
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("select_market_definition", {
+    kind,
+    definitionId,
+    revision,
+  });
+}
+
+export function rollbackMarketDefinition(
+  kind: "basket" | "scenario",
+  definitionId: string,
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("rollback_market_definition", {
+    kind,
+    definitionId,
+  });
+}
+
+export function clearMarketSelection(
+  kind: "basket" | "scenario",
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("clear_market_selection", { kind });
+}
+
+export function removeMarketDefinition(
+  kind: "basket" | "scenario",
+  definitionId: string,
+): Promise<MarketWorkspace> {
+  return invoke<MarketWorkspace>("remove_market_definition", {
+    kind,
+    definitionId,
+  });
 }
 
 export function saveRepublicPlan(

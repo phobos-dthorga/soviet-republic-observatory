@@ -41,6 +41,9 @@ an engineering requirement.
 - [W&R compatibility profiles](compatibility-profiles.md) — reviewed mappings,
   one local repair file, immutable interpretation identity, bounded binary
   layouts, evidence consequences, and contribution workflow
+- [Markets and external economy](markets-and-external-economy.md) — exact-save
+  indexing, currency-separated evidence, analytical formulas, player baskets
+  and scenarios, warehouse recovery, and limitations
 - [Local diagnostics and long-running work](operations/diagnostics.md) — shared
   critical-task progress, startup recovery, stall visibility, bounded local
   logging, and privacy

@@ -150,6 +150,15 @@ continuation to hide.
 SQLite owns profile revisions, runtime validation state, immutable observation
 interpretations, and the projection outbox. DuckDB retains the same
 interpretation/profile identity on observations and catalogue generations.
+
+Reviewed profile revision 1.1.0 adds host-allowlisted market operations for
+bounded price, trade, tourism, loan, vehicle-account, and cost fields. These
+mappings only expose meanings already owned by the host; they do not add
+expressions or make a malformed Markets section fatal to unrelated observation
+facts. Earlier reviewed profile documents remain exact inheritance evidence.
+A local override based on an older content hash does not silently rebase to the
+expanded profile: the player must create or rebase a starter override
+deliberately before new market mappings participate.
 Upgrading an older database backfills the reviewed legacy provenance and queues
 an idempotent warehouse rebuild; it does not change parsed values or branches.
 

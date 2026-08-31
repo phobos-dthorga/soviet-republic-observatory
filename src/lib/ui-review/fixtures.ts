@@ -2,12 +2,290 @@ import type {
   ArchiveOverview,
   CatalogueRefreshProgress,
   CatalogueStatus,
+  MarketIndexingProgress,
+  MarketWorkspace,
   PopulationDataset,
   ProductionPathwayModel,
   ProductionRouteModel,
   RepublicBrief,
   RepublicPlanWorkspace,
 } from "../observations/types";
+
+export function reviewMarketWorkspace(
+  state: "ready" | "partial" | "empty" | "lagging" = "ready",
+): MarketWorkspace {
+  const available = state !== "empty";
+  const context = {
+    metric_id: "market.trade_result.rub",
+    formula: "export_account_value - import_account_value",
+    currency: "rub",
+    unit: "source_currency_account_value",
+    time_basis: "selected_head_source_window",
+    exclusions: [
+      "channels_separate",
+      "negative_exports_are_disposal",
+      "no_annualisation_or_interpolation",
+    ],
+    evidence_class: "reviewed_mapping",
+    profile_id: "org.republic-observatory.wrsr-1.1.1.9",
+    profile_version: "1.1.0",
+    source_fields: ["$Resources_ImportRUB", "$Resources_ExportRUB"],
+    analytical_head: "review-interpretation-2015-077",
+  };
+  const trades = [
+    {
+      record_hash: "a".repeat(64),
+      year: 2015,
+      day: 60,
+      game_day: 735360,
+      import_value: 1200,
+      export_value: 900,
+      trade_result: -300,
+    },
+    {
+      record_hash: "b".repeat(64),
+      year: 2015,
+      day: 77,
+      game_day: 735377,
+      import_value: 1100,
+      export_value: 1450,
+      trade_result: 350,
+    },
+  ].map((row) => ({ ...row, currency: "rub", channel: "standard" }));
+  return {
+    analysis_context: reviewContext,
+    available,
+    partial: state === "partial",
+    coverage_status: available
+      ? state === "partial"
+        ? "partial"
+        : "complete"
+      : null,
+    history_records: available ? 2 : 0,
+    row_count: available ? 28 : 0,
+    city_scope_count: available ? 2 : 0,
+    warehouse_history_available: state !== "lagging",
+    warnings: [],
+    currencies: available
+      ? [
+          {
+            currency: "rub",
+            standard_import_value: 1100,
+            standard_export_value: 1450,
+            standard_trade_result: 350,
+            international_import_value: 200,
+            international_export_value: 125,
+            international_trade_result: -75,
+            positive_export_hhi: 0.58,
+            positive_export_resource_count: 2,
+            context,
+          },
+          {
+            currency: "usd",
+            standard_import_value: 0,
+            standard_export_value: 0,
+            standard_trade_result: 0,
+            international_import_value: 0,
+            international_export_value: 0,
+            international_trade_result: 0,
+            positive_export_hhi: null,
+            positive_export_resource_count: 0,
+            context: {
+              ...context,
+              metric_id: "market.trade_result.usd",
+              currency: "usd",
+            },
+          },
+        ]
+      : [],
+    trade_history: available ? trades : [],
+    resource_ledger: available
+      ? [
+          {
+            currency: "rub",
+            channel: "standard",
+            resource_token: "oil",
+            import_quantity: 10,
+            export_quantity: 0,
+            import_account_value: 1100,
+            export_account_value: 0,
+            trade_result: -1100,
+            disposal_cost: null,
+            source_fields: ["$Resources_ImportRUB"],
+          },
+          {
+            currency: "rub",
+            channel: "standard",
+            resource_token: "steel",
+            import_quantity: 0,
+            export_quantity: 12,
+            import_account_value: 0,
+            export_account_value: 1450,
+            trade_result: 1450,
+            disposal_cost: null,
+            source_fields: ["$Resources_ExportRUB"],
+          },
+        ]
+      : [],
+    price_ledger: available
+      ? [
+          {
+            currency: "rub",
+            resource_token: "oil",
+            purchase_price: 110,
+            sell_price: 95,
+            base_price: 100,
+            purchase_index: 110,
+            sell_index: 105,
+            robust_log_volatility: 0.031,
+            volatility_observations: 5,
+            source_fields: ["$Economy_PurchaseCostRUB"],
+          },
+        ]
+      : [],
+    scalar_ledger: available
+      ? [
+          {
+            fact_id: "market.loan.balance",
+            currency: "rub",
+            category: null,
+            value: 5000,
+            source_field: "$Loan_BalanceRUB",
+            source_line: 144,
+          },
+        ]
+      : [],
+    cities: available
+      ? [
+          {
+            source_id: "17",
+            currency: "rub",
+            channel: "standard",
+            import_value: 300,
+            export_value: 450,
+            trade_result: 150,
+          },
+        ]
+      : [],
+    baskets: available
+      ? [
+          {
+            basket_id: "builtin.observed-imports.rub",
+            revision: 1,
+            name: "observed_imports",
+            currency: "rub",
+            price_side: "purchase",
+            built_in: true,
+            selected: false,
+            base_record_hash: "a".repeat(64),
+            resource_count: 1,
+            coverage_resources: 1,
+            index_value: 110,
+            reason: "observed_positive_import_quantities",
+            weights: [{ resource_token: "oil", weight: 10 }],
+          },
+          {
+            basket_id: "builtin.observed-positive-exports.rub",
+            revision: 1,
+            name: "observed_positive_exports",
+            currency: "rub",
+            price_side: "sell",
+            built_in: true,
+            selected: false,
+            base_record_hash: "a".repeat(64),
+            resource_count: 1,
+            coverage_resources: 1,
+            index_value: 105,
+            reason: "observed_positive_export_quantities",
+            weights: [{ resource_token: "steel", weight: 12 }],
+          },
+        ]
+      : [],
+    scenarios: [],
+    metric_contexts: available
+      ? [
+          {
+            ...context,
+            metric_id: "market.positive_export_hhi.rub.standard",
+            formula: "positive_export_hhi",
+            unit: "concentration_index",
+          },
+          {
+            ...context,
+            metric_id: "market.price.rub",
+            formula: "recorded_price_and_relative_index",
+            unit: "source_currency_per_resource_unit",
+          },
+          {
+            ...context,
+            metric_id: "market.city_trade_result.rub.standard",
+            time_basis: "selected_head_city_snapshot",
+          },
+          {
+            ...context,
+            metric_id: "market.scalar_accounts",
+            currency: null,
+            formula: "recorded_source_value",
+            unit: "source_native",
+          },
+        ]
+      : [],
+    terms_of_trade: available
+      ? [
+          {
+            currency: "rub",
+            base_record_hash: "a".repeat(64),
+            import_basket_id: "builtin.observed-imports.rub",
+            import_basket_revision: 1,
+            export_basket_id: "builtin.observed-positive-exports.rub",
+            export_basket_revision: 1,
+            import_index: 110,
+            export_index: 105,
+            terms_of_trade_index: 95.45,
+            context: {
+              ...context,
+              metric_id: "market.terms_of_trade.rub",
+              formula:
+                "export_fixed_basket_index / import_fixed_basket_index * 100",
+              unit: "index_base_100",
+            },
+          },
+        ]
+      : [],
+    reserves_available: false,
+    terms_of_trade_available: available,
+    limitations: [
+      "reserves_unavailable",
+      "city_republic_windows_separate",
+      "currencies_require_explicit_exchange",
+      "loan_tourism_denominator_required",
+      "no_annualisation_or_interpolation",
+    ],
+  };
+}
+
+export function reviewMarketIndexingProgress(
+  failed = false,
+): MarketIndexingProgress {
+  return {
+    job_id: "review-market-index",
+    phase: failed ? "failed" : "parsing_records",
+    progress_percent: failed ? 46 : 63,
+    started_at_ms: 1,
+    updated_at_ms: 2,
+    current_file: "Recorded-save-014.zip",
+    current_archive: 14,
+    total_archives: 25,
+    records_processed: 1800,
+    rows_processed: 425000,
+    completed_archives: 13,
+    missing_archives: 2,
+    changed_archives: 1,
+    failed_archives: failed ? 1 : 0,
+    duplicate_archives: 4,
+    error_code: failed ? "invalid_archive" : null,
+  };
+}
 
 const reviewContext = {
   context_id: "review-context-main-2015-077",

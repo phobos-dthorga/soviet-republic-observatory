@@ -105,6 +105,15 @@ the earlier record prefix and added new records. Two distinct save archives also
 contained byte-identical `stats.ini` payloads, establishing the need for
 content-based deduplication.
 
+The Markets workspace now indexes these fields only from still-available files
+that exactly match an existing observation. Market records and rows are
+content-addressed across retained prefixes; city values remain exact per-save
+snapshots. RUB/USD and standard/international channels never merge implicitly,
+negative export values remain signed disposal evidence, and a malformed market
+section cannot invalidate otherwise sound population/receiver evidence. See
+[Markets and external economy](markets-and-external-economy.md) for formulas,
+guided indexing, player definitions, warehouse behaviour, and remaining gates.
+
 ### Broadcast receiver fields
 
 The reviewed game version 1.1.1.9 exposes four plain-text citizen receiver

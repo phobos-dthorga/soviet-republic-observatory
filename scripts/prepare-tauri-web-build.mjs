@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFile, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const entryPoint = resolve("dist/index.html");
 const handoffToken = process.env.OBSERVATORY_PREBUILT_WEB_TOKEN;
@@ -33,8 +33,22 @@ if (handoffToken) {
 console.log(
   "Preparing web assets for a binary-only build. Use 'npm run desktop:build' for the complete final gate.",
 );
-const executable = process.platform === "win32" ? "npm.cmd" : "npm";
-const result = spawnSync(executable, ["run", "build:web"], {
+const executable = process.platform === "win32" ? process.execPath : "npm";
+const arguments_ =
+  process.platform === "win32"
+    ? [
+        resolve(
+          dirname(process.execPath),
+          "node_modules",
+          "npm",
+          "bin",
+          "npm-cli.js",
+        ),
+        "run",
+        "build:web",
+      ]
+    : ["run", "build:web"];
+const result = spawnSync(executable, arguments_, {
   stdio: "inherit",
   shell: false,
   env: process.env,

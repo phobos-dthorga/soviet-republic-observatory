@@ -689,6 +689,7 @@ export type WarehouseWriteActivity = {
     | "observation_projection"
     | "overlay_projection"
     | "branch_membership_projection"
+    | "market_projection"
     | "observation_rebuild";
   stage: "staging" | "merging" | "committing" | "rebuilding";
   started_at_ms: number;
@@ -1087,4 +1088,211 @@ export type WarehouseSnapshot = {
   observation_watermark: string | null;
   warehouse_schema_version: number;
   projector_version: string;
+};
+
+export type MarketIndexingPhase =
+  | "idle"
+  | "discovering"
+  | "matching"
+  | "reading_archive"
+  | "parsing_records"
+  | "persisting"
+  | "queueing_warehouse"
+  | "complete"
+  | "failed";
+
+export type MarketIndexingProgress = {
+  job_id: string | null;
+  phase: MarketIndexingPhase;
+  progress_percent: number | null;
+  started_at_ms: number | null;
+  updated_at_ms: number | null;
+  current_file: string | null;
+  current_archive: number;
+  total_archives: number;
+  records_processed: number;
+  rows_processed: number;
+  completed_archives: number;
+  missing_archives: number;
+  changed_archives: number;
+  failed_archives: number;
+  duplicate_archives: number;
+  error_code: string | null;
+};
+
+export type MarketMetricContext = {
+  metric_id: string;
+  formula: string;
+  currency: string | null;
+  unit: string;
+  time_basis: string;
+  exclusions: string[];
+  evidence_class: string;
+  profile_id: string;
+  profile_version: string;
+  source_fields: string[];
+  analytical_head: string;
+};
+
+export type MarketCurrencyPulse = {
+  currency: string;
+  standard_import_value: number;
+  standard_export_value: number;
+  standard_trade_result: number;
+  international_import_value: number;
+  international_export_value: number;
+  international_trade_result: number;
+  positive_export_hhi: number | null;
+  positive_export_resource_count: number;
+  context: MarketMetricContext;
+};
+
+export type MarketTradePoint = {
+  record_hash: string;
+  year: number;
+  day: number;
+  game_day: number;
+  currency: string;
+  channel: string;
+  import_value: number;
+  export_value: number;
+  trade_result: number;
+};
+
+export type MarketResourceLedgerRow = {
+  currency: string;
+  channel: string;
+  resource_token: string;
+  import_quantity: number;
+  export_quantity: number;
+  import_account_value: number;
+  export_account_value: number;
+  trade_result: number;
+  disposal_cost: number | null;
+  source_fields: string[];
+};
+
+export type MarketPriceLedgerRow = {
+  currency: string;
+  resource_token: string;
+  purchase_price: number | null;
+  sell_price: number | null;
+  base_price: number | null;
+  purchase_index: number | null;
+  sell_index: number | null;
+  robust_log_volatility: number | null;
+  volatility_observations: number;
+  source_fields: string[];
+};
+
+export type MarketScalarLedgerRow = {
+  fact_id: string;
+  currency: string | null;
+  category: number | null;
+  value: number;
+  source_field: string;
+  source_line: number;
+};
+
+export type MarketCityRow = {
+  source_id: string;
+  currency: string;
+  channel: string;
+  import_value: number;
+  export_value: number;
+  trade_result: number;
+};
+
+export type MarketBasketSummary = {
+  basket_id: string;
+  revision: number;
+  name: string;
+  currency: string;
+  price_side: string;
+  built_in: boolean;
+  selected: boolean;
+  base_record_hash: string | null;
+  resource_count: number;
+  coverage_resources: number;
+  index_value: number | null;
+  reason: string;
+  weights: Array<{ resource_token: string; weight: number }>;
+};
+
+export type MarketBasketDraft = {
+  basket_id: string;
+  name: string;
+  currency: string;
+  price_side: string;
+  base_record_hash: string;
+  reason: string;
+  weights: Array<{ resource_token: string; weight: number }>;
+};
+
+export type MarketTermsOfTradeSummary = {
+  currency: string;
+  base_record_hash: string;
+  import_basket_id: string;
+  import_basket_revision: number;
+  export_basket_id: string;
+  export_basket_revision: number;
+  import_index: number;
+  export_index: number;
+  terms_of_trade_index: number;
+  context: MarketMetricContext;
+};
+
+export type MarketScenarioSummary = {
+  scenario_id: string;
+  revision: number;
+  name: string;
+  scenario_kind: string;
+  reason: string;
+  assumptions_json: string;
+  selected: boolean;
+  result_kind: string | null;
+  result_value: number | null;
+  result_unit: string | null;
+  covered_components: number;
+};
+
+export type MarketScenarioDraft = {
+  scenario_id: string;
+  name: string;
+  scenario_kind: "break_even" | "debt_stress";
+  currency: "rub" | "usd";
+  reason: string;
+  domestic_unit_cost: number | null;
+  delivery_cost: number | null;
+  operating_efficiency_percent: number | null;
+  exchange_rate: number | null;
+  debt_service: number | null;
+  export_stress_percent: number | null;
+  tourism_stress_percent: number | null;
+  included_income_components: string[];
+};
+
+export type MarketWorkspace = {
+  analysis_context: AnalysisContext;
+  available: boolean;
+  partial: boolean;
+  coverage_status: string | null;
+  history_records: number;
+  row_count: number;
+  city_scope_count: number;
+  warehouse_history_available: boolean;
+  warnings: CoverageWarning[];
+  currencies: MarketCurrencyPulse[];
+  trade_history: MarketTradePoint[];
+  resource_ledger: MarketResourceLedgerRow[];
+  price_ledger: MarketPriceLedgerRow[];
+  scalar_ledger: MarketScalarLedgerRow[];
+  cities: MarketCityRow[];
+  baskets: MarketBasketSummary[];
+  scenarios: MarketScenarioSummary[];
+  metric_contexts: MarketMetricContext[];
+  terms_of_trade: MarketTermsOfTradeSummary[];
+  reserves_available: boolean;
+  terms_of_trade_available: boolean;
+  limitations: string[];
 };
