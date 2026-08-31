@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "org.republic-observatory.wrsr-1.1.1.9",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "parser_engine_api_version": "1.0.0",
   "author": "Republic Observatory contributors",
   "description": "Reviewed compatibility mappings preserving the parser behaviour verified for Workers & Resources: Soviet Republic 1.1.1.9.",
@@ -10,7 +10,7 @@
     "build_ids": [],
     "stats_formats": [1]
   },
-  "content_hash": "0f2737d29ddb50aa22a32d6fb1747e7c0ec5aa00227464a38d68b4ae1bac522e",
+  "content_hash": "44bcec2f9abba9d2559fd9c283220238f65000e1ef14f010ebebf3dff45053e8",
   "mappings": {
     "catalogue_scopes": [],
     "archive_entries": [{ "slot": "stats", "aliases": ["stats.ini"] }],
@@ -116,6 +116,166 @@
         "host_slot": "source.stats.citizens.car_owners",
         "aliases": ["$Citizens_CarOwners"],
         "contexts": ["republic"]
+      },
+      {
+        "host_slot": "market.price.purchase.rub",
+        "aliases": ["$Economy_PurchaseCostRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.price.purchase.usd",
+        "aliases": ["$Economy_PurchaseCostUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.price.sell.rub",
+        "aliases": ["$Economy_SellCostRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.price.sell.usd",
+        "aliases": ["$Economy_SellCostUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.price.base.rub",
+        "aliases": ["$Economy_BaseRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.price.base.usd",
+        "aliases": ["$Economy_BaseUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.import.standard.rub",
+        "aliases": ["$Resources_ImportRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.import.standard.usd",
+        "aliases": ["$Resources_ImportUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.export.standard.rub",
+        "aliases": ["$Resources_ExportRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.export.standard.usd",
+        "aliases": ["$Resources_ExportUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.import.international.rub",
+        "aliases": ["$Resources_ImportInternationalRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.import.international.usd",
+        "aliases": ["$Resources_ImportInternationalUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.export.international.rub",
+        "aliases": ["$Resources_ExportInternationalRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.trade.export.international.usd",
+        "aliases": ["$Resources_ExportInternationalUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.delivery.rub",
+        "aliases": ["$Economy_DeliveryCostRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.delivery.usd",
+        "aliases": ["$Economy_DeliveryCostUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.labour.rub",
+        "aliases": ["$Economy_WorkdayCostRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.labour.usd",
+        "aliases": ["$Economy_WorkdayCostUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.immigrant.rub",
+        "aliases": ["$Economy_ImmigrantCostRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.cost.immigrant.usd",
+        "aliases": ["$Economy_ImmigrantCostUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.tourism.visitors",
+        "aliases": ["$Tourism_Tourists"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.tourism.hotel_nights",
+        "aliases": ["$Tourism_HotelNights"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.tourism.spending.rub",
+        "aliases": ["$Tourism_SpendRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.tourism.spending.usd",
+        "aliases": ["$Tourism_SpendUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.loan.balance.rub",
+        "aliases": ["$Loan_BalanceRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.loan.balance.usd",
+        "aliases": ["$Loan_BalanceUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.loan.interest.rub",
+        "aliases": ["$Loan_InterestRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.loan.interest.usd",
+        "aliases": ["$Loan_InterestUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.vehicle.import.rub",
+        "aliases": ["$Vehicles_ImportRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.vehicle.import.usd",
+        "aliases": ["$Vehicles_ImportUSD"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.vehicle.export.rub",
+        "aliases": ["$Vehicles_ExportRUB"],
+        "contexts": ["history", "republic", "city"]
+      },
+      {
+        "host_slot": "market.vehicle.export.usd",
+        "aliases": ["$Vehicles_ExportUSD"],
+        "contexts": ["history", "republic", "city"]
       }
     ],
     "definition_directives": [

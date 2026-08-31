@@ -11,12 +11,12 @@ use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguag
 use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
-    DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
-    ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
-    ProductionRouteRequest, PublishedMetricContext, ReceiverDataset, RecorderHealth,
-    ReinterpretationProgress, RepublicBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState,
-    WarehouseSnapshot,
+    DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketIndexingProgress,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
+    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
+    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -30,6 +30,8 @@ pub struct AppState {
     pub research_setup: Arc<ResearchSetupService>,
     pub ui_review: UiReviewContext,
 }
+
+pub const MARKET_INDEXING_PROGRESS_EVENT: &str = "market-indexing-progress";
 
 #[tauri::command]
 pub fn get_ui_review_context(state: State<'_, AppState>) -> UiReviewContext {
@@ -431,6 +433,35 @@ pub async fn reinterpret_latest_save(
     .map_err(|_| CommandError {
         code: "reinterpretation_worker_unavailable".to_owned(),
         diagnostic: "The save reinterpretation worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_market_indexing_progress(
+    state: State<'_, AppState>,
+) -> Result<MarketIndexingProgress, CommandError> {
+    state
+        .application
+        .market_indexing_progress()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn index_available_saves_for_markets(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<MarketIndexingProgress, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.index_available_saves_for_markets(|progress| {
+            let _ = app.emit(MARKET_INDEXING_PROGRESS_EVENT, progress);
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "market_indexing_worker_unavailable".to_owned(),
+        diagnostic: "The Markets indexing worker stopped unexpectedly.".to_owned(),
     })?
     .map_err(Into::into)
 }

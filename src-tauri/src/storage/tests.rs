@@ -831,7 +831,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        13
+        14
     );
     assert_eq!(
         migrated
@@ -959,6 +959,7 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         },
         records,
         snapshots: Vec::new(),
+        market: crate::model::ParsedMarketData::default(),
         binary_facts: Vec::new(),
     }
 }

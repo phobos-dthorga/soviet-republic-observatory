@@ -169,6 +169,149 @@ pub struct ParsedStats {
     pub records: Vec<ReceiverRecord>,
     pub coverage: CoverageReport,
     pub snapshots: Vec<SaveSnapshot>,
+    pub market: ParsedMarketData,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketCurrency {
+    Rub,
+    Usd,
+}
+
+impl MarketCurrency {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Rub => "rub",
+            Self::Usd => "usd",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketPriceSide {
+    Purchase,
+    Sell,
+    Base,
+}
+
+impl MarketPriceSide {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Purchase => "purchase",
+            Self::Sell => "sell",
+            Self::Base => "base",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketTradeDirection {
+    Import,
+    Export,
+}
+
+impl MarketTradeDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Import => "import",
+            Self::Export => "export",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketTradeChannel {
+    Standard,
+    International,
+}
+
+impl MarketTradeChannel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::International => "international",
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketPriceRow {
+    pub resource_index: u16,
+    pub source_field_index: u16,
+    pub source_line: u32,
+    pub currency: MarketCurrency,
+    pub side: MarketPriceSide,
+    pub value: f64,
+    pub modifier: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketTradeRow {
+    pub resource_index: u16,
+    pub source_field_index: u16,
+    pub source_line: u32,
+    pub currency: MarketCurrency,
+    pub direction: MarketTradeDirection,
+    pub channel: MarketTradeChannel,
+    pub quantity: f64,
+    pub account_value: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketScalarRow {
+    pub fact_id: String,
+    pub source_field_index: u16,
+    pub source_line: u32,
+    pub currency: Option<MarketCurrency>,
+    pub category: Option<i32>,
+    pub value: f64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MarketFactRows {
+    pub prices: Vec<MarketPriceRow>,
+    pub trades: Vec<MarketTradeRow>,
+    pub scalars: Vec<MarketScalarRow>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketHistoryRecord {
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub rows: MarketFactRows,
+}
+
+#[derive(Clone, Debug)]
+pub struct MarketSnapshot {
+    pub scope_kind: SnapshotScopeKind,
+    pub scope_id: String,
+    pub rows: MarketFactRows,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ParsedMarketData {
+    pub resources: Vec<String>,
+    pub source_fields: Vec<String>,
+    pub records: Vec<MarketHistoryRecord>,
+    pub snapshots: Vec<MarketSnapshot>,
+    pub row_count: u32,
+    pub warnings: Vec<CoverageWarning>,
+}
+
+impl ParsedMarketData {
+    pub fn coverage_status(&self) -> CoverageStatus {
+        if self.warnings.is_empty() {
+            CoverageStatus::Complete
+        } else {
+            CoverageStatus::Partial
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -195,6 +338,7 @@ pub struct SaveInspection {
     pub records: Vec<ReceiverRecord>,
     pub coverage: CoverageReport,
     pub snapshots: Vec<SaveSnapshot>,
+    pub market: ParsedMarketData,
     pub binary_facts: Vec<BinaryMappedFact>,
 }
 
@@ -887,6 +1031,51 @@ pub struct ReinterpretationProgress {
     pub current_file: Option<String>,
     pub interpretation_id: Option<String>,
     pub error_code: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MarketIndexingPhase {
+    #[default]
+    Idle,
+    Discovering,
+    Matching,
+    Reading,
+    Parsing,
+    Persisting,
+    QueueingWarehouse,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+pub struct MarketIndexingProgress {
+    pub job_id: Option<String>,
+    pub phase: MarketIndexingPhase,
+    pub progress_percent: Option<u8>,
+    pub started_at_ms: Option<i64>,
+    pub updated_at_ms: Option<i64>,
+    pub current_file: Option<String>,
+    pub current_archive: u32,
+    pub total_archives: u32,
+    pub records_processed: u32,
+    pub rows_processed: u32,
+    pub completed_archives: u32,
+    pub missing_archives: u32,
+    pub changed_archives: u32,
+    pub failed_archives: u32,
+    pub duplicate_archives: u32,
+    pub error_code: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketIndexCandidate {
+    pub interpretation_id: String,
+    pub source_file_name: String,
+    pub source_file_size: u64,
+    pub source_modified_ms: i64,
+    pub source_directory_identity: String,
+    pub raw_payload_hash: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

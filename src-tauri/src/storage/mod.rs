@@ -7,6 +7,7 @@ mod compatibility;
 mod connection;
 mod history;
 mod language_packs;
+mod markets;
 mod migrations;
 mod observations;
 mod planning_overlays;

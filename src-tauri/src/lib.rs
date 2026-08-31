@@ -112,6 +112,8 @@ pub fn run() {
             commands::reload_local_compatibility_override,
             commands::get_reinterpretation_progress,
             commands::reinterpret_latest_save,
+            commands::get_market_indexing_progress,
+            commands::index_available_saves_for_markets,
             commands::get_catalogue_status,
             commands::refresh_definitions,
             commands::diagnostic_log,

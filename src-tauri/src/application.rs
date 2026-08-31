@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, TryLockError};
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 
 use crate::analysis_pack::{
     AnalysisPackContribution, AnalysisPackDocument, AnalysisPackInspection, AnalysisPackSummary,
@@ -22,11 +22,12 @@ use crate::model::{
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
-    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
-    RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
+    MarketIndexingPhase, MarketIndexingProgress, ObservationImportResult, OverlayInspection,
+    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
+    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, ReceiverDataset,
+    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
+    ReinterpretationProgress, RepublicBrief, RepublicPlanBrief, RepublicPlanDraft,
+    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -75,6 +76,7 @@ pub struct ObservatoryApplication {
     compatibility: CompatibilityRuntime,
     reinterpretation: Mutex<()>,
     reinterpretation_progress: Mutex<ReinterpretationProgress>,
+    market_indexing_progress: Mutex<MarketIndexingProgress>,
     catalogue_refresh: Mutex<()>,
     catalogue_progress: Mutex<CatalogueRefreshProgress>,
 }
@@ -115,6 +117,7 @@ impl ObservatoryApplication {
             compatibility,
             reinterpretation: Mutex::new(()),
             reinterpretation_progress: Mutex::new(ReinterpretationProgress::default()),
+            market_indexing_progress: Mutex::new(MarketIndexingProgress::default()),
             catalogue_refresh: Mutex::new(()),
             catalogue_progress: Mutex::new(CatalogueRefreshProgress::default()),
         })
@@ -469,6 +472,197 @@ impl ObservatoryApplication {
         notify: &mut impl FnMut(ReinterpretationProgress),
     ) {
         if let Ok(mut current) = self.reinterpretation_progress.lock() {
+            *current = progress.clone();
+        }
+        notify(progress.clone());
+    }
+
+    pub fn market_indexing_progress(&self) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.market_indexing_progress
+            .lock()
+            .map(|progress| progress.clone())
+            .map_err(|_| ObservatoryError::StorageUnavailable)
+    }
+
+    pub fn index_available_saves_for_markets(
+        &self,
+        mut notify: impl FnMut(MarketIndexingProgress),
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        let _guard = match self.reinterpretation.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => return Err(ObservatoryError::CriticalTaskBusy),
+            Err(TryLockError::Poisoned(_)) => return Err(ObservatoryError::StorageUnavailable),
+        };
+        let result: Result<MarketIndexingProgress, ObservatoryError> = (|| {
+            let started_at_ms = now_ms();
+            let job_id = format!("market-index-{started_at_ms}");
+            let directory = self
+                .storage
+                .get_setting(SAVE_DIRECTORY_KEY)?
+                .ok_or(ObservatoryError::SaveDirectoryNotConfigured)?;
+            let source_directory_identity = crate::save_archive::directory_identity(&directory)?;
+            let mut progress = MarketIndexingProgress {
+                job_id: Some(job_id.clone()),
+                phase: MarketIndexingPhase::Discovering,
+                started_at_ms: Some(started_at_ms),
+                updated_at_ms: Some(started_at_ms),
+                ..MarketIndexingProgress::default()
+            };
+            self.report_market_indexing_progress(&progress, &mut notify);
+            let candidates = self
+                .storage
+                .market_index_candidates(&source_directory_identity)?;
+            progress.total_archives = candidates.len().min(u32::MAX as usize) as u32;
+            progress.phase = MarketIndexingPhase::Matching;
+            progress.progress_percent = Some(2);
+            progress.updated_at_ms = Some(now_ms());
+            self.storage.start_market_index_job(&job_id, &candidates)?;
+            self.report_market_indexing_progress(&progress, &mut notify);
+            let profile = self.compatibility.active()?;
+
+            for (index, candidate) in candidates.iter().enumerate() {
+                progress.current_archive = (index + 1).min(u32::MAX as usize) as u32;
+                progress.current_file = Some(candidate.source_file_name.clone());
+                progress.records_processed = 0;
+                progress.rows_processed = 0;
+                progress.phase = MarketIndexingPhase::Reading;
+                progress.progress_percent =
+                    ratio_percent(index as u64, candidates.len() as u64, 3, 94);
+                progress.updated_at_ms = Some(now_ms());
+                self.report_market_indexing_progress(&progress, &mut notify);
+
+                let relative = Path::new(&candidate.source_file_name);
+                let path = directory.join(relative);
+                if relative.components().count() != 1 || !path.is_file() {
+                    progress.missing_archives += 1;
+                    self.storage.update_market_index_item(
+                        &job_id,
+                        &candidate.interpretation_id,
+                        "missing",
+                        0,
+                        0,
+                        Some("archive_missing"),
+                    )?;
+                    continue;
+                }
+                let metadata = fs::metadata(&path).map_err(|_| ObservatoryError::InvalidArchive)?;
+                let modified_ms = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_millis().min(i64::MAX as u128) as i64)
+                    .unwrap_or_default();
+                if metadata.len() != candidate.source_file_size
+                    || modified_ms != candidate.source_modified_ms
+                    || candidate.source_directory_identity != source_directory_identity
+                {
+                    progress.changed_archives += 1;
+                    self.storage.update_market_index_item(
+                        &job_id,
+                        &candidate.interpretation_id,
+                        "changed",
+                        0,
+                        0,
+                        Some("archive_changed"),
+                    )?;
+                    continue;
+                }
+
+                progress.phase = MarketIndexingPhase::Parsing;
+                progress.updated_at_ms = Some(now_ms());
+                self.report_market_indexing_progress(&progress, &mut notify);
+                match inspect_save_archive(&path, &profile) {
+                    Ok(inspection) if inspection.payload_hash == candidate.raw_payload_hash => {
+                        progress.records_processed = inspection.market.records.len() as u32;
+                        progress.rows_processed = inspection.market.row_count;
+                        progress.phase = MarketIndexingPhase::Persisting;
+                        progress.updated_at_ms = Some(now_ms());
+                        self.report_market_indexing_progress(&progress, &mut notify);
+                        let already_indexed = self
+                            .storage
+                            .market_coverage_exists(&inspection.interpretation_id)?;
+                        self.storage.save_reinterpretation(&inspection)?;
+                        if already_indexed {
+                            progress.duplicate_archives += 1;
+                        } else {
+                            progress.completed_archives += 1;
+                        }
+                        self.storage.update_market_index_item(
+                            &job_id,
+                            &candidate.interpretation_id,
+                            if already_indexed {
+                                "duplicate"
+                            } else {
+                                "complete"
+                            },
+                            progress.records_processed,
+                            progress.rows_processed,
+                            None,
+                        )?;
+                    }
+                    Ok(_) => {
+                        progress.changed_archives += 1;
+                        self.storage.update_market_index_item(
+                            &job_id,
+                            &candidate.interpretation_id,
+                            "changed",
+                            0,
+                            0,
+                            Some("raw_payload_mismatch"),
+                        )?;
+                    }
+                    Err(error) => {
+                        progress.failed_archives += 1;
+                        self.storage.update_market_index_item(
+                            &job_id,
+                            &candidate.interpretation_id,
+                            "failed",
+                            0,
+                            0,
+                            Some(error.code()),
+                        )?;
+                    }
+                }
+            }
+
+            progress.phase = MarketIndexingPhase::QueueingWarehouse;
+            progress.progress_percent = Some(97);
+            progress.current_file = None;
+            progress.updated_at_ms = Some(now_ms());
+            self.report_market_indexing_progress(&progress, &mut notify);
+            progress.phase = MarketIndexingPhase::Complete;
+            progress.progress_percent = Some(100);
+            progress.updated_at_ms = Some(now_ms());
+            self.storage.finish_market_index_job(&progress)?;
+            self.report_market_indexing_progress(&progress, &mut notify);
+            diagnostics::record(
+                "info",
+                "markets.index_complete",
+                "market_indexing",
+                "Available exact-match saves were indexed for Markets without changing the analytical head.",
+            );
+            Ok(progress)
+        })();
+        if let Err(error) = &result {
+            let mut failed = self.market_indexing_progress().unwrap_or_default();
+            failed.phase = MarketIndexingPhase::Failed;
+            failed.progress_percent = None;
+            failed.updated_at_ms = Some(now_ms());
+            failed.error_code = Some(error.code().to_owned());
+            self.report_market_indexing_progress(&failed, &mut notify);
+            if failed.job_id.is_some() {
+                let _ = self.storage.finish_market_index_job(&failed);
+            }
+        }
+        result
+    }
+
+    fn report_market_indexing_progress(
+        &self,
+        progress: &MarketIndexingProgress,
+        notify: &mut impl FnMut(MarketIndexingProgress),
+    ) {
+        if let Ok(mut current) = self.market_indexing_progress.lock() {
             *current = progress.clone();
         }
         notify(progress.clone());

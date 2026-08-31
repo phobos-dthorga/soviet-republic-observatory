@@ -1,0 +1,35 @@
+$STATS_FORMAT 1
+$STAT_RECORD 1
+$DATE_YEAR 1980
+$DATE_DAY 1
+$Citizens_EletronicNone 10
+$Citizens_EletrinicRadio 20
+$Citizens_EletronicTV 30
+$Citizens_EletronicComputer 40
+$Economy_PurchaseCostRUB
+oil 12.5 1
+fuel 20 0.95
+$end
+$Resources_ImportRUB
+oil 4 50
+fuel 2 40
+$end
+$Resources_ExportRUB
+oil 1 15
+waste 3 -8
+$end
+$Loan_BalanceRUB 1200
+$Tourism_SpendRUB 2 44.5
+$STAT_CURRENT
+$Citizens_EletronicNone 11
+$Citizens_EletrinicRadio 21
+$Citizens_EletronicTV 31
+$Citizens_EletronicComputer 41
+$Resources_ExportUSD
+fuel 5 75
+$end
+$STAT_CITY 17
+$Citizens_Born 3
+$Resources_ImportUSD
+food 7 22
+$end

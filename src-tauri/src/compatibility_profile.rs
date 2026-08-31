@@ -39,6 +39,41 @@ const REQUIRED_STATS_SLOTS: &[&str] = &[
     "source.stats.citizens.car_owners",
 ];
 
+const MARKET_STATS_SLOTS: &[&str] = &[
+    "market.price.purchase.rub",
+    "market.price.purchase.usd",
+    "market.price.sell.rub",
+    "market.price.sell.usd",
+    "market.price.base.rub",
+    "market.price.base.usd",
+    "market.trade.import.standard.rub",
+    "market.trade.import.standard.usd",
+    "market.trade.export.standard.rub",
+    "market.trade.export.standard.usd",
+    "market.trade.import.international.rub",
+    "market.trade.import.international.usd",
+    "market.trade.export.international.rub",
+    "market.trade.export.international.usd",
+    "market.cost.delivery.rub",
+    "market.cost.delivery.usd",
+    "market.cost.labour.rub",
+    "market.cost.labour.usd",
+    "market.cost.immigrant.rub",
+    "market.cost.immigrant.usd",
+    "market.tourism.visitors",
+    "market.tourism.hotel_nights",
+    "market.tourism.spending.rub",
+    "market.tourism.spending.usd",
+    "market.loan.balance.rub",
+    "market.loan.balance.usd",
+    "market.loan.interest.rub",
+    "market.loan.interest.usd",
+    "market.vehicle.import.rub",
+    "market.vehicle.import.usd",
+    "market.vehicle.export.rub",
+    "market.vehicle.export.usd",
+];
+
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum CompatibilityProfileSource {
@@ -631,7 +666,9 @@ impl ResolvedCompatibilityProfile {
         self.mappings
             .stats_fields
             .iter()
-            .filter(|mapping| mapping.contexts.contains(&context))
+            .filter(|mapping| {
+                mapping.contexts.contains(&context) && !mapping.host_slot.starts_with("market.")
+            })
             .count()
             .min(u32::MAX as usize) as u32
     }
@@ -843,7 +880,9 @@ fn validate_mappings(mappings: &ProfileMappings) -> Result<(), ObservatoryError>
         unique_keys(fields.iter().map(|field| field.host_slot.clone()))?;
         let mut context_aliases = HashSet::new();
         for field in fields {
-            if !REQUIRED_STATS_SLOTS.contains(&field.host_slot.as_str()) {
+            if !REQUIRED_STATS_SLOTS.contains(&field.host_slot.as_str())
+                && !MARKET_STATS_SLOTS.contains(&field.host_slot.as_str())
+            {
                 return invalid("unknown_host_slot");
             }
             validate_aliases(&field.aliases, true)?;
@@ -1108,6 +1147,9 @@ fn validate_archive_entry_name(name: &str) -> Result<(), ObservatoryError> {
 }
 
 fn slot_supports_context(slot: &str, context: StatsContext) -> bool {
+    if MARKET_STATS_SLOTS.contains(&slot) {
+        return true;
+    }
     if context == StatsContext::History {
         return RECEIVER_METRICS.iter().any(|metric| metric.id == slot);
     }
@@ -1287,7 +1329,7 @@ mod tests {
     fn reviewed_profile_is_strict_and_complete() {
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("reviewed profile");
         assert_eq!(profile.stats_archive_aliases(), ["stats.ini"]);
-        assert_eq!(profile.mapping_counts(), (6, 18, 35, 0, 0));
+        assert_eq!(profile.mapping_counts(), (6, 50, 35, 0, 0));
     }
 
     #[test]

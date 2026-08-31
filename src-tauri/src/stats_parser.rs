@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 use std::io::BufRead;
 
@@ -7,13 +7,18 @@ use sha2::{Digest, Sha256};
 use crate::compatibility_profile::{ResolvedCompatibilityProfile, StatsContext, StatsMarkerSlot};
 use crate::error::ObservatoryError;
 use crate::model::{
-    CoverageReport, CoverageStatus, CoverageWarning, ParsedStats, ReceiverRecord, SNAPSHOT_FACTS,
-    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    CoverageReport, CoverageStatus, CoverageWarning, MarketCurrency, MarketFactRows,
+    MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MarketScalarRow, MarketSnapshot,
+    MarketTradeChannel, MarketTradeDirection, MarketTradeRow, ParsedMarketData, ParsedStats,
+    ReceiverRecord, SNAPSHOT_FACTS, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet,
+    SourceLineSet,
 };
 
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_LINE_BYTES: usize = 16 * 1024;
 const DAYS_PER_GAME_YEAR: i64 = 365;
+const MAX_MARKET_ROWS: u32 = 1_500_000;
+const MAX_MARKET_DICTIONARY: usize = 4_096;
 
 #[derive(Clone, Debug)]
 struct FieldValue<T> {
@@ -31,6 +36,7 @@ struct RecordDraft {
     radio: Option<FieldValue<u64>>,
     television: Option<FieldValue<u64>>,
     computer: Option<FieldValue<u64>>,
+    market: MarketFactRows,
     malformed: bool,
 }
 
@@ -39,6 +45,39 @@ struct SnapshotDraft {
     scope_kind: SnapshotScopeKind,
     scope_id: String,
     facts: BTreeMap<String, SnapshotFact>,
+    market: MarketFactRows,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MarketBlockKind {
+    Price {
+        currency: MarketCurrency,
+        side: MarketPriceSide,
+    },
+    Trade {
+        currency: MarketCurrency,
+        direction: MarketTradeDirection,
+        channel: MarketTradeChannel,
+    },
+}
+
+#[derive(Debug)]
+struct ActiveMarketBlock {
+    kind: MarketBlockKind,
+    source_field_index: u16,
+    seen_resources: HashSet<u16>,
+}
+
+#[derive(Debug, Default)]
+struct MarketCollector {
+    resources: Vec<String>,
+    resource_lookup: HashMap<String, u16>,
+    source_fields: Vec<String>,
+    source_field_lookup: HashMap<String, u16>,
+    records: Vec<MarketHistoryRecord>,
+    snapshots: Vec<MarketSnapshot>,
+    row_count: u32,
+    warnings: BTreeMap<String, u32>,
 }
 
 impl SnapshotDraft {
@@ -47,6 +86,7 @@ impl SnapshotDraft {
             scope_kind: SnapshotScopeKind::Republic,
             scope_id: "republic".to_owned(),
             facts: BTreeMap::new(),
+            market: MarketFactRows::default(),
         }
     }
 
@@ -55,6 +95,7 @@ impl SnapshotDraft {
             scope_kind: SnapshotScopeKind::City,
             scope_id: city_source_id.to_string(),
             facts: BTreeMap::new(),
+            market: MarketFactRows::default(),
         }
     }
 }
@@ -69,6 +110,7 @@ impl RecordDraft {
             radio: None,
             television: None,
             computer: None,
+            market: MarketFactRows::default(),
             malformed: false,
         }
     }
@@ -93,6 +135,8 @@ pub fn parse_stats<R: BufRead>(
     let mut history_records = 0_u32;
     let mut dropped_records = 0_u32;
     let mut chartable_records = 0_u32;
+    let mut market = MarketCollector::default();
+    let mut active_market_block: Option<ActiveMarketBlock> = None;
 
     loop {
         line_buffer.clear();
@@ -122,6 +166,26 @@ pub fn parse_stats<R: BufRead>(
         let directive = directive_name(line);
         let marker = directive.and_then(|directive| profile.marker_for(directive));
 
+        if let Some(block) = active_market_block.as_mut() {
+            if directive == Some("$end") {
+                active_market_block = None;
+                continue;
+            }
+            if directive.is_none() {
+                parse_market_block_row(
+                    block,
+                    line,
+                    line_number,
+                    &mut market,
+                    current.as_mut(),
+                    current_snapshot.as_mut(),
+                );
+                continue;
+            }
+            add_warning(&mut market.warnings, "unterminated_market_block");
+            active_market_block = None;
+        }
+
         if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::Format) {
             let version: u16 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedReceiverHistory("invalid stats format marker"),
@@ -136,10 +200,16 @@ pub fn parse_stats<R: BufRead>(
         }
 
         if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::HistoryRecord) {
-            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
+            finalise_snapshot(
+                profile,
+                current_snapshot.take(),
+                &mut snapshots,
+                &mut market.snapshots,
+            );
             finalise_record(
                 current.take(),
                 &mut records,
+                &mut market.records,
                 &mut warnings,
                 &mut history_records,
                 &mut dropped_records,
@@ -167,12 +237,18 @@ pub fn parse_stats<R: BufRead>(
             finalise_record(
                 current.take(),
                 &mut records,
+                &mut market.records,
                 &mut warnings,
                 &mut history_records,
                 &mut dropped_records,
                 &mut chartable_records,
             )?;
-            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
+            finalise_snapshot(
+                profile,
+                current_snapshot.take(),
+                &mut snapshots,
+                &mut market.snapshots,
+            );
             current_snapshot = Some(SnapshotDraft::republic());
             continue;
         }
@@ -181,12 +257,18 @@ pub fn parse_stats<R: BufRead>(
             finalise_record(
                 current.take(),
                 &mut records,
+                &mut market.records,
                 &mut warnings,
                 &mut history_records,
                 &mut dropped_records,
                 &mut chartable_records,
             )?;
-            finalise_snapshot(profile, current_snapshot.take(), &mut snapshots);
+            finalise_snapshot(
+                profile,
+                current_snapshot.take(),
+                &mut snapshots,
+                &mut market.snapshots,
+            );
             let city_source_id: u32 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedSnapshot("invalid city identifier"),
             )?;
@@ -196,6 +278,43 @@ pub fn parse_stats<R: BufRead>(
                 ));
             }
             current_snapshot = Some(SnapshotDraft::city(city_source_id));
+            continue;
+        }
+
+        let market_context = if let Some(snapshot) = current_snapshot.as_ref() {
+            Some(match snapshot.scope_kind {
+                SnapshotScopeKind::Republic => StatsContext::Republic,
+                SnapshotScopeKind::City => StatsContext::City,
+            })
+        } else if current.is_some() {
+            Some(StatsContext::History)
+        } else {
+            None
+        };
+        if let (Some(directive), Some(context)) = (directive, market_context)
+            && let Some(mapping) = profile.field_for(directive, context)
+            && mapping.host_slot.starts_with("market.")
+        {
+            let Some(source_field_index) = market.intern_source_field(directive) else {
+                continue;
+            };
+            if let Some(kind) = market_block_kind(&mapping.host_slot) {
+                active_market_block = Some(ActiveMarketBlock {
+                    kind,
+                    source_field_index,
+                    seen_resources: HashSet::new(),
+                });
+            } else {
+                parse_market_scalar(
+                    &mapping.host_slot,
+                    source_field_index,
+                    line,
+                    line_number,
+                    &mut market,
+                    current.as_mut(),
+                    current_snapshot.as_mut(),
+                );
+            }
             continue;
         }
 
@@ -266,12 +385,21 @@ pub fn parse_stats<R: BufRead>(
     finalise_record(
         current,
         &mut records,
+        &mut market.records,
         &mut warnings,
         &mut history_records,
         &mut dropped_records,
         &mut chartable_records,
     )?;
-    finalise_snapshot(profile, current_snapshot, &mut snapshots);
+    if active_market_block.is_some() {
+        add_warning(&mut market.warnings, "unterminated_market_block");
+    }
+    finalise_snapshot(
+        profile,
+        current_snapshot,
+        &mut snapshots,
+        &mut market.snapshots,
+    );
 
     if records.is_empty() {
         return Err(ObservatoryError::ReceiverHistoryUnavailable);
@@ -304,7 +432,229 @@ pub fn parse_stats<R: BufRead>(
             warnings,
         },
         snapshots,
+        market: ParsedMarketData {
+            resources: market.resources,
+            source_fields: market.source_fields,
+            records: market.records,
+            snapshots: market.snapshots,
+            row_count: market.row_count,
+            warnings: market
+                .warnings
+                .into_iter()
+                .map(|(code, count)| CoverageWarning { code, count })
+                .collect(),
+        },
     })
+}
+
+impl MarketCollector {
+    fn intern_source_field(&mut self, value: &str) -> Option<u16> {
+        if let Some(index) = self.source_field_lookup.get(value) {
+            return Some(*index);
+        }
+        self.intern(value, false)
+    }
+
+    fn intern_resource(&mut self, value: &str) -> Option<u16> {
+        if let Some(index) = self.resource_lookup.get(value) {
+            return Some(*index);
+        }
+        self.intern(value, true)
+    }
+
+    fn intern(&mut self, value: &str, resource: bool) -> Option<u16> {
+        let values = if resource {
+            &mut self.resources
+        } else {
+            &mut self.source_fields
+        };
+        if values.len() >= MAX_MARKET_DICTIONARY || value.is_empty() || value.len() > 128 {
+            add_warning(&mut self.warnings, "market_dictionary_limit");
+            return None;
+        }
+        let Ok(index) = u16::try_from(values.len()) else {
+            add_warning(&mut self.warnings, "market_dictionary_limit");
+            return None;
+        };
+        values.push(value.to_owned());
+        if resource {
+            self.resource_lookup.insert(value.to_owned(), index);
+        } else {
+            self.source_field_lookup.insert(value.to_owned(), index);
+        }
+        Some(index)
+    }
+
+    fn reserve_row(&mut self) -> bool {
+        if self.row_count >= MAX_MARKET_ROWS {
+            add_warning(&mut self.warnings, "market_row_limit");
+            return false;
+        }
+        self.row_count += 1;
+        true
+    }
+}
+
+fn market_rows_mut<'a>(
+    current: Option<&'a mut RecordDraft>,
+    snapshot: Option<&'a mut SnapshotDraft>,
+) -> Option<&'a mut MarketFactRows> {
+    snapshot
+        .map(|draft| &mut draft.market)
+        .or_else(|| current.map(|draft| &mut draft.market))
+}
+
+fn market_block_kind(host_slot: &str) -> Option<MarketBlockKind> {
+    let currency = if host_slot.ends_with(".rub") {
+        MarketCurrency::Rub
+    } else if host_slot.ends_with(".usd") {
+        MarketCurrency::Usd
+    } else {
+        return None;
+    };
+    if host_slot.starts_with("market.price.") {
+        let side = if host_slot.contains(".purchase.") {
+            MarketPriceSide::Purchase
+        } else if host_slot.contains(".sell.") {
+            MarketPriceSide::Sell
+        } else if host_slot.contains(".base.") {
+            MarketPriceSide::Base
+        } else {
+            return None;
+        };
+        return Some(MarketBlockKind::Price { currency, side });
+    }
+    if host_slot.starts_with("market.trade.") {
+        let direction = if host_slot.contains(".import.") {
+            MarketTradeDirection::Import
+        } else if host_slot.contains(".export.") {
+            MarketTradeDirection::Export
+        } else {
+            return None;
+        };
+        let channel = if host_slot.contains(".international.") {
+            MarketTradeChannel::International
+        } else {
+            MarketTradeChannel::Standard
+        };
+        return Some(MarketBlockKind::Trade {
+            currency,
+            direction,
+            channel,
+        });
+    }
+    None
+}
+
+fn parse_market_block_row(
+    block: &mut ActiveMarketBlock,
+    line: &str,
+    line_number: u64,
+    collector: &mut MarketCollector,
+    current: Option<&mut RecordDraft>,
+    snapshot: Option<&mut SnapshotDraft>,
+) {
+    let mut parts = line.split_ascii_whitespace();
+    let Some(resource) = parts.next() else {
+        return;
+    };
+    let Some(first) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+        add_warning(&mut collector.warnings, "malformed_market_row");
+        return;
+    };
+    let Some(second) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+        add_warning(&mut collector.warnings, "malformed_market_row");
+        return;
+    };
+    if parts.next().is_some() || !first.is_finite() || !second.is_finite() {
+        add_warning(&mut collector.warnings, "malformed_market_row");
+        return;
+    }
+    let Some(resource_index) = collector.intern_resource(resource) else {
+        return;
+    };
+    if !block.seen_resources.insert(resource_index) {
+        add_warning(&mut collector.warnings, "duplicate_market_resource");
+        return;
+    }
+    if !collector.reserve_row() {
+        return;
+    }
+    let Some(rows) = market_rows_mut(current, snapshot) else {
+        add_warning(&mut collector.warnings, "market_row_without_scope");
+        return;
+    };
+    let source_line = u32::try_from(line_number).unwrap_or(u32::MAX);
+    match block.kind {
+        MarketBlockKind::Price { currency, side } => rows.prices.push(MarketPriceRow {
+            resource_index,
+            source_field_index: block.source_field_index,
+            source_line,
+            currency,
+            side,
+            value: first,
+            modifier: second,
+        }),
+        MarketBlockKind::Trade {
+            currency,
+            direction,
+            channel,
+        } => rows.trades.push(MarketTradeRow {
+            resource_index,
+            source_field_index: block.source_field_index,
+            source_line,
+            currency,
+            direction,
+            channel,
+            quantity: first,
+            account_value: second,
+        }),
+    }
+}
+
+fn parse_market_scalar(
+    host_slot: &str,
+    source_field_index: u16,
+    line: &str,
+    line_number: u64,
+    collector: &mut MarketCollector,
+    current: Option<&mut RecordDraft>,
+    snapshot: Option<&mut SnapshotDraft>,
+) {
+    let values = line.split_ascii_whitespace().skip(1).collect::<Vec<_>>();
+    let (category, value) = match values.as_slice() {
+        [value] => (None, value.parse::<f64>().ok()),
+        [category, value] => (category.parse::<i32>().ok(), value.parse::<f64>().ok()),
+        _ => {
+            add_warning(&mut collector.warnings, "malformed_market_scalar");
+            return;
+        }
+    };
+    let Some(value) = value.filter(|value| value.is_finite()) else {
+        add_warning(&mut collector.warnings, "malformed_market_scalar");
+        return;
+    };
+    if !collector.reserve_row() {
+        return;
+    }
+    let Some(rows) = market_rows_mut(current, snapshot) else {
+        add_warning(&mut collector.warnings, "market_row_without_scope");
+        return;
+    };
+    rows.scalars.push(MarketScalarRow {
+        fact_id: host_slot.to_owned(),
+        source_field_index,
+        source_line: u32::try_from(line_number).unwrap_or(u32::MAX),
+        currency: if host_slot.ends_with(".rub") {
+            Some(MarketCurrency::Rub)
+        } else if host_slot.ends_with(".usd") {
+            Some(MarketCurrency::Usd)
+        } else {
+            None
+        },
+        category,
+        value,
+    });
 }
 
 fn assign_snapshot_fact(
@@ -353,6 +703,7 @@ fn finalise_snapshot(
     profile: &ResolvedCompatibilityProfile,
     draft: Option<SnapshotDraft>,
     snapshots: &mut Vec<SaveSnapshot>,
+    market_snapshots: &mut Vec<MarketSnapshot>,
 ) {
     let Some(draft) = draft else {
         return;
@@ -366,9 +717,21 @@ fn finalise_snapshot(
     } else {
         CoverageStatus::Partial
     };
+    let scope_kind = draft.scope_kind;
+    let scope_id = draft.scope_id;
+    if !draft.market.prices.is_empty()
+        || !draft.market.trades.is_empty()
+        || !draft.market.scalars.is_empty()
+    {
+        market_snapshots.push(MarketSnapshot {
+            scope_kind,
+            scope_id: scope_id.clone(),
+            rows: draft.market,
+        });
+    }
     snapshots.push(SaveSnapshot {
-        scope_kind: draft.scope_kind,
-        scope_id: draft.scope_id,
+        scope_kind,
+        scope_id,
         facts: draft.facts.into_values().collect(),
         expected_fact_count,
         coverage,
@@ -378,6 +741,7 @@ fn finalise_snapshot(
 fn finalise_record(
     draft: Option<RecordDraft>,
     records: &mut Vec<ReceiverRecord>,
+    market_records: &mut Vec<MarketHistoryRecord>,
     warnings: &mut BTreeMap<String, u32>,
     history_records: &mut u32,
     dropped_records: &mut u32,
@@ -387,6 +751,20 @@ fn finalise_record(
         return Ok(());
     };
     *history_records += 1;
+
+    if (!draft.market.prices.is_empty()
+        || !draft.market.trades.is_empty()
+        || !draft.market.scalars.is_empty())
+        && let (Some(year), Some(day)) = (&draft.year, &draft.day)
+    {
+        market_records.push(MarketHistoryRecord {
+            record_id: draft.record_id,
+            year: year.value,
+            day: day.value,
+            game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
+            rows: draft.market.clone(),
+        });
+    }
 
     if draft.malformed {
         add_warning(warnings, "malformed_record");
@@ -536,6 +914,51 @@ mod tests {
         assert_eq!(parsed.coverage.dropped_records, 1);
         assert_eq!(parsed.coverage.status, CoverageStatus::Partial);
         assert_eq!(parsed.coverage.warnings[0].code, "incomplete_record");
+    }
+
+    #[test]
+    fn parses_market_blocks_without_changing_receiver_results() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!("../fixtures/market.stats.txt")),
+            &profile,
+        )
+        .expect("market fixture");
+
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.records[0].classified_total, 100);
+        assert_eq!(parsed.market.records.len(), 1);
+        assert_eq!(parsed.market.records[0].rows.prices.len(), 2);
+        assert_eq!(parsed.market.records[0].rows.trades.len(), 4);
+        assert_eq!(parsed.market.records[0].rows.scalars.len(), 2);
+        assert_eq!(parsed.market.snapshots.len(), 2);
+        assert_eq!(parsed.market.row_count, 10);
+        assert!(parsed.market.warnings.is_empty());
+        let waste = parsed.market.records[0]
+            .rows
+            .trades
+            .iter()
+            .find(|row| parsed.market.resources[row.resource_index as usize] == "waste")
+            .expect("signed disposal row");
+        assert_eq!(waste.account_value, -8.0);
+    }
+
+    #[test]
+    fn isolates_malformed_market_rows_from_receiver_history() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let input = include_str!("../fixtures/market.stats.txt").replace("oil 12.5 1", "oil NaN 1");
+        let parsed =
+            parse_stats(Cursor::new(input.as_bytes()), &profile).expect("receiver remains usable");
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.records[0].classified_total, 100);
+        assert_eq!(parsed.market.coverage_status(), CoverageStatus::Partial);
+        assert!(
+            parsed
+                .market
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "malformed_market_row")
+        );
     }
 
     #[test]

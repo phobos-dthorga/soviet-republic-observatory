@@ -101,6 +101,7 @@ impl ObservatoryStorage {
                 &inspection.snapshots,
                 &inspection.records,
             )?;
+            super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
             for fact in &inspection.binary_facts {
                 transaction.execute(
                     "INSERT INTO binary_mapped_facts(\
@@ -136,6 +137,13 @@ impl ObservatoryStorage {
                 &inspection.interpretation_id,
                 now_ms(),
             )?;
+            super::warehouse_jobs::enqueue_projection_job(
+                &transaction,
+                &format!("market:{}", inspection.interpretation_id),
+                "market_observation",
+                &inspection.interpretation_id,
+                now_ms(),
+            )?;
         } else {
             let snapshots_exist = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM snapshot_scopes WHERE payload_hash = ?1)",
@@ -148,6 +156,21 @@ impl ObservatoryStorage {
                     &storage_key,
                     &inspection.snapshots,
                     &inspection.records,
+                )?;
+            }
+            let markets_exist = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM market_observation_coverage WHERE payload_hash = ?1)",
+                [&storage_key],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !markets_exist {
+                super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("market:{}", inspection.interpretation_id),
+                    "market_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
                 )?;
             }
         }

@@ -140,6 +140,7 @@ pub fn inspect_save_archive(
         records: parsed.records,
         coverage: parsed.coverage,
         snapshots: parsed.snapshots,
+        market: parsed.market,
         binary_facts,
     })
 }

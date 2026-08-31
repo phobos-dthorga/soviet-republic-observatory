@@ -69,6 +69,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "immutable branch-aware republic plans",
         include_str!("../../migrations/0013_republic_plans.sql"),
     ),
+    (
+        14,
+        "source-backed market observations and analytical definitions",
+        include_str!("../../migrations/0014_market_observations.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {
