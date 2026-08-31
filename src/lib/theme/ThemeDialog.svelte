@@ -5,6 +5,7 @@
   import { translation } from "../i18n/runtime";
   import type { TranslationKey } from "../i18n/catalog";
   import { notify } from "../notifications/service";
+  import TaskProgressIndicator from "../tasks/TaskProgressIndicator.svelte";
   import {
     exportTheme,
     importTheme,
@@ -277,6 +278,36 @@
       </header>
 
       <p id="theme-introduction">{$translation("theme-introduction")}</p>
+
+      <section
+        class="semantic-state-preview"
+        aria-labelledby="theme-state-preview-heading"
+      >
+        <div>
+          <span class="eyebrow"
+            >{$translation("theme-state-preview-eyebrow")}</span
+          >
+          <h3 id="theme-state-preview-heading">
+            {$translation("theme-state-preview-title")}
+          </h3>
+          <p>{$translation("theme-state-preview-detail")}</p>
+        </div>
+        <div class="state-preview-grid">
+          <TaskProgressIndicator
+            label={$translation("theme-state-preview-task")}
+            detail={$translation("theme-state-preview-running")}
+            percent={62}
+            onclick={() => undefined}
+          />
+          <TaskProgressIndicator
+            label={$translation("theme-state-preview-task")}
+            detail={$translation("theme-state-preview-failed")}
+            percent={100}
+            failed
+            onclick={() => undefined}
+          />
+        </div>
+      </section>
 
       {#if $themeStatus}
         <section aria-labelledby="installed-themes-heading">
@@ -648,6 +679,19 @@
     display: grid;
     gap: 8px;
   }
+
+  .semantic-state-preview {
+    grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.3fr);
+    align-items: center;
+  }
+  .semantic-state-preview p {
+    margin-top: 7px;
+  }
+  .state-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+    gap: 10px;
+  }
   .theme-card {
     display: grid;
     grid-template-columns: 150px minmax(220px, 1fr) auto;
@@ -821,7 +865,9 @@
       justify-content: flex-start;
     }
     .metadata-grid,
-    .laboratory-grid {
+    .laboratory-grid,
+    .semantic-state-preview,
+    .state-preview-grid {
       grid-template-columns: 1fr;
     }
   }

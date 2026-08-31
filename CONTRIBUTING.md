@@ -59,13 +59,21 @@ cargo fmt --manifest-path src-tauri\Cargo.toml --check
 npm run rust:clippy
 ```
 
-`npm run build` includes the production contrast audit. A contrast failure must
-be fixed at the semantic theme role or shared component foundation whenever the
-defect is shared. A temporary exception may identify only one exact element,
-must include a written justification and expiry, and must never exclude a
-workspace or selector family. Desktop release checks must also open at least
+`npm run build` includes the production interface audit: contrast and Axe
+checks, deterministic component-state screenshots, and geometry checks across
+narrow, laptop, FHD, QHD, ultrawide, and UHD-equivalent text/UI scales. Shared
+defects must be fixed at the semantic theme role or shared component
+foundation. A temporary exception may identify only one exact element, must
+include a written justification and expiry, and must never exclude a workspace,
+state family, or viewport class. Desktop release checks must also open at least
 one native select menu on Windows because the operating-system popup is outside
 browser automation.
+
+Any new global task state, dialog result, overlay, tutorial cue, form state, or
+workspace must add a deterministic audit state when ordinary browser preview
+data cannot reach it. The audit must exercise the production component rather
+than a look-alike test implementation. Use `npm run audit:ui` for the complete
+gate or `npm run audit:contrast` for the colour-and-Axe subset.
 
 Themes are inert data. Rust owns schema, contrast, duplicate-appearance,
 lifecycle, persistence, and fallback decisions. Svelte may render the returned

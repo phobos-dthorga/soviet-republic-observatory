@@ -57,13 +57,23 @@ app-local, and unencrypted.
 
 ## Build assurance
 
-Every production web build runs the Playwright and Axe contrast audit after
-bundling. It exercises every enabled workspace and representative dialogs,
-forms, focus, disabled controls, native options, notifications, charts, empty
-states, and error/loading surfaces under both built-ins and a generated
-validator-boundary theme. Failures retain a screenshot, trace, and JSON report
-with the component, selector, foreground/background, measured ratio, and
-required threshold.
+Every production web build runs the complete Playwright interface audit after
+bundling. Its contrast-and-Axe layer exercises every enabled workspace and
+representative dialogs, forms, focus, disabled controls, native options,
+notifications, charts, empty states, and error/loading surfaces under both
+built-ins and a generated validator-boundary theme. Host-owned state assays
+also keep otherwise transient running and failed task states reachable by the
+same production-bundle audit. Failures retain a screenshot, trace, and JSON
+report with the component, selector, foreground/background, measured ratio,
+and required threshold.
+
+The geometry layer covers narrow, laptop, FHD, QHD, ultrawide, and
+UHD-equivalent layouts from 100% through 200% text/UI scale. It rejects document
+overflow, escaping landmarks or dialogs, dialog-region overlap, and interactive
+targets below the 24 CSS-pixel floor. Deterministic screenshots protect the
+critical-task states and completed research-result layout which motivated this
+gate. Browser automation supplements rather than replaces the Windows-native
+smoke check below.
 
 The audit does not pretend to see the operating-system-owned open dropdown
 popup. Desktop release validation therefore retains a Windows-native smoke

@@ -66,9 +66,10 @@
     border-color: rgba(216, 132, 116, 0.5);
     background: var(--colour-risk-soft);
   }
-  .failed strong,
-  .failed b {
+  .failed strong {
     color: var(--colour-risk);
+  }
+  .failed b {
     background: var(--colour-risk);
   }
   @media (prefers-reduced-motion: no-preference) {

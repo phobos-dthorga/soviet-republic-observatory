@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:web && npm run audit:contrast",
+    "build": "npm run build:web && npm run audit:ui",
     "build:web": "vite build",
     "desktop": "node scripts/run-with-short-cargo-target.mjs npx tauri dev",
     "desktop:build": "node scripts/run-with-short-cargo-target.mjs npx tauri build",
@@ -16,7 +16,8 @@
     "audit:localization": "node scripts/audit-localization.mjs",
     "audit:architecture": "node scripts/audit-architecture-boundaries.mjs",
     "audit:tesmio-probe": "node scripts/audit-tesmio-probe.mjs",
-    "audit:contrast": "playwright test",
+    "audit:ui": "playwright test",
+    "audit:contrast": "playwright test tests/accessibility/contrast.spec.ts",
     "check": "npm run audit:localization && npm run audit:architecture && npm run audit:tesmio-probe && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "format": "prettier --write .",

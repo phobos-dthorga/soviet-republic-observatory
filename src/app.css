@@ -1132,6 +1132,9 @@ h3 {
 }
 
 .dispatch-links a {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
   color: var(--colour-observed);
   font-size: var(--type-caption);
   text-decoration: none;

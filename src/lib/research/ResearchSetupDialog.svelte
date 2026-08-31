@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import AttentionCue from "../attention/AttentionCue.svelte";
   import { replayAttentionCue } from "../attention/service";
   import { activeLocale, translation } from "../i18n/runtime";
@@ -38,6 +38,8 @@
   let busy = $state(false);
   let errorMessage = $state("");
   let stopProgress: (() => void) | null = null;
+  let researchContent = $state<HTMLDivElement>();
+  let researchResults = $state<HTMLDivElement>();
   const progressView = $derived(
     progress ? researchBuildProgressView(progress, $translation) : null,
   );
@@ -74,6 +76,8 @@
     try {
       status = await getResearchSetup();
       progress = status.progress;
+      await tick();
+      researchContent?.scrollTo({ top: 0 });
     } catch (error) {
       errorMessage = describeError(error);
     }
@@ -183,6 +187,7 @@
     try {
       status = await buildResearchProbe();
       progress = status.progress;
+      await revealResearchResults();
       notify({
         title: $translation("research-setup-title"),
         message: $translation("research-setup-build-success"),
@@ -203,6 +208,34 @@
       });
     } finally {
       busy = false;
+    }
+  }
+
+  async function revealResearchResults(): Promise<void> {
+    await tick();
+    if (!researchContent || !researchResults) return;
+    const contentBox = researchContent.getBoundingClientRect();
+    const resultBox = researchResults.getBoundingClientRect();
+    researchContent.scrollTo({
+      top: Math.max(
+        0,
+        researchContent.scrollTop + resultBox.top - contentBox.top,
+      ),
+      behavior: "instant",
+    });
+    const settledContentBox = researchContent.getBoundingClientRect();
+    const clippedStep = [
+      ...researchContent.querySelectorAll<HTMLElement>(".research-steps > li"),
+    ].find((step) => {
+      const box = step.getBoundingClientRect();
+      return (
+        box.top < settledContentBox.top &&
+        box.bottom > settledContentBox.top + 1
+      );
+    });
+    if (clippedStep) {
+      researchContent.scrollTop +=
+        clippedStep.getBoundingClientRect().top - settledContentBox.top;
     }
   }
 
@@ -267,7 +300,7 @@
         <p class="research-error" role="alert">{errorMessage}</p>
       {/if}
 
-      <div class="research-content">
+      <div class="research-content" bind:this={researchContent}>
         <ol class="research-steps">
           <li data-ready={status?.notice_accepted ?? false}>
             <span>01</span>
@@ -409,88 +442,90 @@
           </li>
         </ol>
 
-        {#if buildFailure}
-          <section class="failure-assay" role="alert">
-            <div>
-              <span class="eyebrow"
-                >{$translation("research-setup-failure-eyebrow")}</span
-              >
-              <h3>{$translation("research-setup-failure-title")}</h3>
-            </div>
-            <p>{buildFailure.detail}</p>
-            <p>
-              <strong>{$translation("research-setup-next-step")}</strong>
-              {buildFailure.remediation}
-            </p>
-            <dl>
+        <div class="research-results" bind:this={researchResults}>
+          {#if buildFailure}
+            <section class="failure-assay" role="alert">
               <div>
-                <dt>{$translation("research-setup-failure-stage")}</dt>
-                <dd>{failureStageLabel(progress?.failed_stage)}</dd>
+                <span class="eyebrow"
+                  >{$translation("research-setup-failure-eyebrow")}</span
+                >
+                <h3>{$translation("research-setup-failure-title")}</h3>
               </div>
-              <div>
-                <dt>{$translation("research-setup-failure-code")}</dt>
-                <dd><code>{progress?.error_code ?? "unknown"}</code></dd>
-              </div>
-              {#if progress?.compiler_exit_code != null}
-                <div>
-                  <dt>{$translation("research-setup-failure-exit-code")}</dt>
-                  <dd>{progress?.compiler_exit_code}</dd>
-                </div>
-              {/if}
-            </dl>
-            <button type="button" onclick={openDiagnostics}>
-              {$translation("research-setup-open-diagnostics")}
-            </button>
-          </section>
-        {/if}
-
-        {#if progressView && progress?.state !== "idle"}
-          <TaskProgressPanel
-            view={progressView}
-            headingId="research-build-progress-title"
-          />
-        {/if}
-
-        {#if status && status.artifact_state !== "absent" && status.artifact_state !== "missing"}
-          <section class="artifact" aria-labelledby="research-artifact-title">
-            <span class="eyebrow"
-              >{$translation("research-setup-artifact-eyebrow")}</span
-            >
-            <h3 id="research-artifact-title">
-              {$translation("research-setup-artifact-title")}
-            </h3>
-            {#if status.artifact_state !== "verified"}
-              <p class="artifact-warning">
-                {status.artifact_state === "unrecorded"
-                  ? $translation("research-setup-artifact-unrecorded")
-                  : $translation("research-setup-artifact-changed")}
+              <p>{buildFailure.detail}</p>
+              <p>
+                <strong>{$translation("research-setup-next-step")}</strong>
+                {buildFailure.remediation}
               </p>
-            {/if}
-            <dl>
-              <div>
-                <dt>{$translation("research-setup-artifact-size")}</dt>
-                <dd>
-                  {formatNumber(status.probe_size_bytes ?? 0, $activeLocale)} B
-                </dd>
-              </div>
-              <div>
-                <dt>{$translation("research-setup-artifact-hash")}</dt>
-                <dd><code>{status.probe_content_hash}</code></dd>
-              </div>
-              <div>
-                <dt>{$translation("research-setup-artifact-location")}</dt>
-                <dd><code>{status.output_display_path}</code></dd>
-              </div>
-            </dl>
-          </section>
-        {/if}
+              <dl>
+                <div>
+                  <dt>{$translation("research-setup-failure-stage")}</dt>
+                  <dd>{failureStageLabel(progress?.failed_stage)}</dd>
+                </div>
+                <div>
+                  <dt>{$translation("research-setup-failure-code")}</dt>
+                  <dd><code>{progress?.error_code ?? "unknown"}</code></dd>
+                </div>
+                {#if progress?.compiler_exit_code != null}
+                  <div>
+                    <dt>{$translation("research-setup-failure-exit-code")}</dt>
+                    <dd>{progress?.compiler_exit_code}</dd>
+                  </div>
+                {/if}
+              </dl>
+              <button type="button" onclick={openDiagnostics}>
+                {$translation("research-setup-open-diagnostics")}
+              </button>
+            </section>
+          {/if}
 
-        {#if progress?.log_lines.length}
-          <details class="build-log">
-            <summary>{$translation("research-setup-build-log")}</summary>
-            <pre>{progress.log_lines.join("\n")}</pre>
-          </details>
-        {/if}
+          {#if progressView && progress?.state !== "idle"}
+            <TaskProgressPanel
+              view={progressView}
+              headingId="research-build-progress-title"
+            />
+          {/if}
+
+          {#if status && status.artifact_state !== "absent" && status.artifact_state !== "missing"}
+            <section class="artifact" aria-labelledby="research-artifact-title">
+              <span class="eyebrow"
+                >{$translation("research-setup-artifact-eyebrow")}</span
+              >
+              <h3 id="research-artifact-title">
+                {$translation("research-setup-artifact-title")}
+              </h3>
+              {#if status.artifact_state !== "verified"}
+                <p class="artifact-warning">
+                  {status.artifact_state === "unrecorded"
+                    ? $translation("research-setup-artifact-unrecorded")
+                    : $translation("research-setup-artifact-changed")}
+                </p>
+              {/if}
+              <dl>
+                <div>
+                  <dt>{$translation("research-setup-artifact-size")}</dt>
+                  <dd>
+                    {formatNumber(status.probe_size_bytes ?? 0, $activeLocale)} B
+                  </dd>
+                </div>
+                <div>
+                  <dt>{$translation("research-setup-artifact-hash")}</dt>
+                  <dd><code>{status.probe_content_hash}</code></dd>
+                </div>
+                <div>
+                  <dt>{$translation("research-setup-artifact-location")}</dt>
+                  <dd><code>{status.output_display_path}</code></dd>
+                </div>
+              </dl>
+            </section>
+          {/if}
+
+          {#if progress?.log_lines.length}
+            <details class="build-log">
+              <summary>{$translation("research-setup-build-log")}</summary>
+              <pre>{progress.log_lines.join("\n")}</pre>
+            </details>
+          {/if}
+        </div>
       </div>
 
       <footer>
@@ -587,6 +622,19 @@
     flex: 0 1 auto;
     min-height: 0;
     overflow-y: auto;
+    overflow-anchor: none;
+    scroll-padding-block: 8px;
+  }
+  .research-results {
+    display: grid;
+    gap: 10px;
+    scroll-margin-block-start: 8px;
+  }
+  .research-results :global(.task-progress),
+  .research-results .failure-assay,
+  .research-results .artifact,
+  .research-results .build-log {
+    margin-block: 0;
   }
   .research-steps {
     display: grid;

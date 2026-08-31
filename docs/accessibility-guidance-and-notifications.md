@@ -37,6 +37,24 @@ contrast, semantic structure, visible keyboard focus, logical properties for
 right-to-left layouts, reduced motion, textual chart summaries, and non-colour
 state distinctions remain required.
 
+## Automated interface-scale assurance
+
+The production build runs one app-wide Playwright gate rather than relying on
+workspace-specific visual memory. Every enabled workspace is measured at
+narrow, laptop, FHD, QHD, ultrawide, and UHD-equivalent logical resolutions,
+including text/UI scales from 100% to 200%. The geometry assay rejects global
+horizontal overflow, landmarks or dialogs escaping the viewport, overlapping
+dialog regions, and enabled controls below a 24 CSS-pixel target floor.
+
+Transient native-only states must remain testable through a real host-owned
+component state, a bounded native-command mock, or an application-owned assay;
+tests must not draw a separate visual imitation. Critical running/failed task
+indicators and successful research-build results have deterministic screenshot
+baselines. The completed research assistant deliberately snaps its scroll
+position to a whole prerequisite row or result boundary, never a half-visible
+heading. Contrast, Axe, reduced-motion, and Windows-native popup checks remain
+separate mandatory layers because geometry alone cannot establish usability.
+
 ## Context-aware help
 
 `ContextHelp.svelte` is the application-owned help primitive. It provides a
