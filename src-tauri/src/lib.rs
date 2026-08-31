@@ -21,6 +21,7 @@ mod stats_parser;
 mod storage;
 mod tesmio_probe;
 mod theme;
+mod ui_review;
 mod warehouse;
 mod warehouse_governor;
 mod warehouse_service;
@@ -35,10 +36,15 @@ use research_setup::ResearchSetupService;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let ui_review = ui_review::UiReviewStartup::parse(std::env::args_os())
+        .unwrap_or_else(|error| panic!("Republic Observatory UI review startup failed: {error}"));
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .setup(|app| {
-            let data_directory = app.path().app_local_data_dir()?;
+        .setup(move |app| {
+            let data_directory = ui_review
+                .data_directory
+                .clone()
+                .unwrap_or(app.path().app_local_data_dir()?);
             std::fs::create_dir_all(&data_directory)?;
             diagnostics::initialize(Some(&data_directory));
             diagnostics::record(
@@ -57,14 +63,18 @@ pub fn run() {
             app.manage(AppState {
                 application: Arc::clone(&application),
                 research_setup: Arc::new(ResearchSetupService::discover()),
+                ui_review: ui_review.context.clone(),
             });
-            recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
-            compatibility_service::spawn(app.handle().clone(), Arc::clone(&application));
-            catalogue_service::spawn(app.handle().clone(), Arc::clone(&application));
-            warehouse_service::spawn(app.handle().clone(), application);
+            if !ui_review.context.enabled {
+                recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
+                compatibility_service::spawn(app.handle().clone(), Arc::clone(&application));
+                catalogue_service::spawn(app.handle().clone(), Arc::clone(&application));
+                warehouse_service::spawn(app.handle().clone(), application);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::get_ui_review_context,
             commands::attention_cue_status,
             commands::dismiss_attention_cue,
             commands::replay_attention_cue,

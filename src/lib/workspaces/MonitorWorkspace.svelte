@@ -175,7 +175,13 @@
     </GuidanceSurface>
   </aside>
 
-  <section class="canvas" id="monitor-health">
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-scrollable region) -->
+  <section
+    class="canvas"
+    id="monitor-health"
+    aria-label={$translation("monitor-heading-title")}
+    tabindex="0"
+  >
     <GuidanceSurface
       kind="instruction"
       layout="inline"

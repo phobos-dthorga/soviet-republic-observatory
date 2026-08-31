@@ -20,11 +20,18 @@ use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
 };
 use crate::theme::{ThemeInspection, ThemeStatus};
+use crate::ui_review::UiReviewContext;
 
 #[derive(Debug)]
 pub struct AppState {
     pub application: Arc<ObservatoryApplication>,
     pub research_setup: Arc<ResearchSetupService>,
+    pub ui_review: UiReviewContext,
+}
+
+#[tauri::command]
+pub fn get_ui_review_context(state: State<'_, AppState>) -> UiReviewContext {
+    state.ui_review.clone()
 }
 
 #[derive(Debug, Serialize)]

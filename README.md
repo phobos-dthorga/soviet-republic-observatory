@@ -140,6 +140,20 @@ npm run rust:check
 npm run rust:test
 ```
 
+For mouse-free review of the packaged Windows interface, install the pinned
+local driver toolchain once and run either native suite:
+
+```powershell
+npm run ui:review:setup
+npm run desktop:build
+```
+
+The native CLI launches its own review-only app process through WebDriver; it
+does not take over the global mouse or attach to the player's running app. See
+the [native UI review guide](docs/operations/native-ui-review.md). The exhaustive
+`npm run ui:review -- run --suite full` matrix is reserved for exceptional
+theme, accessibility, native-shell, and release validation.
+
 ## Proposed technical foundation
 
 | Area                          | Direction                                                    |

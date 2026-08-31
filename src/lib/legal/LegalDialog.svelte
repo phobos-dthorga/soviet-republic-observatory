@@ -72,7 +72,13 @@
         >
       </div>
 
-      <section class="legal-content" aria-live="polite">
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-scrollable region) -->
+      <section
+        class="legal-content"
+        aria-label={$translation("legal-dialog-title")}
+        aria-live="polite"
+        tabindex="0"
+      >
         {#if activeTab === "summary"}
           <div id="legal-summary-panel" role="tabpanel" class="legal-grid">
             <article>

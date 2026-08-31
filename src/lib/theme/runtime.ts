@@ -72,6 +72,14 @@ export function applyTheme(
   );
 }
 
+export function applyReviewTextScale(percent: number): void {
+  document.documentElement.style.fontSize = `${percent}%`;
+}
+
+export function clearReviewTextScale(): void {
+  document.documentElement.style.removeProperty("font-size");
+}
+
 function withAlpha(hex: string, alpha: number): string {
   const red = Number.parseInt(hex.slice(1, 3), 16);
   const green = Number.parseInt(hex.slice(3, 5), 16);

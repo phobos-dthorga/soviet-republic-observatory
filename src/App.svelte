@@ -19,7 +19,8 @@
   import ResearchSetupDialog from "./lib/research/ResearchSetupDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
-  import { notify } from "./lib/notifications/service";
+  import { clearNotifications, notify } from "./lib/notifications/service";
+  import { replayAttentionCue } from "./lib/attention/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
   import {
@@ -28,6 +29,16 @@
   } from "./lib/research/desktopClient";
   import { researchBuildProgressView } from "./lib/research/progress";
   import type { ResearchBuildProgress } from "./lib/research/types";
+  import {
+    initialiseUiReview,
+    type UiReviewScenarioRequest,
+  } from "./lib/ui-review/runtime";
+  import {
+    reviewArchiveOverview,
+    reviewCatalogueProgress,
+    reviewPopulationDataset,
+    reviewWarehouseAttention,
+  } from "./lib/ui-review/fixtures";
   import {
     clearDiagnosticLog,
     compareArchiveObservations,
@@ -289,6 +300,106 @@
     void refreshDiagnostics();
   }
 
+  async function applyUiReviewScenario(
+    request: UiReviewScenarioRequest,
+  ): Promise<void> {
+    clearNotifications();
+    languageDialogOpen = false;
+    themeDialogOpen = false;
+    observationDialogOpen = false;
+    diagnosticsDialogOpen = false;
+    legalDialogOpen = false;
+    researchSetupDialogOpen = false;
+    catalogueProgress = null;
+    warehouseStatus = null;
+    reinterpretationProgress = null;
+    researchBuildProgress = null;
+
+    switch (request.scenario) {
+      case "workspace-briefing":
+        activeWorkspace = "briefing";
+        break;
+      case "workspace-monitor":
+        activeWorkspace = "monitor";
+        break;
+      case "workspace-broadcast":
+        activeWorkspace = "broadcast";
+        break;
+      case "workspace-extensions":
+        activeWorkspace = "extensions";
+        break;
+      case "workspace-materials":
+        activeWorkspace = "materials";
+        break;
+      case "materials-warehouse-attention":
+        activeWorkspace = "materials";
+        warehouseStatus = reviewWarehouseAttention();
+        break;
+      case "workspace-population":
+      case "population-probe-missing":
+        activeWorkspace = "population";
+        populationDataset = reviewPopulationDataset();
+        break;
+      case "archive-latest":
+        activeWorkspace = "archive";
+        archiveOverview = reviewArchiveOverview(false);
+        break;
+      case "archive-historical":
+        activeWorkspace = "archive";
+        archiveOverview = reviewArchiveOverview(true);
+        break;
+      case "critical-task-loading":
+        activeWorkspace = "materials";
+        catalogueProgress = reviewCatalogueProgress(false);
+        break;
+      case "critical-task-failed":
+        activeWorkspace = "materials";
+        catalogueProgress = reviewCatalogueProgress(true);
+        break;
+      case "dialog-language":
+        languageDialogOpen = true;
+        break;
+      case "dialog-theme":
+        themeDialogOpen = true;
+        break;
+      case "dialog-observation":
+        observationDialogOpen = true;
+        break;
+      case "dialog-diagnostics":
+        diagnosticsDialogOpen = true;
+        break;
+      case "dialog-legal":
+        legalDialogOpen = true;
+        break;
+      case "dialog-research":
+        researchSetupDialogOpen = true;
+        break;
+      case "notification-error":
+        activeWorkspace = "briefing";
+        notify({
+          title: $translation("diagnostics-title"),
+          message: $translation("theme-storage-unavailable"),
+          tone: "error",
+        });
+        break;
+      case "tooltip-contextual":
+        themeDialogOpen = true;
+        break;
+      case "attention-cue":
+        activeWorkspace = "population";
+        populationDataset = reviewPopulationDataset();
+        await replayAttentionCue("research.setup.entry", 1);
+        break;
+      case "keyboard-focus":
+        activeWorkspace = "briefing";
+        break;
+      case "native-dropdown":
+        activeWorkspace = "population";
+        populationDataset = reviewPopulationDataset();
+        break;
+    }
+  }
+
   async function clearDiagnostics(): Promise<void> {
     if (
       !desktopAvailable ||
@@ -308,7 +419,8 @@
   }
 
   onMount(() => {
-    void initialiseThemes()
+    let stopUiReview: (() => void) | undefined;
+    const themeReady = initialiseThemes()
       .then((status) => {
         if (status?.fallback_applied) {
           notify({
@@ -325,7 +437,7 @@
           tone: "error",
         });
       });
-    if (!desktopAvailable) return;
+    if (!desktopAvailable) return () => stopUiReview?.();
     let disposed = false;
     let stopListening: (() => void) | undefined;
     let stopCatalogueListening: (() => void) | undefined;
@@ -333,19 +445,27 @@
     let stopReinterpretationListening: (() => void) | undefined;
     let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
-    void Promise.all([
+    const initialDataReady = Promise.all([
       getSetupState(),
       getLatestReceiverDataset(),
       getArchiveOverview(),
       getRecorderHealth(),
-    ]).then(([setup, dataset, archive, health]) => {
+      getPopulationDataset().catch(() => null),
+    ]).then(([setup, dataset, archive, health, population]) => {
       if (disposed) return;
       setupState = setup;
       receiverDataset = dataset;
       archiveOverview = archive;
       recorderHealth = health;
+      populationDataset = population;
     });
-    void refreshPopulationDataset();
+    void Promise.allSettled([themeReady, initialDataReady]).then(() => {
+      if (disposed) return;
+      void initialiseUiReview(applyUiReviewScenario).then((dispose) => {
+        if (disposed) dispose();
+        else stopUiReview = dispose;
+      });
+    });
     void listenForRecorderUpdates(acceptRecorderUpdate).then((unlisten) => {
       if (disposed) unlisten();
       else stopListening = unlisten;
@@ -410,6 +530,7 @@
       stopReinterpretationListening?.();
       stopResearchBuildListening?.();
       stopWarehouseListening?.();
+      stopUiReview?.();
     };
   });
 

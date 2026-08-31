@@ -18,6 +18,12 @@ export function auditInterfaceDom(): InterfaceAuditFailure[] {
   const result: InterfaceAuditFailure[] = [];
   const visible = (element: Element): element is HTMLElement => {
     const node = element as HTMLElement;
+    if (node.classList.contains("visually-hidden")) return false;
+    if (
+      node.getAttribute("aria-hidden") === "true" &&
+      node.getAttribute("tabindex") === "-1"
+    )
+      return false;
     const style = getComputedStyle(node);
     const box = node.getBoundingClientRect();
     return (

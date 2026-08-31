@@ -69,6 +69,18 @@ state family, or viewport class. Desktop release checks must also open at least
 one native select menu on Windows because the operating-system popup is outside
 browser automation.
 
+Install the pinned native review toolchain once with `npm run
+ui:review:setup`. `npm run desktop:build` runs the packaged-app smoke suite;
+`npm run ui:review -- run --suite full` exercises the complete native scenario,
+theme, viewport, and text-scale matrix without moving the global mouse. Reserve
+the full matrix for releases and exceptional changes to themes, accessibility,
+responsive layout, native controls, or the review system itself; ordinary
+pull requests and pushes run the smoke gate. New
+workspaces, dialogs, notifications, guidance states, task states, and native
+controls must add or extend a typed fixture scenario. Do not add arbitrary
+selector, JavaScript, Tauri-command, SQL, or filesystem facilities to the
+developer CLI. See [ADR-0021](docs/architecture/decisions/0021-native-ui-review-boundary.md).
+
 Any new global task state, dialog result, overlay, tutorial cue, form state, or
 workspace must add a deterministic audit state when ordinary browser preview
 data cannot reach it. The audit must exercise the production component rather

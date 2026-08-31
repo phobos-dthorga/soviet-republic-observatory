@@ -22,6 +22,10 @@ keeping the Observatory independent and small.
 | `duckdb`         | MIT        | Definition catalogue and analytical warehouse         | Pinned bundled engine; no extension autoload/install                  |
 | `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation                    |
 | `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                                  |
+| WebdriverIO      | MIT        | Packaged Windows interface review                     | Development only; fixed scenarios and element/keyboard operations     |
+| Tauri service    | MIT        | Tauri capability contract for native review           | Development only; external driver, no in-app automation server        |
+| Axe WebDriverIO  | MPL-2.0    | Native WCAG audit                                     | Development only; local fixture/live-clone presentation               |
+| `tsx`            | MIT        | Execute the typed native review harness               | Development only                                                      |
 
 TesmioLoader is **not** an application dependency. The repository contains one
 optional GPL-3.0-only companion source experiment that compiles against a
@@ -69,6 +73,16 @@ workload. The crate is pinned to `1.10505.0` and distributed under MIT. Runtime
 extension autoloading, automatic installation, and external access are disabled;
 the project does not use DuckDB's SQLite extension or download optional
 extensions. Data crosses from SQLite only through application-owned Rust models.
+
+Native interface tooling is pinned separately from the shipped dependency
+surface: `tauri-driver` 2.0.6, `@wdio/tauri-service` 1.3.0, WebdriverIO 9.31.x,
+and `@axe-core/webdriverio` 4.13.0. Setup is an explicit local/CI operation; a
+normal build never downloads a driver. The external test stack currently
+inherits development-only npm advisories through its driver-management
+dependency graph. `npm audit --omit=dev` remains clean; the complete audit must
+still be reviewed when these pins are updated. No affected package enters the
+packaged application or handles untrusted network content during a review run.
+See [ADR-0021](architecture/decisions/0021-native-ui-review-boundary.md).
 
 Before adding a dependency, document:
 

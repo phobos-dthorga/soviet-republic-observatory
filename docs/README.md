@@ -41,6 +41,8 @@ an engineering requirement.
 - [Local diagnostics and long-running work](operations/diagnostics.md) — shared
   critical-task progress, startup recovery, stall visibility, bounded local
   logging, and privacy
+- [Native UI review](operations/native-ui-review.md) — mouse-free packaged-app
+  automation, fixture/live boundaries, commands, artifacts, and troubleshooting
 - [Roadmap](roadmap.md) — vertical slices from synthetic preview to advanced
   industrial analysis
 - [Community Extensions](extensions/overview.md) — Analysis Packs now and the
@@ -85,6 +87,8 @@ an engineering requirement.
   — fail-closed same-process observation without a product dependency
 - [ADR-0020: first-class attention cues and bounded research setup](architecture/decisions/0020-first-class-attention-and-research-setup.md)
   — persistent accessible guidance and an exact-source local build assistant
+- [ADR-0021: external native UI review with bounded fixture scenarios](architecture/decisions/0021-native-ui-review-boundary.md)
+  — mouse-free native automation without a production control surface
 
 ## Evidence status vocabulary
 

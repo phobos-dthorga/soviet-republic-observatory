@@ -1,0 +1,37 @@
+name: Native UI review
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows-native-review:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: clippy,rustfmt
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run ui:review:setup
+      - run: npm run desktop:build
+      - name: Run exceptional full native matrix
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run ui:review -- run --suite full
+      - name: Retain native review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-ui-review
+          path: artifacts/native-ui-review/
+          if-no-files-found: ignore
+          retention-days: 14
