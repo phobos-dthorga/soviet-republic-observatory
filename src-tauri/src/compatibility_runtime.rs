@@ -20,6 +20,7 @@ pub const LOCAL_PROFILE_RELATIVE_PATH: &str = "compatibility/local.rocompat.json
 #[derive(Debug)]
 pub struct CompatibilityRuntime {
     reviewed: ResolvedCompatibilityProfile,
+    legacy_reviewed: Vec<ResolvedCompatibilityProfile>,
     local_path: PathBuf,
     state: Mutex<RuntimeState>,
 }
@@ -37,6 +38,7 @@ struct RuntimeState {
 impl CompatibilityRuntime {
     pub fn initialise(data_directory: &Path) -> Result<Self, ObservatoryError> {
         let reviewed = ResolvedCompatibilityProfile::reviewed_builtin()?;
+        let legacy_reviewed = ResolvedCompatibilityProfile::legacy_reviewed_builtins()?;
         fs::create_dir_all(data_directory.join("compatibility"))
             .map_err(|_| ObservatoryError::InvalidDirectory)?;
         let runtime = Self {
@@ -50,6 +52,7 @@ impl CompatibilityRuntime {
                 catalogue_scopes: dormant_scope_statuses(&reviewed),
             }),
             reviewed,
+            legacy_reviewed,
         };
         runtime.reload()?;
         Ok(runtime)
@@ -134,7 +137,20 @@ impl CompatibilityRuntime {
                 .map_err(|_| ObservatoryError::InvalidCompatibilityProfile("local_read"))
                 .and_then(|bytes| CompatibilityProfileDocument::parse(&bytes))
                 .and_then(|document| {
-                    ResolvedCompatibilityProfile::resolve_override(&self.reviewed, document)
+                    let reference = document.extends.as_ref().ok_or(
+                        ObservatoryError::InvalidCompatibilityProfile("override_requires_base"),
+                    )?;
+                    let base = std::iter::once(&self.reviewed)
+                        .chain(self.legacy_reviewed.iter())
+                        .find(|candidate| {
+                            candidate.id() == reference.id
+                                && candidate.version() == reference.version
+                                && candidate.content_hash() == reference.content_hash
+                        })
+                        .ok_or(ObservatoryError::InvalidCompatibilityProfile(
+                            "base_reference_mismatch",
+                        ))?;
+                    ResolvedCompatibilityProfile::resolve_override(base, document)
                 });
             match result {
                 Ok(profile) => {

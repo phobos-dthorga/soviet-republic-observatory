@@ -3,6 +3,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, TryLockError};
 use std::time::{Instant, UNIX_EPOCH};
 
+use sha2::{Digest, Sha256};
+
 use crate::analysis_pack::{
     AnalysisPackContribution, AnalysisPackDocument, AnalysisPackInspection, AnalysisPackSummary,
 };
@@ -21,13 +23,13 @@ use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
-    ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
-    MarketIndexingPhase, MarketIndexingProgress, ObservationImportResult, OverlayInspection,
-    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
-    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, ReceiverDataset,
-    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
-    ReinterpretationProgress, RepublicBrief, RepublicPlanBrief, RepublicPlanDraft,
-    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
+    ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome, MarketBasketDraft,
+    MarketIndexingPhase, MarketIndexingProgress, MarketScenarioDraft, MarketWorkspace,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
+    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
+    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
+    RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -66,6 +68,34 @@ fn ratio_percent(
             .saturating_add(completed.min(total).saturating_mul(span) / total)
             .min(u64::from(range_end)) as u8,
     )
+}
+
+fn market_index_job_id(
+    source_directory_identity: &str,
+    resolved_profile_hash: &str,
+    candidates: &[crate::model::MarketIndexCandidate],
+) -> String {
+    let mut payload_hashes = candidates
+        .iter()
+        .map(|candidate| candidate.raw_payload_hash.as_str())
+        .collect::<Vec<_>>();
+    payload_hashes.sort_unstable();
+    payload_hashes.dedup();
+    let mut hasher = Sha256::new();
+    hasher.update(b"republic-observatory-market-index-v1\0");
+    hasher.update(source_directory_identity.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(resolved_profile_hash.as_bytes());
+    for payload_hash in payload_hashes {
+        hasher.update(b"\0");
+        hasher.update(payload_hash.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let suffix = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("market-index-{}", &suffix[..24])
 }
 
 #[derive(Debug)]
@@ -217,6 +247,74 @@ impl ObservatoryApplication {
     pub fn republic_plan_workspace(&self) -> Result<RepublicPlanWorkspace, ObservatoryError> {
         let population = self.population_dataset()?;
         self.storage.republic_plan_workspace(&population)
+    }
+
+    pub fn market_workspace(&self) -> Result<MarketWorkspace, ObservatoryError> {
+        let context = self.archive_overview()?.analysis_context;
+        let mut evidence = self.storage.market_evidence(context)?;
+        let mut warehouse_history_available = false;
+        if let Some(sqlite_projection) = evidence.projection.as_ref()
+            && let Ok(Some(warehouse_projection)) =
+                self.warehouse.market_projection(sqlite_projection)
+        {
+            evidence.projection = Some(warehouse_projection);
+            warehouse_history_available = true;
+        }
+        Ok(crate::market::build_workspace(
+            evidence,
+            warehouse_history_available,
+        ))
+    }
+
+    pub fn save_market_basket(
+        &self,
+        draft: &MarketBasketDraft,
+    ) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage.save_market_basket(draft)?;
+        self.market_workspace()
+    }
+
+    pub fn save_market_scenario(
+        &self,
+        draft: &MarketScenarioDraft,
+    ) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage.save_market_scenario(draft)?;
+        self.market_workspace()
+    }
+
+    pub fn select_market_definition(
+        &self,
+        kind: &str,
+        definition_id: &str,
+        revision: u32,
+    ) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage
+            .select_market_definition(kind, definition_id, revision)?;
+        self.market_workspace()
+    }
+
+    pub fn rollback_market_definition(
+        &self,
+        kind: &str,
+        definition_id: &str,
+    ) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage
+            .rollback_market_definition(kind, definition_id)?;
+        self.market_workspace()
+    }
+
+    pub fn clear_market_selection(&self, kind: &str) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage.clear_market_selection(kind)?;
+        self.market_workspace()
+    }
+
+    pub fn remove_market_definition(
+        &self,
+        kind: &str,
+        definition_id: &str,
+    ) -> Result<MarketWorkspace, ObservatoryError> {
+        self.storage.remove_market_definition(kind, definition_id)?;
+        self.market_workspace()
     }
 
     pub fn save_republic_plan(
@@ -495,14 +593,13 @@ impl ObservatoryApplication {
         };
         let result: Result<MarketIndexingProgress, ObservatoryError> = (|| {
             let started_at_ms = now_ms();
-            let job_id = format!("market-index-{started_at_ms}");
             let directory = self
                 .storage
                 .get_setting(SAVE_DIRECTORY_KEY)?
                 .ok_or(ObservatoryError::SaveDirectoryNotConfigured)?;
             let source_directory_identity = crate::save_archive::directory_identity(&directory)?;
             let mut progress = MarketIndexingProgress {
-                job_id: Some(job_id.clone()),
+                job_id: None,
                 phase: MarketIndexingPhase::Discovering,
                 started_at_ms: Some(started_at_ms),
                 updated_at_ms: Some(started_at_ms),
@@ -512,20 +609,26 @@ impl ObservatoryApplication {
             let candidates = self
                 .storage
                 .market_index_candidates(&source_directory_identity)?;
+            let profile = self.compatibility.active()?;
+            let job_id = market_index_job_id(
+                &source_directory_identity,
+                profile.resolved_hash(),
+                &candidates,
+            );
+            progress.job_id = Some(job_id.clone());
             progress.total_archives = candidates.len().min(u32::MAX as usize) as u32;
             progress.phase = MarketIndexingPhase::Matching;
             progress.progress_percent = Some(2);
             progress.updated_at_ms = Some(now_ms());
             self.storage.start_market_index_job(&job_id, &candidates)?;
             self.report_market_indexing_progress(&progress, &mut notify);
-            let profile = self.compatibility.active()?;
 
             for (index, candidate) in candidates.iter().enumerate() {
                 progress.current_archive = (index + 1).min(u32::MAX as usize) as u32;
                 progress.current_file = Some(candidate.source_file_name.clone());
                 progress.records_processed = 0;
                 progress.rows_processed = 0;
-                progress.phase = MarketIndexingPhase::Reading;
+                progress.phase = MarketIndexingPhase::ReadingArchive;
                 progress.progress_percent =
                     ratio_percent(index as u64, candidates.len() as u64, 3, 94);
                 progress.updated_at_ms = Some(now_ms());
@@ -537,7 +640,7 @@ impl ObservatoryApplication {
                     progress.missing_archives += 1;
                     self.storage.update_market_index_item(
                         &job_id,
-                        &candidate.interpretation_id,
+                        &candidate.payload_hash,
                         "missing",
                         0,
                         0,
@@ -559,7 +662,7 @@ impl ObservatoryApplication {
                     progress.changed_archives += 1;
                     self.storage.update_market_index_item(
                         &job_id,
-                        &candidate.interpretation_id,
+                        &candidate.payload_hash,
                         "changed",
                         0,
                         0,
@@ -568,7 +671,7 @@ impl ObservatoryApplication {
                     continue;
                 }
 
-                progress.phase = MarketIndexingPhase::Parsing;
+                progress.phase = MarketIndexingPhase::ParsingRecords;
                 progress.updated_at_ms = Some(now_ms());
                 self.report_market_indexing_progress(&progress, &mut notify);
                 match inspect_save_archive(&path, &profile) {
@@ -589,7 +692,7 @@ impl ObservatoryApplication {
                         }
                         self.storage.update_market_index_item(
                             &job_id,
-                            &candidate.interpretation_id,
+                            &candidate.payload_hash,
                             if already_indexed {
                                 "duplicate"
                             } else {
@@ -604,7 +707,7 @@ impl ObservatoryApplication {
                         progress.changed_archives += 1;
                         self.storage.update_market_index_item(
                             &job_id,
-                            &candidate.interpretation_id,
+                            &candidate.payload_hash,
                             "changed",
                             0,
                             0,
@@ -615,7 +718,7 @@ impl ObservatoryApplication {
                         progress.failed_archives += 1;
                         self.storage.update_market_index_item(
                             &job_id,
-                            &candidate.interpretation_id,
+                            &candidate.payload_hash,
                             "failed",
                             0,
                             0,
@@ -1360,6 +1463,16 @@ impl ObservatoryApplication {
                     self.warehouse
                         .project_observation(&job.projection_id, &dataset, now_ms())
                 }),
+            "market_observation" => self
+                .storage
+                .market_warehouse_projection(&job.source_identity)
+                .and_then(|projection| {
+                    self.warehouse.project_market_observation(
+                        &job.projection_id,
+                        &projection,
+                        now_ms(),
+                    )
+                }),
             "overlay_state" => self.storage.active_overlay_document().and_then(|active| {
                 self.warehouse.project_overlay(
                     &job.projection_id,
@@ -1548,13 +1661,85 @@ fn directory_display_name(path: &Path, game_media: bool) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::fs::{self, File};
+    use std::io::Write;
 
     use tempfile::tempdir;
+    use zip::write::SimpleFileOptions;
 
-    use super::{ObservatoryApplication, count_save_candidates};
+    use super::{ObservatoryApplication, count_save_candidates, market_index_job_id};
     use crate::automatic_observer::latest_save_candidate_path;
-    use crate::model::WarehousePhase;
+    use crate::compatibility_profile::ResolvedCompatibilityProfile;
+    use crate::model::{DirectoryKind, MarketIndexCandidate, WarehousePhase};
+    use crate::save_archive::inspect_save_archive;
+
+    fn market_candidate(raw_payload_hash: &str) -> MarketIndexCandidate {
+        MarketIndexCandidate {
+            payload_hash: format!("payload-{raw_payload_hash}"),
+            source_file_name: format!("{raw_payload_hash}.zip"),
+            source_file_size: 100,
+            source_modified_ms: 1,
+            source_directory_identity: "directory".to_owned(),
+            raw_payload_hash: raw_payload_hash.to_owned(),
+        }
+    }
+
+    fn write_market_archive(path: &std::path::Path, record_id: u32) {
+        let file = File::create(path).expect("market archive");
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("stats.ini", SimpleFileOptions::default())
+            .expect("stats entry");
+        write!(
+            archive,
+            "$STATS_FORMAT 1\n\
+             $STAT_RECORD 0\n\
+             $DATE_YEAR 1980\n\
+             $DATE_DAY 1\n\
+             $Citizens_EletronicNone 100\n\
+             $Citizens_EletrinicRadio 20\n\
+             $Citizens_EletronicTV 10\n\
+             $Citizens_EletronicComputer 5\n\
+             $Economy_PurchaseCostRUB\n\
+             oil 12.5 1\n\
+             $end\n\
+             $Resources_ImportRUB\n\
+             oil 4 40\n\
+             $end\n\
+             $STAT_RECORD 1\n\
+             $DATE_YEAR 1980\n\
+             $DATE_DAY 2\n\
+             $Citizens_EletronicNone 101\n\
+             $Citizens_EletrinicRadio 21\n\
+             $Citizens_EletronicTV 11\n\
+             $Citizens_EletronicComputer 6\n\
+             $Resources_ImportRUB\n\
+             oil 4 41\n\
+             $end\n\
+             $STAT_RECORD {}\n\
+             $DATE_YEAR 1980\n\
+             $DATE_DAY {}\n\
+             $Citizens_EletronicNone {}\n\
+             $Citizens_EletrinicRadio 22\n\
+             $Citizens_EletronicTV 12\n\
+             $Citizens_EletronicComputer 7\n\
+             $Resources_ImportRUB\n\
+             oil 4 {}\n\
+             $end\n\
+             $STAT_CURRENT\n\
+             $Citizens_EletronicNone {}\n\
+             $Citizens_EletrinicRadio 23\n\
+             $Citizens_EletronicTV 13\n\
+             $Citizens_EletronicComputer 8\n",
+            record_id + 1,
+            record_id + 2,
+            100 + record_id,
+            40 + record_id,
+            101 + record_id,
+        )
+        .expect("stats payload");
+        archive.finish().expect("complete archive");
+    }
 
     #[test]
     fn candidates_are_zip_files_only() {
@@ -1570,6 +1755,79 @@ mod tests {
                 .and_then(|name| name.to_str()),
             Some("one.zip")
         );
+    }
+
+    #[test]
+    fn market_index_job_identity_is_content_derived_and_order_independent() {
+        let first = market_candidate("a");
+        let second = market_candidate("b");
+        let forward = market_index_job_id(
+            "directory-identity",
+            "profile-one",
+            &[first.clone(), second.clone()],
+        );
+        let reverse = market_index_job_id(
+            "directory-identity",
+            "profile-one",
+            &[second, first.clone(), first],
+        );
+        assert_eq!(forward, reverse);
+        assert_ne!(
+            forward,
+            market_index_job_id(
+                "directory-identity",
+                "profile-two",
+                &[market_candidate("a"), market_candidate("b")],
+            )
+        );
+    }
+
+    #[test]
+    fn guided_market_indexing_handles_a_25_save_batch_without_moving_the_head() {
+        let directory = tempdir().expect("temporary directory");
+        let saves = directory.path().join("saves");
+        fs::create_dir(&saves).expect("save directory");
+        let application = ObservatoryApplication::initialise(
+            directory.path().join("operational.sqlite3"),
+            directory.path().join("analytical.duckdb"),
+        )
+        .expect("application");
+        application
+            .configure_directory(DirectoryKind::Save, saves.to_string_lossy().into_owned())
+            .expect("configure saves");
+        let legacy = ResolvedCompatibilityProfile::legacy_reviewed_builtins()
+            .expect("legacy profiles")
+            .remove(0);
+        for index in 1..=25 {
+            let path = saves.join(format!("market-{index:02}.zip"));
+            write_market_archive(&path, index);
+            let inspection = inspect_save_archive(&path, &legacy).expect("legacy observation");
+            application
+                .storage
+                .save_inspection(&inspection)
+                .expect("observation");
+        }
+        let before = application
+            .archive_overview()
+            .expect("archive before indexing")
+            .analysis_context;
+        let progress = application
+            .index_available_saves_for_markets(|_| {})
+            .expect("guided indexing");
+        let after = application
+            .archive_overview()
+            .expect("archive after indexing")
+            .analysis_context;
+
+        assert_eq!(progress.total_archives, 25);
+        assert_eq!(progress.completed_archives, 25);
+        assert_eq!(progress.failed_archives, 0);
+        assert_eq!(progress.missing_archives, 0);
+        assert_eq!(progress.changed_archives, 0);
+        assert_eq!(before.selected_branch_id, after.selected_branch_id);
+        assert_eq!(before.head_interpretation_id, after.head_interpretation_id);
+        assert_eq!(before.mode, after.mode);
+        assert_eq!(before.origin, after.origin);
     }
 
     #[test]

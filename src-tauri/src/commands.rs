@@ -11,11 +11,11 @@ use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguag
 use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
-    DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketIndexingProgress,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
-    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketBasketDraft, MarketIndexingProgress,
+    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
+    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
+    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
+    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
@@ -214,6 +214,81 @@ pub fn get_republic_plan_workspace(
     state
         .application
         .republic_plan_workspace()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_market_workspace(state: State<'_, AppState>) -> Result<MarketWorkspace, CommandError> {
+    state.application.market_workspace().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn save_market_basket(
+    draft: MarketBasketDraft,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .save_market_basket(&draft)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn save_market_scenario(
+    draft: MarketScenarioDraft,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .save_market_scenario(&draft)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn select_market_definition(
+    kind: String,
+    definition_id: String,
+    revision: u32,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .select_market_definition(&kind, &definition_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn rollback_market_definition(
+    kind: String,
+    definition_id: String,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .rollback_market_definition(&kind, &definition_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn clear_market_selection(
+    kind: String,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .clear_market_selection(&kind)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_market_definition(
+    kind: String,
+    definition_id: String,
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    state
+        .application
+        .remove_market_definition(&kind, &definition_id)
         .map_err(Into::into)
 }
 

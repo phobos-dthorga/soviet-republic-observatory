@@ -155,7 +155,7 @@ impl ObservatoryStorage {
         transaction.execute(
             "UPDATE warehouse_projection_jobs SET status = 'pending', error_code = NULL, \
                  applied_at_ms = NULL \
-             WHERE projection_kind IN ('observation', 'overlay_state', 'branch_membership')",
+             WHERE projection_kind IN ('observation', 'market_observation', 'overlay_state', 'branch_membership')",
             [],
         )?;
         enqueue_projection_job(

@@ -74,6 +74,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "source-backed market observations and analytical definitions",
         include_str!("../../migrations/0014_market_observations.sql"),
     ),
+    (
+        15,
+        "market basket and scenario lifecycle",
+        include_str!("../../migrations/0015_market_definition_lifecycle.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

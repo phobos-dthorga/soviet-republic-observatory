@@ -314,6 +314,110 @@ impl ParsedMarketData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct MarketWarehouseRecord {
+    pub record_hash: String,
+    pub ordinal: u32,
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketWarehousePriceFact {
+    pub record_hash: Option<String>,
+    pub scope_kind: Option<String>,
+    pub scope_id: Option<String>,
+    pub currency: String,
+    pub price_side: String,
+    pub resource_token: String,
+    pub value: f64,
+    pub modifier: f64,
+    pub source_field: String,
+    pub source_line: u32,
+    pub mapping_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketWarehouseTradeFact {
+    pub record_hash: Option<String>,
+    pub scope_kind: Option<String>,
+    pub scope_id: Option<String>,
+    pub currency: String,
+    pub direction: String,
+    pub channel: String,
+    pub resource_token: String,
+    pub quantity: f64,
+    pub account_value: f64,
+    pub source_field: String,
+    pub source_line: u32,
+    pub mapping_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketWarehouseScalarFact {
+    pub record_hash: Option<String>,
+    pub scope_kind: Option<String>,
+    pub scope_id: Option<String>,
+    pub fact_id: String,
+    pub currency: Option<String>,
+    pub category: Option<i32>,
+    pub value: f64,
+    pub source_field: String,
+    pub source_line: u32,
+    pub mapping_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketPriceVolatility {
+    pub currency: String,
+    pub resource_token: String,
+    pub robust_log_volatility: f64,
+    pub observations: u32,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketWarehouseProjection {
+    pub interpretation_id: String,
+    pub raw_payload_hash: String,
+    pub branch_id: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
+    pub mapping_classification: String,
+    pub records: Vec<MarketWarehouseRecord>,
+    pub prices: Vec<MarketWarehousePriceFact>,
+    pub trades: Vec<MarketWarehouseTradeFact>,
+    pub scalars: Vec<MarketWarehouseScalarFact>,
+    pub analytical_trade_history: Vec<MarketTradePoint>,
+    pub analytical_price_volatility: Vec<MarketPriceVolatility>,
+}
+
+impl MarketWarehouseProjection {
+    pub fn row_count(&self) -> u64 {
+        self.records
+            .len()
+            .saturating_add(self.prices.len())
+            .saturating_add(self.trades.len())
+            .saturating_add(self.scalars.len())
+            .min(u64::MAX as usize) as u64
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MarketEvidenceDataset {
+    pub analysis_context: AnalysisContext,
+    pub projection: Option<MarketWarehouseProjection>,
+    pub coverage_status: Option<String>,
+    pub history_records: u32,
+    pub snapshot_scopes: u32,
+    pub row_count: u32,
+    pub warnings: Vec<CoverageWarning>,
+    pub baskets: Vec<MarketBasketSummary>,
+    pub scenarios: Vec<MarketScenarioSummary>,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CompatibilityProvenance {
     pub profile_id: String,
@@ -1040,8 +1144,8 @@ pub enum MarketIndexingPhase {
     Idle,
     Discovering,
     Matching,
-    Reading,
-    Parsing,
+    ReadingArchive,
+    ParsingRecords,
     Persisting,
     QueueingWarehouse,
     Complete,
@@ -1068,9 +1172,205 @@ pub struct MarketIndexingProgress {
     pub error_code: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketMetricContext {
+    pub metric_id: String,
+    pub formula: String,
+    pub currency: Option<String>,
+    pub unit: String,
+    pub time_basis: String,
+    pub exclusions: Vec<String>,
+    pub evidence_class: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub source_fields: Vec<String>,
+    pub analytical_head: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketCurrencyPulse {
+    pub currency: String,
+    pub standard_import_value: f64,
+    pub standard_export_value: f64,
+    pub standard_trade_result: f64,
+    pub international_import_value: f64,
+    pub international_export_value: f64,
+    pub international_trade_result: f64,
+    pub positive_export_hhi: Option<f64>,
+    pub positive_export_resource_count: u32,
+    pub context: MarketMetricContext,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketTradePoint {
+    pub record_hash: String,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub currency: String,
+    pub channel: String,
+    pub import_value: f64,
+    pub export_value: f64,
+    pub trade_result: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketResourceLedgerRow {
+    pub currency: String,
+    pub channel: String,
+    pub resource_token: String,
+    pub import_quantity: f64,
+    pub export_quantity: f64,
+    pub import_account_value: f64,
+    pub export_account_value: f64,
+    pub trade_result: f64,
+    pub disposal_cost: Option<f64>,
+    pub source_fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketPriceLedgerRow {
+    pub currency: String,
+    pub resource_token: String,
+    pub purchase_price: Option<f64>,
+    pub sell_price: Option<f64>,
+    pub base_price: Option<f64>,
+    pub purchase_index: Option<f64>,
+    pub sell_index: Option<f64>,
+    pub robust_log_volatility: Option<f64>,
+    pub volatility_observations: u32,
+    pub source_fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketScalarLedgerRow {
+    pub fact_id: String,
+    pub currency: Option<String>,
+    pub category: Option<i32>,
+    pub value: f64,
+    pub source_field: String,
+    pub source_line: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketCityRow {
+    pub source_id: String,
+    pub currency: String,
+    pub channel: String,
+    pub import_value: f64,
+    pub export_value: f64,
+    pub trade_result: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketBasketSummary {
+    pub basket_id: String,
+    pub revision: u32,
+    pub name: String,
+    pub currency: String,
+    pub price_side: String,
+    pub built_in: bool,
+    pub selected: bool,
+    pub base_record_hash: Option<String>,
+    pub resource_count: u32,
+    pub coverage_resources: u32,
+    pub index_value: Option<f64>,
+    pub reason: String,
+    pub weights: Vec<MarketBasketWeight>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketTermsOfTradeSummary {
+    pub currency: String,
+    pub base_record_hash: String,
+    pub import_basket_id: String,
+    pub import_basket_revision: u32,
+    pub export_basket_id: String,
+    pub export_basket_revision: u32,
+    pub import_index: f64,
+    pub export_index: f64,
+    pub terms_of_trade_index: f64,
+    pub context: MarketMetricContext,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MarketBasketWeight {
+    pub resource_token: String,
+    pub weight: f64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MarketBasketDraft {
+    pub basket_id: String,
+    pub name: String,
+    pub currency: String,
+    pub price_side: String,
+    pub base_record_hash: String,
+    pub reason: String,
+    pub weights: Vec<MarketBasketWeight>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketScenarioSummary {
+    pub scenario_id: String,
+    pub revision: u32,
+    pub name: String,
+    pub scenario_kind: String,
+    pub reason: String,
+    pub assumptions_json: String,
+    pub selected: bool,
+    pub result_kind: Option<String>,
+    pub result_value: Option<f64>,
+    pub result_unit: Option<String>,
+    pub covered_components: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MarketScenarioDraft {
+    pub scenario_id: String,
+    pub name: String,
+    pub scenario_kind: String,
+    pub currency: String,
+    pub reason: String,
+    pub domestic_unit_cost: Option<f64>,
+    pub delivery_cost: Option<f64>,
+    pub operating_efficiency_percent: Option<f64>,
+    pub exchange_rate: Option<f64>,
+    pub debt_service: Option<f64>,
+    pub export_stress_percent: Option<f64>,
+    pub tourism_stress_percent: Option<f64>,
+    pub included_income_components: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketWorkspace {
+    pub analysis_context: AnalysisContext,
+    pub available: bool,
+    pub partial: bool,
+    pub coverage_status: Option<String>,
+    pub history_records: u32,
+    pub row_count: u32,
+    pub city_scope_count: u32,
+    pub warehouse_history_available: bool,
+    pub warnings: Vec<CoverageWarning>,
+    pub currencies: Vec<MarketCurrencyPulse>,
+    pub trade_history: Vec<MarketTradePoint>,
+    pub resource_ledger: Vec<MarketResourceLedgerRow>,
+    pub price_ledger: Vec<MarketPriceLedgerRow>,
+    pub scalar_ledger: Vec<MarketScalarLedgerRow>,
+    pub cities: Vec<MarketCityRow>,
+    pub baskets: Vec<MarketBasketSummary>,
+    pub scenarios: Vec<MarketScenarioSummary>,
+    pub metric_contexts: Vec<MarketMetricContext>,
+    pub terms_of_trade: Vec<MarketTermsOfTradeSummary>,
+    pub reserves_available: bool,
+    pub terms_of_trade_available: bool,
+    pub limitations: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MarketIndexCandidate {
-    pub interpretation_id: String,
+    pub payload_hash: String,
     pub source_file_name: String,
     pub source_file_size: u64,
     pub source_modified_ms: i64,
@@ -1310,6 +1610,7 @@ pub enum WarehousePhase {
 pub enum WarehouseWriteKind {
     CataloguePublication,
     ObservationProjection,
+    MarketProjection,
     OverlayProjection,
     BranchMembershipProjection,
     ObservationRebuild,

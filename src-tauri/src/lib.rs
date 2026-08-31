@@ -12,6 +12,7 @@ mod error;
 mod fixed_binary;
 mod game_vocabulary;
 mod language_pack;
+mod market;
 mod metric_catalogue;
 mod model;
 mod planning_overlay;
@@ -93,6 +94,13 @@ pub fn run() {
             commands::get_republic_brief,
             commands::get_published_metric_contexts,
             commands::get_republic_plan_workspace,
+            commands::get_market_workspace,
+            commands::save_market_basket,
+            commands::save_market_scenario,
+            commands::select_market_definition,
+            commands::rollback_market_definition,
+            commands::clear_market_selection,
+            commands::remove_market_definition,
             commands::save_republic_plan,
             commands::activate_republic_plan,
             commands::rollback_republic_plan,

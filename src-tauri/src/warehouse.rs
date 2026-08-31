@@ -13,7 +13,9 @@ use crate::model::{
     BranchMembershipProjection, CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, ProductionPathwayAuxiliaryRequirement, ProductionPathwayCandidate,
+    DefinitionValue, MarketPriceVolatility, MarketTradePoint, MarketWarehousePriceFact,
+    MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseScalarFact,
+    MarketWarehouseTradeFact, ProductionPathwayAuxiliaryRequirement, ProductionPathwayCandidate,
     ProductionPathwayChoice, ProductionPathwayDiagnostic, ProductionPathwayLink,
     ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
     ProductionPathwayRequirement, ProductionRouteCoverage, ProductionRouteFlow,
@@ -27,7 +29,7 @@ use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 5;
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 6;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
@@ -191,6 +193,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         5,
         include_str!("../warehouse_migrations/0005_branch_memberships.sql"),
+    ),
+    (
+        6,
+        include_str!("../warehouse_migrations/0006_market_analytics.sql"),
     ),
 ];
 
@@ -679,6 +685,326 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    pub fn project_market_observation(
+        &self,
+        projection_id: &str,
+        projection: &MarketWarehouseProjection,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
+            return Ok(());
+        }
+        let rows_total = projection.row_count();
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::MarketProjection, rows_total)?;
+        let transaction = connection.transaction()?;
+        {
+            let mut appender = transaction.appender("market_observation_records")?;
+            let mut rows_written = 0_u64;
+            for record in &projection.records {
+                appender.append_row(params![
+                    projection.interpretation_id,
+                    projection.raw_payload_hash,
+                    projection.branch_id,
+                    record.record_hash,
+                    record.ordinal,
+                    record.record_id,
+                    record.year,
+                    record.day,
+                    record.game_day,
+                    projection.profile_id,
+                    projection.profile_version,
+                    projection.resolved_profile_hash,
+                    projection.mapping_classification,
+                ])?;
+                rows_written += 1;
+                if rows_written.is_multiple_of(512) {
+                    permit.progress(WarehouseWriteStage::Staging, rows_written);
+                }
+            }
+        }
+        {
+            let mut appender = transaction.appender("market_price_facts")?;
+            for fact in &projection.prices {
+                appender.append_row(params![
+                    projection.interpretation_id,
+                    fact.record_hash,
+                    fact.scope_kind,
+                    fact.scope_id,
+                    fact.currency,
+                    fact.price_side,
+                    fact.resource_token,
+                    fact.value,
+                    fact.modifier,
+                    fact.source_field,
+                    fact.source_line,
+                    fact.mapping_id,
+                ])?;
+            }
+        }
+        {
+            let mut appender = transaction.appender("market_trade_facts")?;
+            for fact in &projection.trades {
+                appender.append_row(params![
+                    projection.interpretation_id,
+                    fact.record_hash,
+                    fact.scope_kind,
+                    fact.scope_id,
+                    fact.currency,
+                    fact.direction,
+                    fact.channel,
+                    fact.resource_token,
+                    fact.quantity,
+                    fact.account_value,
+                    fact.source_field,
+                    fact.source_line,
+                    fact.mapping_id,
+                ])?;
+            }
+        }
+        {
+            let mut appender = transaction.appender("market_scalar_facts")?;
+            for fact in &projection.scalars {
+                appender.append_row(params![
+                    projection.interpretation_id,
+                    fact.record_hash,
+                    fact.scope_kind,
+                    fact.scope_id,
+                    fact.fact_id,
+                    fact.currency,
+                    fact.category,
+                    fact.value,
+                    fact.source_field,
+                    fact.source_line,
+                    fact.mapping_id,
+                ])?;
+            }
+        }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
+        record_receipt(
+            &transaction,
+            projection_id,
+            "market_observation",
+            &projection.interpretation_id,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1, observation_watermark = ?2 \
+             WHERE singleton_id = 1",
+            params![applied_at_ms, projection.interpretation_id],
+        )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
+        transaction.commit()?;
+        permit.complete();
+        Ok(())
+    }
+
+    pub(crate) fn market_projection(
+        &self,
+        metadata: &MarketWarehouseProjection,
+    ) -> Result<Option<MarketWarehouseProjection>, ObservatoryError> {
+        if !self.available {
+            return Ok(None);
+        }
+        let connection = self
+            .connection
+            .try_lock()
+            .map_err(|_| ObservatoryError::WarehouseUnavailable)?;
+        let projected = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM projection_receipts \
+             WHERE projection_kind = 'market_observation' AND source_identity = ?1)",
+            [&metadata.interpretation_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !projected {
+            return Ok(None);
+        }
+
+        let records = {
+            let mut statement = connection.prepare(
+                "SELECT record_hash, ordinal, record_id, year, day, game_day \
+                 FROM market_observation_records WHERE interpretation_id = ?1 ORDER BY ordinal",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    Ok(MarketWarehouseRecord {
+                        record_hash: row.get(0)?,
+                        ordinal: row.get(1)?,
+                        record_id: row.get(2)?,
+                        year: row.get(3)?,
+                        day: row.get(4)?,
+                        game_day: row.get(5)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let prices = {
+            let mut statement = connection.prepare(
+                "SELECT record_hash, scope_kind, scope_id, currency, price_side, resource_token, \
+                        value, modifier, source_field, source_line, mapping_id \
+                 FROM market_price_facts WHERE interpretation_id = ?1 \
+                   AND (record_hash IS NULL \
+                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) \
+                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 ORDER BY record_hash, scope_kind, scope_id, source_line",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    Ok(MarketWarehousePriceFact {
+                        record_hash: row.get(0)?,
+                        scope_kind: row.get(1)?,
+                        scope_id: row.get(2)?,
+                        currency: row.get(3)?,
+                        price_side: row.get(4)?,
+                        resource_token: row.get(5)?,
+                        value: row.get(6)?,
+                        modifier: row.get(7)?,
+                        source_field: row.get(8)?,
+                        source_line: row.get(9)?,
+                        mapping_id: row.get(10)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let trades = {
+            let mut statement = connection.prepare(
+                "SELECT record_hash, scope_kind, scope_id, currency, direction, channel, \
+                        resource_token, quantity, account_value, source_field, source_line, mapping_id \
+                 FROM market_trade_facts WHERE interpretation_id = ?1 \
+                   AND (record_hash IS NULL \
+                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) \
+                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 ORDER BY record_hash, scope_kind, scope_id, source_line",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    Ok(MarketWarehouseTradeFact {
+                        record_hash: row.get(0)?,
+                        scope_kind: row.get(1)?,
+                        scope_id: row.get(2)?,
+                        currency: row.get(3)?,
+                        direction: row.get(4)?,
+                        channel: row.get(5)?,
+                        resource_token: row.get(6)?,
+                        quantity: row.get(7)?,
+                        account_value: row.get(8)?,
+                        source_field: row.get(9)?,
+                        source_line: row.get(10)?,
+                        mapping_id: row.get(11)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let scalars = {
+            let mut statement = connection.prepare(
+                "SELECT record_hash, scope_kind, scope_id, fact_id, currency, category, value, \
+                        source_field, source_line, mapping_id \
+                 FROM market_scalar_facts WHERE interpretation_id = ?1 \
+                   AND (record_hash IS NULL \
+                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 ORDER BY record_hash, scope_kind, scope_id, source_line",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    Ok(MarketWarehouseScalarFact {
+                        record_hash: row.get(0)?,
+                        scope_kind: row.get(1)?,
+                        scope_id: row.get(2)?,
+                        fact_id: row.get(3)?,
+                        currency: row.get(4)?,
+                        category: row.get(5)?,
+                        value: row.get(6)?,
+                        source_field: row.get(7)?,
+                        source_line: row.get(8)?,
+                        mapping_id: row.get(9)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let analytical_trade_history = {
+            let mut statement = connection.prepare(
+                "SELECT record_hash, year, day, game_day, currency, channel, \
+                        SUM(CASE WHEN direction = 'import' THEN account_value ELSE 0 END), \
+                        SUM(CASE WHEN direction = 'export' THEN account_value ELSE 0 END) \
+                 FROM market_trade_history WHERE interpretation_id = ?1 \
+                 GROUP BY record_hash, year, day, game_day, currency, channel \
+                 ORDER BY game_day, currency, channel",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    let import_value = row.get::<_, f64>(6)?;
+                    let export_value = row.get::<_, f64>(7)?;
+                    Ok(MarketTradePoint {
+                        record_hash: row.get(0)?,
+                        year: row.get(1)?,
+                        day: row.get(2)?,
+                        game_day: row.get(3)?,
+                        currency: row.get(4)?,
+                        channel: row.get(5)?,
+                        import_value,
+                        export_value,
+                        trade_result: export_value - import_value,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let analytical_price_volatility = {
+            let mut statement = connection.prepare(
+                "WITH ordered AS ( \
+                     SELECT currency, resource_token, game_day, value, \
+                            LAG(value) OVER (PARTITION BY currency, resource_token \
+                                             ORDER BY game_day) AS previous_value \
+                     FROM market_price_history \
+                     WHERE interpretation_id = ?1 AND price_side = 'purchase' AND value > 0 \
+                 ), movements AS ( \
+                     SELECT currency, resource_token, LN(value / previous_value) AS movement \
+                     FROM ordered WHERE previous_value > 0 \
+                 ), centred AS ( \
+                     SELECT currency, resource_token, movement, \
+                            MEDIAN(movement) OVER (PARTITION BY currency, resource_token) AS centre \
+                     FROM movements WHERE ISFINITE(movement) \
+                 ) \
+                 SELECT currency, resource_token, \
+                        MEDIAN(ABS(movement - centre)) * 1.4826, COUNT(*) \
+                 FROM centred GROUP BY currency, resource_token HAVING COUNT(*) >= 2 \
+                 ORDER BY currency, resource_token",
+            )?;
+            statement
+                .query_map([&metadata.interpretation_id], |row| {
+                    Ok(MarketPriceVolatility {
+                        currency: row.get(0)?,
+                        resource_token: row.get(1)?,
+                        robust_log_volatility: row.get(2)?,
+                        observations: row.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        Ok(Some(MarketWarehouseProjection {
+            interpretation_id: metadata.interpretation_id.clone(),
+            raw_payload_hash: metadata.raw_payload_hash.clone(),
+            branch_id: metadata.branch_id.clone(),
+            profile_id: metadata.profile_id.clone(),
+            profile_version: metadata.profile_version.clone(),
+            resolved_profile_hash: metadata.resolved_profile_hash.clone(),
+            mapping_classification: metadata.mapping_classification.clone(),
+            records,
+            prices,
+            trades,
+            scalars,
+            analytical_trade_history,
+            analytical_price_volatility,
+        }))
+    }
+
     pub fn project_overlay(
         &self,
         projection_id: &str,
@@ -911,11 +1237,15 @@ impl AnalyticalWarehouse {
         permit.progress(WarehouseWriteStage::Rebuilding, 0);
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM observation_metrics", [])?;
+        transaction.execute("DELETE FROM market_price_facts", [])?;
+        transaction.execute("DELETE FROM market_trade_facts", [])?;
+        transaction.execute("DELETE FROM market_scalar_facts", [])?;
+        transaction.execute("DELETE FROM market_observation_records", [])?;
         transaction.execute("DELETE FROM branch_observation_memberships", [])?;
         transaction.execute("DELETE FROM branch_membership_generations", [])?;
         transaction.execute(
             "DELETE FROM projection_receipts \
-             WHERE projection_kind IN ('observation', 'branch_membership')",
+             WHERE projection_kind IN ('observation', 'market_observation', 'branch_membership')",
             [],
         )?;
         record_receipt(
@@ -2675,6 +3005,156 @@ mod tests {
         );
         drop(warehouse);
         AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn market_projection_is_idempotent_and_read_back_is_interpretation_bounded() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("market.duckdb"))
+            .expect("warehouse");
+        let projection = MarketWarehouseProjection {
+            interpretation_id: "interpretation-market".to_owned(),
+            raw_payload_hash: "raw-market".to_owned(),
+            branch_id: "main".to_owned(),
+            profile_id: "reviewed".to_owned(),
+            profile_version: "1.1.0".to_owned(),
+            resolved_profile_hash: "profile-hash".to_owned(),
+            mapping_classification: "reviewed_mapping".to_owned(),
+            records: vec![MarketWarehouseRecord {
+                record_hash: "record-one".to_owned(),
+                ordinal: 0,
+                record_id: 1,
+                year: 1980,
+                day: 1,
+                game_day: 1,
+            }],
+            prices: vec![MarketWarehousePriceFact {
+                record_hash: Some("record-one".to_owned()),
+                scope_kind: None,
+                scope_id: None,
+                currency: "rub".to_owned(),
+                price_side: "purchase".to_owned(),
+                resource_token: "steel".to_owned(),
+                value: 12.0,
+                modifier: 1.0,
+                source_field: "$Purchase".to_owned(),
+                source_line: 4,
+                mapping_id: "market.price.purchase.rub".to_owned(),
+            }],
+            trades: vec![MarketWarehouseTradeFact {
+                record_hash: Some("record-one".to_owned()),
+                scope_kind: None,
+                scope_id: None,
+                currency: "rub".to_owned(),
+                direction: "import".to_owned(),
+                channel: "standard".to_owned(),
+                resource_token: "steel".to_owned(),
+                quantity: 2.0,
+                account_value: 24.0,
+                source_field: "$Import".to_owned(),
+                source_line: 5,
+                mapping_id: "market.trade.import.standard.rub".to_owned(),
+            }],
+            scalars: Vec::new(),
+            analytical_trade_history: Vec::new(),
+            analytical_price_volatility: Vec::new(),
+        };
+        warehouse
+            .project_market_observation("market:one", &projection, 1)
+            .expect("first delivery");
+        warehouse
+            .project_market_observation("market:one", &projection, 2)
+            .expect("duplicate delivery");
+        let loaded = warehouse
+            .market_projection(&projection)
+            .expect("read")
+            .expect("projected");
+        assert_eq!(loaded.records.len(), 1);
+        assert_eq!(loaded.prices.len(), 1);
+        assert_eq!(loaded.trades.len(), 1);
+        assert_eq!(loaded.trades[0].account_value, 24.0);
+    }
+
+    #[test]
+    #[ignore = "reference-machine million-row market aggregation and memory-bound check"]
+    fn synthetic_market_scale_read_remains_bounded() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse =
+            AnalyticalWarehouse::initialise(directory.path().join("market-scale.duckdb"))
+                .expect("warehouse");
+        let projection = MarketWarehouseProjection {
+            interpretation_id: "interpretation-market-scale".to_owned(),
+            raw_payload_hash: "raw-market-scale".to_owned(),
+            branch_id: "main".to_owned(),
+            profile_id: "reviewed".to_owned(),
+            profile_version: "1.1.0".to_owned(),
+            resolved_profile_hash: "profile-hash".to_owned(),
+            mapping_classification: "reviewed_mapping".to_owned(),
+            records: vec![MarketWarehouseRecord {
+                record_hash: "record-0".to_owned(),
+                ordinal: 0,
+                record_id: 0,
+                year: 1980,
+                day: 1,
+                game_day: 1,
+            }],
+            prices: Vec::new(),
+            trades: Vec::new(),
+            scalars: Vec::new(),
+            analytical_trade_history: Vec::new(),
+            analytical_price_volatility: Vec::new(),
+        };
+        warehouse
+            .project_market_observation("market:scale", &projection, 1)
+            .expect("metadata projection");
+        {
+            let connection = warehouse.lock().expect("connection");
+            connection
+                .execute_batch(
+                    "INSERT INTO market_observation_records
+                     SELECT 'interpretation-market-scale', 'raw-market-scale', 'main',
+                            'record-' || CAST(i AS VARCHAR), i, i, 1980 + CAST(i / 365 AS INTEGER),
+                            CAST(i % 365 AS INTEGER) + 1, i + 1,
+                            'reviewed', '1.1.0', 'profile-hash', 'reviewed_mapping'
+                     FROM range(1, 2805) values(i);
+
+                     INSERT INTO market_trade_facts
+                     SELECT 'interpretation-market-scale',
+                            'record-' || CAST((i % 2804) + 1 AS VARCHAR),
+                            NULL, NULL, 'rub',
+                            CASE WHEN i % 2 = 0 THEN 'import' ELSE 'export' END,
+                            CASE WHEN i % 4 < 2 THEN 'standard' ELSE 'international' END,
+                            'resource_' || CAST(i % 128 AS VARCHAR), 1.0, 2.0,
+                            '$SyntheticMarket', CAST(i % 50000 AS BIGINT), 'market.synthetic'
+                     FROM range(0, 1000000) values(i);
+
+                     INSERT INTO market_trade_facts
+                     SELECT 'interpretation-market-scale', NULL, 'city', CAST(i AS VARCHAR),
+                            'rub', 'export', 'standard', 'resource_city', 1.0, 2.0,
+                            '$SyntheticCity', i, 'market.synthetic.city'
+                     FROM range(0, 139) values(i);",
+                )
+                .expect("synthetic rows");
+        }
+
+        let started = std::time::Instant::now();
+        let loaded = warehouse
+            .market_projection(&projection)
+            .expect("bounded read")
+            .expect("projected");
+        let elapsed = started.elapsed();
+        assert_eq!(loaded.records.len(), 2_805);
+        assert_eq!(loaded.analytical_trade_history.len(), 2_804);
+        assert_eq!(
+            loaded
+                .trades
+                .iter()
+                .filter(|fact| fact.scope_kind.as_deref() == Some("city"))
+                .count(),
+            139
+        );
+        assert!(loaded.trades.len() < 1_000);
+        eprintln!("bounded million-row market read completed in {elapsed:?}");
     }
 
     #[test]

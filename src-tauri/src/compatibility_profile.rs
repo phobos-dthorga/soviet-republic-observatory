@@ -12,6 +12,9 @@ use crate::model::{CompatibilityProvenance, RECEIVER_METRICS, SNAPSHOT_FACTS};
 pub const PARSER_ENGINE_API_VERSION: &str = "1.0.0";
 pub const PARSER_ENGINE_VERSION: &str = "compatibility-profile-engine.v1";
 pub const BUILTIN_PROFILE_ID: &str = "org.republic-observatory.wrsr-1.1.1.9";
+const LEGACY_BUILTIN_PROFILE_VERSION: &str = "1.0.0";
+const LEGACY_BUILTIN_PROFILE_HASH: &str =
+    "0f2737d29ddb50aa22a32d6fb1747e7c0ec5aa00227464a38d68b4ae1bac522e";
 
 const BUILTIN_PROFILE_BYTES: &[u8] =
     include_bytes!("../../compatibility/wrsr-1.1.1.9.rocompat.json");
@@ -540,6 +543,28 @@ impl ResolvedCompatibilityProfile {
             base: None,
             local_definition_mapping_ids: HashSet::new(),
         })
+    }
+
+    pub fn legacy_reviewed_builtins() -> Result<Vec<Self>, ObservatoryError> {
+        let mut document = CompatibilityProfileDocument::parse(BUILTIN_PROFILE_BYTES)?;
+        document.version = LEGACY_BUILTIN_PROFILE_VERSION.to_owned();
+        document.content_hash = LEGACY_BUILTIN_PROFILE_HASH.to_owned();
+        if let Some(stats_fields) = document.mappings.stats_fields.as_mut() {
+            stats_fields.retain(|mapping| !mapping.host_slot.starts_with("market."));
+        }
+        if document.calculated_content_hash()? != LEGACY_BUILTIN_PROFILE_HASH {
+            return invalid("legacy_builtin_identity");
+        }
+        let mappings = complete_mappings(&document.mappings)?;
+        validate_resolved_mappings(&mappings)?;
+        Ok(vec![Self {
+            resolved_hash: document.content_hash.clone(),
+            document,
+            mappings,
+            source: CompatibilityProfileSource::ReviewedBuiltin,
+            base: None,
+            local_definition_mapping_ids: HashSet::new(),
+        }])
     }
 
     pub fn resolve_override(
@@ -1330,6 +1355,27 @@ mod tests {
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("reviewed profile");
         assert_eq!(profile.stats_archive_aliases(), ["stats.ini"]);
         assert_eq!(profile.mapping_counts(), (6, 50, 35, 0, 0));
+    }
+
+    #[test]
+    fn legacy_reviewed_profile_remains_an_exact_inheritance_base() {
+        let legacy = ResolvedCompatibilityProfile::legacy_reviewed_builtins()
+            .expect("legacy profiles")
+            .pop()
+            .expect("legacy profile");
+        assert_eq!(legacy.version(), "1.0.0");
+        assert_eq!(
+            legacy.content_hash(),
+            "0f2737d29ddb50aa22a32d6fb1747e7c0ec5aa00227464a38d68b4ae1bac522e"
+        );
+        assert_eq!(legacy.mapping_counts(), (6, 18, 35, 0, 0));
+        let local = CompatibilityProfileDocument::starter_override(&legacy);
+        let resolved = ResolvedCompatibilityProfile::resolve_override(&legacy, local)
+            .expect("legacy-based override");
+        assert_eq!(
+            resolved.base().expect("base").content_hash,
+            legacy.content_hash()
+        );
     }
 
     #[test]
