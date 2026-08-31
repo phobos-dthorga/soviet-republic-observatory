@@ -379,3 +379,68 @@ test("guidance density rejects the collapsed Population-note regression", async 
     true,
   );
 });
+
+test("geometry audit rejects a tooltip that escapes the viewport", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const fixture = document.createElement("div");
+    fixture.id = "escaping-tooltip-fixture";
+    fixture.setAttribute("role", "tooltip");
+    fixture.textContent = "Deliberately unreachable tooltip fixture";
+    Object.assign(fixture.style, {
+      position: "fixed",
+      left: "-80px",
+      top: "20px",
+      width: "120px",
+      height: "40px",
+      background: "white",
+      color: "black",
+    });
+    document.body.append(fixture);
+  });
+
+  const defects = await page.evaluate(auditInterfaceDom);
+  expect(
+    defects.some((defect) => defect.kind === "tooltip-viewport-escape"),
+  ).toBe(true);
+});
+
+test("geometry audit rejects a control painted over a tooltip", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const tooltip = document.createElement("div");
+    tooltip.id = "occluded-tooltip-fixture";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.textContent = "Tooltip evidence must remain readable";
+    Object.assign(tooltip.style, {
+      position: "fixed",
+      zIndex: "10",
+      left: "20px",
+      top: "20px",
+      width: "240px",
+      height: "100px",
+      background: "white",
+      color: "black",
+    });
+    const control = document.createElement("button");
+    control.textContent = "Occluding control";
+    Object.assign(control.style, {
+      position: "fixed",
+      zIndex: "20",
+      left: "60px",
+      top: "50px",
+      width: "120px",
+      height: "40px",
+    });
+    document.body.append(tooltip, control);
+  });
+
+  const defects = await page.evaluate(auditInterfaceDom);
+  expect(defects.some((defect) => defect.kind === "tooltip-occlusion")).toBe(
+    true,
+  );
+});

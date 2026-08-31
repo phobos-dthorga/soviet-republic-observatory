@@ -180,6 +180,35 @@ export type BriefSourceEvidence = {
   source_line: number;
 };
 
+export type MetricPopulationBasis =
+  | "all_recorded_citizens"
+  | "source_defined_adults"
+  | "source_defined_small_children"
+  | "source_defined_unemployed"
+  | "classified_receiver_population";
+
+export type MetricTimeBasis = "exact_selected_observation";
+
+export type MetricGeographicScope = "whole_republic";
+
+export type MetricComparisonBasis = "proven_preceding_same_branch_and_profile";
+
+export type MetricContextLimitation =
+  | "not_employment_count"
+  | "not_workers_only"
+  | "source_age_boundary_unverified"
+  | "source_window_unverified"
+  | "excludes_unclassified_citizens";
+
+export type MetricContext = {
+  population_basis: MetricPopulationBasis;
+  time_basis: MetricTimeBasis;
+  geographic_scope: MetricGeographicScope;
+  denominator_metric_id: string | null;
+  comparison_basis: MetricComparisonBasis;
+  limitations: MetricContextLimitation[];
+};
+
 export type BriefMetric = {
   metric_id: string;
   role: BriefMetricRole;
@@ -189,6 +218,7 @@ export type BriefMetric = {
   share_basis_points: number | null;
   evidence_kind: BriefEvidenceKind;
   sources: BriefSourceEvidence[];
+  context: MetricContext;
 };
 
 export type BriefObservation = {

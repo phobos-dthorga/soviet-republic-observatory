@@ -405,6 +405,54 @@ pub struct BriefSourceEvidence {
     pub source_line: u64,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricPopulationBasis {
+    AllRecordedCitizens,
+    SourceDefinedAdults,
+    SourceDefinedSmallChildren,
+    SourceDefinedUnemployed,
+    ClassifiedReceiverPopulation,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricTimeBasis {
+    ExactSelectedObservation,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricGeographicScope {
+    WholeRepublic,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricComparisonBasis {
+    ProvenPrecedingSameBranchAndProfile,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricContextLimitation {
+    NotEmploymentCount,
+    NotWorkersOnly,
+    SourceAgeBoundaryUnverified,
+    SourceWindowUnverified,
+    ExcludesUnclassifiedCitizens,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct MetricContext {
+    pub population_basis: MetricPopulationBasis,
+    pub time_basis: MetricTimeBasis,
+    pub geographic_scope: MetricGeographicScope,
+    pub denominator_metric_id: Option<String>,
+    pub comparison_basis: MetricComparisonBasis,
+    pub limitations: Vec<MetricContextLimitation>,
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct BriefMetric {
     pub metric_id: String,
@@ -415,6 +463,7 @@ pub struct BriefMetric {
     pub share_basis_points: Option<u16>,
     pub evidence_kind: BriefEvidenceKind,
     pub sources: Vec<BriefSourceEvidence>,
+    pub context: MetricContext,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

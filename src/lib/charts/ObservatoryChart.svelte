@@ -31,6 +31,8 @@
     ObservatoryChartSpec,
   } from "./types";
   import { chartThemeFor } from "./themeAdapter";
+  import ContextHelp from "../ui/ContextHelp.svelte";
+  import type { ContextHelpContent } from "../ui/types";
 
   echarts.use([
     BarChart,
@@ -47,10 +49,12 @@
     spec,
     height = "250px",
     eyebrow,
+    help = null,
   }: {
     spec: ObservatoryChartSpec;
     height?: string;
     eyebrow: string;
+    help?: ContextHelpContent | null;
   } = $props();
   let container = $state<HTMLDivElement>();
   let chart = $state.raw<ECharts>();
@@ -184,6 +188,15 @@
       <h3>{spec.title}</h3>
     </div>
     <div class="badges" aria-label={$translation("chart-evidence-label")}>
+      {#if help}
+        <ContextHelp
+          topic={help.topic}
+          title={help.title}
+          text={help.text}
+          details={help.details}
+          placement="left"
+        />
+      {/if}
       <span class="badge" data-kind={spec.provenance.kind}
         >{$translation(evidenceKeys[spec.provenance.kind])}</span
       >

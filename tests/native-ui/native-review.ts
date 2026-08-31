@@ -129,11 +129,23 @@ async function prepareInteractiveScenario(
   scenario: UiReviewScenarioId,
 ): Promise<void> {
   if (scenario === "tooltip-contextual") {
-    const trigger = await client.$("[data-help-topic='safe-themes'] button");
+    const trigger = await client.$(
+      "[data-help-topic='metric-context-source-stats-citizens-adults'] button",
+    );
     await trigger.waitForDisplayed();
     await trigger.scrollIntoView({ block: "center", inline: "center" });
     await trigger.click();
-    await (await client.$("[role='tooltip']")).waitForDisplayed();
+    const tooltip = await client.$("[role='tooltip']");
+    await tooltip.waitForDisplayed();
+    const text = await tooltip.getText();
+    if (
+      !text.includes("W&R's source-defined adult class") ||
+      !text.includes("Not employed workers or active workers")
+    ) {
+      throw new Error(
+        "The Metric Context tooltip omitted its source boundary.",
+      );
+    }
   } else if (scenario === "keyboard-focus") {
     await client.keys(["Tab", "Tab"]);
   } else if (scenario === "native-dropdown") {

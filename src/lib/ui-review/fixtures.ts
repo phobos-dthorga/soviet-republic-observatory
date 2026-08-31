@@ -28,6 +28,29 @@ export function reviewRepublicBrief(): RepublicBrief {
   const source = (source_field: string, source_line: number) => [
     { source_field, source_line },
   ];
+  const context = (
+    population_basis:
+      | "all_recorded_citizens"
+      | "source_defined_adults"
+      | "source_defined_small_children"
+      | "source_defined_unemployed"
+      | "classified_receiver_population",
+    limitations: Array<
+      | "not_employment_count"
+      | "not_workers_only"
+      | "source_age_boundary_unverified"
+      | "source_window_unverified"
+      | "excludes_unclassified_citizens"
+    >,
+    denominator_metric_id: string | null = null,
+  ) => ({
+    population_basis,
+    time_basis: "exact_selected_observation" as const,
+    geographic_scope: "whole_republic" as const,
+    denominator_metric_id,
+    comparison_basis: "proven_preceding_same_branch_and_profile" as const,
+    limitations,
+  });
   return {
     schema_version: 1,
     analysis_context: { ...reviewContext },
@@ -60,6 +83,7 @@ export function reviewRepublicBrief(): RepublicBrief {
         share_basis_points: null,
         evidence_kind: "save_fact",
         sources: source("$Citizens_Adults", 1_719_858),
+        context: context("source_defined_adults", ["not_employment_count"]),
       },
       {
         metric_id: "source.stats.citizens.small_children",
@@ -70,6 +94,9 @@ export function reviewRepublicBrief(): RepublicBrief {
         share_basis_points: null,
         evidence_kind: "save_fact",
         sources: source("$Citizens_ChildrenSmall", 1_719_857),
+        context: context("source_defined_small_children", [
+          "source_age_boundary_unverified",
+        ]),
       },
       {
         metric_id: "source.stats.citizens.unemployed",
@@ -80,6 +107,9 @@ export function reviewRepublicBrief(): RepublicBrief {
         share_basis_points: null,
         evidence_kind: "save_fact",
         sources: source("$Citizens_Unemployed", 1_719_860),
+        context: context("source_defined_unemployed", [
+          "source_window_unverified",
+        ]),
       },
       {
         metric_id: "core.citizens.electronics.classified_total",
@@ -98,6 +128,9 @@ export function reviewRepublicBrief(): RepublicBrief {
             source_line: 1_719_860,
           },
         ],
+        context: context("classified_receiver_population", [
+          "excludes_unclassified_citizens",
+        ]),
       },
       ...[
         [
@@ -127,6 +160,7 @@ export function reviewRepublicBrief(): RepublicBrief {
         share_basis_points: null,
         evidence_kind: "save_fact" as const,
         sources: source(source_field as string, source_line as number),
+        context: context("all_recorded_citizens", ["not_workers_only"]),
       })),
       ...[
         [
@@ -173,6 +207,11 @@ export function reviewRepublicBrief(): RepublicBrief {
           share_basis_points: share_basis_points as number,
           evidence_kind: "save_fact" as const,
           sources: source(source_field as string, source_line as number),
+          context: context(
+            "classified_receiver_population",
+            ["excludes_unclassified_citizens"],
+            "core.citizens.electronics.classified_total",
+          ),
         }),
       ),
     ],

@@ -140,6 +140,27 @@ is not actual yield.
 
 ## Population and cities
 
+### Metric Context contract
+
+Every implemented metric whose scope could be mistaken for a neighbouring game
+statistic carries a versioned host-owned context containing:
+
+- counted population or entity basis;
+- exact time basis and geographic scope;
+- denominator metric, when a ratio or share has one;
+- permitted comparison basis; and
+- explicit limitations.
+
+The context travels with the bounded metric model into cards, charts, and
+evidence inspection. Interface prose may translate it but may not redefine it.
+Required scope remains visible outside a tooltip.
+
+The current education source fields partition the Observatory's all-recorded-
+citizen demographic total in every validated observation. They therefore do
+not reproduce W&R's workers-only education panel. The source-defined `adults`
+field is likewise not an employment count. These distinctions describe source
+population bases; they do not infer the game's internal age or workforce rules.
+
 ### Rate normalisation
 
 Deaths, escapes, births, and similar counts should be offered as:

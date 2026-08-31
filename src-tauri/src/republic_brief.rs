@@ -1,8 +1,10 @@
 use crate::model::{
     AnalysisContextMode, BriefComparisonAnchor, BriefEvidenceKind, BriefFinding,
     BriefFindingSeverity, BriefMetric, BriefMetricRole, BriefObservation, BriefOperations,
-    BriefSourceEvidence, CatalogueStatus, CoverageStatus, PopulationDataset, PopulationFact,
-    PopulationObservation, RecorderHealth, RepublicBrief, WarehousePhase,
+    BriefSourceEvidence, CatalogueStatus, CoverageStatus, MetricComparisonBasis, MetricContext,
+    MetricContextLimitation, MetricGeographicScope, MetricPopulationBasis, MetricTimeBasis,
+    PopulationDataset, PopulationFact, PopulationObservation, RecorderHealth, RepublicBrief,
+    WarehousePhase,
 };
 
 const SCHEMA_VERSION: u32 = 1;
@@ -145,6 +147,7 @@ pub fn build_republic_brief(
                 share_basis_points: None,
                 evidence_kind: BriefEvidenceKind::Calculation,
                 sources: receiver_sources(current),
+                context: metric_context(RECEIVER_TOTAL),
             },
         );
     }
@@ -206,7 +209,52 @@ fn raw_metric(
             source_field: current_fact.source_field.clone(),
             source_line: current_fact.source_line,
         }],
+        context: metric_context(metric_id),
     })
+}
+
+fn metric_context(metric_id: &str) -> MetricContext {
+    let (population_basis, denominator_metric_id, limitations) = match metric_id {
+        ADULTS => (
+            MetricPopulationBasis::SourceDefinedAdults,
+            None,
+            vec![MetricContextLimitation::NotEmploymentCount],
+        ),
+        SMALL_CHILDREN => (
+            MetricPopulationBasis::SourceDefinedSmallChildren,
+            None,
+            vec![MetricContextLimitation::SourceAgeBoundaryUnverified],
+        ),
+        UNEMPLOYED => (
+            MetricPopulationBasis::SourceDefinedUnemployed,
+            None,
+            vec![MetricContextLimitation::SourceWindowUnverified],
+        ),
+        NO_EDUCATION | BASIC_EDUCATION | HIGHER_EDUCATION => (
+            MetricPopulationBasis::AllRecordedCitizens,
+            None,
+            vec![MetricContextLimitation::NotWorkersOnly],
+        ),
+        RECEIVER_NONE | RECEIVER_RADIO | RECEIVER_TELEVISION | RECEIVER_COMPUTER => (
+            MetricPopulationBasis::ClassifiedReceiverPopulation,
+            Some(RECEIVER_TOTAL.to_owned()),
+            vec![MetricContextLimitation::ExcludesUnclassifiedCitizens],
+        ),
+        RECEIVER_TOTAL => (
+            MetricPopulationBasis::ClassifiedReceiverPopulation,
+            None,
+            vec![MetricContextLimitation::ExcludesUnclassifiedCitizens],
+        ),
+        _ => unreachable!("Republic Brief metrics are selected from a closed host catalogue"),
+    };
+    MetricContext {
+        population_basis,
+        time_basis: MetricTimeBasis::ExactSelectedObservation,
+        geographic_scope: MetricGeographicScope::WholeRepublic,
+        denominator_metric_id,
+        comparison_basis: MetricComparisonBasis::ProvenPrecedingSameBranchAndProfile,
+        limitations,
+    }
 }
 
 fn fact<'a>(observation: &'a PopulationObservation, metric_id: &str) -> Option<&'a PopulationFact> {
@@ -410,12 +458,35 @@ mod tests {
         assert_eq!(adults.previous_value, Some(1_000));
         assert_eq!(adults.delta, Some(100));
         assert_eq!(adults.sources[0].source_field, "$Citizens_Adults");
+        assert_eq!(
+            adults.context.population_basis,
+            MetricPopulationBasis::SourceDefinedAdults
+        );
+        assert_eq!(
+            adults.context.limitations,
+            vec![MetricContextLimitation::NotEmploymentCount]
+        );
+        assert_eq!(
+            metric(&brief, BASIC_EDUCATION).context.population_basis,
+            MetricPopulationBasis::AllRecordedCitizens
+        );
+        assert_eq!(
+            metric(&brief, BASIC_EDUCATION).context.limitations,
+            vec![MetricContextLimitation::NotWorkersOnly]
+        );
         let total = metric(&brief, RECEIVER_TOTAL);
         assert_eq!(total.value, 1_100);
         assert_eq!(total.evidence_kind, BriefEvidenceKind::Calculation);
         assert_eq!(
             metric(&brief, RECEIVER_RADIO).share_basis_points,
             Some(3_000)
+        );
+        assert_eq!(
+            metric(&brief, RECEIVER_RADIO)
+                .context
+                .denominator_metric_id
+                .as_deref(),
+            Some(RECEIVER_TOTAL)
         );
         assert_eq!(brief.dispatch_code, "observation_ready");
     }

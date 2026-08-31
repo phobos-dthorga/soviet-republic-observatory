@@ -23,13 +23,16 @@ distinct states, resolves supported ancestry, compares two states within one
 branch, and renders Observer Health, Republic Pulse, and an observed Receiver
 Ladder. The Republic Briefing now reports exact-head population, education, and
 receiver facts, proven preceding-observation changes, source provenance, and
-deterministic operational findings. Unsupported Briefing and Broadcast claims
-remain visibly unavailable rather than synthetic. The Industrial Catalogue now retains local definition generations in
-DuckDB, projects save observations through a durable SQLite outbox, and supports
-strict inert planning overlays. The first local Analysis Pack lifecycle now
-validates, stores, enables, evaluates, and renders declarative packs without
-giving them code or database access. Binary station telemetry is not yet
-implemented. Version-sensitive game keys are supplied by a reviewed inert W&R
+deterministic operational findings. Its host-owned Metric Context keeps the
+counted population, time and geography, denominator, comparison rule, and
+known limitations attached to every displayed measure. Unsupported Briefing
+and Broadcast claims remain visibly unavailable rather than synthetic. The
+Industrial Catalogue now retains local definition generations in DuckDB,
+projects save observations through a durable SQLite outbox, and supports strict
+inert planning overlays. The first local Analysis Pack lifecycle now validates,
+stores, enables, evaluates, and renders declarative packs without giving them
+code or database access. Binary station telemetry is not yet implemented.
+Version-sensitive game keys are supplied by a reviewed inert W&R
 1.1.1.9 compatibility profile; one local exact-base repair may activate as
 visibly `player_mapped` evidence without rewriting an earlier observation.
 Definition aliases for unusual mods may be source-scoped to an exact Workshop

@@ -98,6 +98,16 @@ provenance, calculates only same-observation receiver shares and proven
 save-to-save deltas, and emits deterministic operational findings. Svelte maps
 that host model into cards, charts, evidence ledgers, and navigation.
 
+Every Brief metric carries a host-owned **Metric Context**: counted population,
+exact time basis, geographic scope, denominator, comparison rule, and known
+limitations. The card keeps population and geography visible without
+interaction; a keyboard-accessible contextual explanation and the evidence
+inspector expose the complete contract. Education counts describe all recorded
+citizens and explicitly differ from W&R's workers-only education panel.
+Receiver shares name the four-class classified population as their denominator
+and do not imply whole-population coverage. Svelte localises and presents this
+model but does not invent or repair metric meaning.
+
 Plan attainment, import exposure, and observed material reliance remain visible
 as unsupported capabilities without placeholder values. Installed definitions
 may answer what a route permits; they do not prove what this republic produced,

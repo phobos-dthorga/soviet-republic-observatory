@@ -26,6 +26,12 @@ state and validated theme roles; it never establishes business meaning. The
 automated architecture audit enforces these import and mutation seams. See
 [ADR-0016](docs/architecture/decisions/0016-domain-presentation-boundary.md).
 
+Every non-obvious metric must receive a host-owned Metric Context covering its
+population/entity basis, time and geography, denominator, comparison rule, and
+known limitations. Presentation adapters may translate that context into help
+and chart copy but may not reconstruct it from labels or values. Keep the
+essential scope visible; contextual help supplements rather than replaces it.
+
 Use the shared notification centre for transient outcomes, the critical-task
 components for long-running progress, and inline messages for validation tied
 to a particular field or operation. Contextual explanations use the shared

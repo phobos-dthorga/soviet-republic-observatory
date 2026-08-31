@@ -161,6 +161,60 @@ input:focus-visible {
   color: var(--colour-muted);
 }
 
+.context-tooltip dl {
+  display: grid;
+  gap: 7px;
+  margin: 3px 0 0;
+  padding-top: 9px;
+  border-top: 1px solid var(--colour-line-faint);
+}
+
+.context-tooltip dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.context-tooltip dt,
+.context-tooltip dd {
+  margin: 0;
+}
+
+.context-tooltip dt {
+  color: var(--colour-guidance);
+  font-size: var(--type-caption);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.context-tooltip dd {
+  color: var(--colour-text);
+}
+
+.metric-card-help .context-tooltip,
+.chart-card .context-tooltip {
+  width: min(420px, calc(100vw - 32px));
+}
+
+.metric-card-help:has(.context-help > button[aria-expanded="true"]) {
+  z-index: 150;
+}
+
+.metric-card-help .context-tooltip dl > div,
+.chart-card .context-tooltip dl > div {
+  grid-template-columns: minmax(118px, 0.8fr) minmax(0, 1.4fr);
+  align-items: start;
+  gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .metric-card-help .context-tooltip dl > div,
+  .chart-card .context-tooltip dl > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .context-help[data-placement="left"] .context-tooltip {
   inset-inline-end: 0;
   top: calc(100% + 8px);

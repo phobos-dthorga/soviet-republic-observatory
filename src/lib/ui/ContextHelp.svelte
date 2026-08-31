@@ -1,13 +1,17 @@
 <script lang="ts">
+  import type { ContextHelpDetail } from "./types";
+
   let {
     topic,
     title,
     text,
+    details = [],
     placement = "left",
   }: {
     topic: string;
     title: string;
     text: string;
+    details?: ContextHelpDetail[];
     placement?: "left" | "right" | "below";
   } = $props();
 
@@ -45,6 +49,16 @@
     >
       <strong>{title}</strong>
       <span>{text}</span>
+      {#if details.length}
+        <dl>
+          {#each details as detail}
+            <div>
+              <dt>{detail.label}</dt>
+              <dd>{detail.value}</dd>
+            </div>
+          {/each}
+        </dl>
+      {/if}
     </span>
   {/if}
 </span>

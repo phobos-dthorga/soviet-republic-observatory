@@ -14,6 +14,12 @@
     createBriefEducationChart,
     createBriefReceiverChart,
   } from "../presentation/republicBrief";
+  import {
+    metricContextDetails,
+    metricContextHelp,
+    metricContextSummary,
+  } from "../presentation/metricContext";
+  import ContextHelp from "../ui/ContextHelp.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
 
   type LinkedWorkspace = "monitor" | "materials" | "population" | "archive";
@@ -171,6 +177,29 @@
   const receiverChart = $derived(
     brief ? createBriefReceiverChart(brief, $translation) : null,
   );
+  const educationMetric = $derived(
+    brief?.metrics.find((metric) => metric.role === "education") ?? null,
+  );
+  const receiverMetric = $derived(
+    brief?.metrics.find((metric) => metric.role === "receiver_class") ?? null,
+  );
+  const metricLabel = (metricId: string): string =>
+    briefMetricLabel(metricId, $translation);
+  const educationHelp = $derived(
+    educationMetric
+      ? metricContextHelp(educationMetric, $translation, metricLabel)
+      : null,
+  );
+  const receiverHelp = $derived(
+    receiverMetric
+      ? metricContextHelp(receiverMetric, $translation, metricLabel)
+      : null,
+  );
+  const selectedMetricDetails = $derived(
+    selectedMetric
+      ? metricContextDetails(selectedMetric.context, $translation, metricLabel)
+      : [],
+  );
 
   function findingCopy(finding: BriefFinding): [string, string] {
     const keys = findingKeys[finding.code as keyof typeof findingKeys];
@@ -308,36 +337,49 @@
         aria-label={$translation("briefing-kpis-label")}
       >
         {#each headlineMetrics as metric}
-          <button
-            type="button"
-            class="kpi-card metric-card"
-            class:selected={selectedMetric?.metric_id === metric.metric_id}
-            aria-pressed={selectedMetric?.metric_id === metric.metric_id}
-            onclick={() => (selectedMetricId = metric.metric_id)}
-          >
-            <header>
-              <span>{briefMetricLabel(metric.metric_id, $translation)}</span>
-              <span class="coverage"
-                >{$translation(
-                  brief?.observation?.coverage_status === "complete"
-                    ? "coverage-complete"
-                    : "coverage-partial",
-                )}</span
-              >
-            </header>
-            <strong>{metricValue(metric)}</strong>
-            <p>{metricChange(metric)}</p>
-            <footer>
-              <span>{$translation("briefing-whole-republic-snapshot")}</span>
-              <span class="badge" data-kind={metric.evidence_kind}
-                >{$translation(
-                  metric.evidence_kind === "save_fact"
-                    ? "evidence-save-fact"
-                    : "evidence-calculation",
-                )}</span
-              >
-            </footer>
-          </button>
+          {@const help = metricContextHelp(metric, $translation, metricLabel)}
+          <div class="metric-card-shell">
+            <button
+              type="button"
+              class="kpi-card metric-card"
+              class:selected={selectedMetric?.metric_id === metric.metric_id}
+              aria-pressed={selectedMetric?.metric_id === metric.metric_id}
+              onclick={() => (selectedMetricId = metric.metric_id)}
+            >
+              <header>
+                <span>{briefMetricLabel(metric.metric_id, $translation)}</span>
+                <span class="coverage"
+                  >{$translation(
+                    brief?.observation?.coverage_status === "complete"
+                      ? "coverage-complete"
+                      : "coverage-partial",
+                  )}</span
+                >
+              </header>
+              <strong>{metricValue(metric)}</strong>
+              <p>{metricChange(metric)}</p>
+              <footer>
+                <span>{metricContextSummary(metric.context, $translation)}</span
+                >
+                <span class="badge" data-kind={metric.evidence_kind}
+                  >{$translation(
+                    metric.evidence_kind === "save_fact"
+                      ? "evidence-save-fact"
+                      : "evidence-calculation",
+                  )}</span
+                >
+              </footer>
+            </button>
+            <span class="metric-card-help">
+              <ContextHelp
+                topic={help.topic}
+                title={help.title}
+                text={help.text}
+                details={help.details}
+                placement="left"
+              />
+            </span>
+          </div>
         {/each}
       </section>
     {:else}
@@ -360,10 +402,12 @@
         <ObservatoryChart
           spec={educationChart}
           eyebrow={$translation("briefing-education-assay")}
+          help={educationHelp}
         />
         <ObservatoryChart
           spec={receiverChart}
           eyebrow={$translation("briefing-receiver-assay")}
+          help={receiverHelp}
         />
       </section>
     {/if}
@@ -473,6 +517,17 @@
           </div>
         {/each}
       </section>
+      <section class="metric-context-ledger">
+        <span class="eyebrow">{$translation("metric-context-ledger")}</span>
+        <dl>
+          {#each selectedMetricDetails as detail}
+            <div>
+              <dt>{detail.label}</dt>
+              <dd>{detail.value}</dd>
+            </div>
+          {/each}
+        </dl>
+      </section>
     {/if}
 
     <div class="fact-grid brief-operations">
@@ -549,9 +604,91 @@
 <style>
   .metric-card {
     width: 100%;
+    height: 100%;
     color: inherit;
     text-align: start;
     cursor: pointer;
+  }
+
+  .metric-card-shell {
+    position: relative;
+    min-width: 0;
+  }
+
+  .metric-card-shell .metric-card > header {
+    padding-inline-end: 36px;
+  }
+
+  .metric-card-help {
+    position: absolute;
+    z-index: 12;
+    inset-block-start: 9px;
+    inset-inline-end: 9px;
+  }
+
+  @media (min-width: 1501px) {
+    .metric-card-shell:nth-child(3n + 1)
+      .metric-card-help
+      :global(.context-tooltip) {
+      inset-inline-start: 0;
+      inset-inline-end: auto;
+    }
+  }
+
+  @media (min-width: 761px) and (max-width: 1500px) {
+    .kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .metric-card-shell:nth-child(2n + 1)
+      .metric-card-help
+      :global(.context-tooltip) {
+      inset-inline-start: 0;
+      inset-inline-end: auto;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .kpi-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .metric-context-ledger {
+    display: grid;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  .metric-context-ledger dl {
+    display: grid;
+    gap: 0;
+    margin: 0;
+  }
+
+  .metric-context-ledger dl > div {
+    display: grid;
+    gap: 3px;
+    border-bottom: 1px solid var(--colour-line-faint);
+    padding: 9px 0;
+  }
+
+  .metric-context-ledger dt,
+  .metric-context-ledger dd {
+    margin: 0;
+  }
+
+  .metric-context-ledger dt {
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .metric-context-ledger dd {
+    color: var(--colour-text);
+    font-size: var(--type-caption);
+    line-height: 1.5;
   }
 
   .metric-card.selected {

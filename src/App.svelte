@@ -415,7 +415,8 @@
         });
         break;
       case "tooltip-contextual":
-        themeDialogOpen = true;
+        activeWorkspace = "briefing";
+        republicBrief = reviewRepublicBrief();
         break;
       case "attention-cue":
         activeWorkspace = "population";

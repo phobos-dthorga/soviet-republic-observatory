@@ -132,6 +132,55 @@ export function auditInterfaceDom(): InterfaceAuditFailure[] {
     }
   }
 
+  for (const tooltip of document.querySelectorAll("[role='tooltip']")) {
+    if (!visible(tooltip)) continue;
+    const box = tooltip.getBoundingClientRect();
+    if (
+      box.left < -tolerance ||
+      box.right > viewport.width + tolerance ||
+      box.top < -tolerance ||
+      box.bottom > viewport.height + tolerance
+    ) {
+      result.push({
+        kind: "tooltip-viewport-escape",
+        selector: identity(tooltip),
+        detail: `left ${box.left.toFixed(1)}, top ${box.top.toFixed(1)}, right ${box.right.toFixed(1)}, bottom ${box.bottom.toFixed(1)}, viewport ${viewport.width} × ${viewport.height}`,
+      });
+    }
+    for (const control of document.querySelectorAll(
+      "button, select, input, a[href]",
+    )) {
+      if (tooltip.contains(control) || !visible(control)) continue;
+      const controlBox = control.getBoundingClientRect();
+      const intersection = {
+        left: Math.max(box.left, controlBox.left),
+        top: Math.max(box.top, controlBox.top),
+        right: Math.min(box.right, controlBox.right),
+        bottom: Math.min(box.bottom, controlBox.bottom),
+      };
+      if (
+        intersection.right - intersection.left <= tolerance ||
+        intersection.bottom - intersection.top <= tolerance
+      )
+        continue;
+      const topElement = document.elementFromPoint(
+        (intersection.left + intersection.right) / 2,
+        (intersection.top + intersection.bottom) / 2,
+      );
+      if (
+        topElement &&
+        (topElement === control || control.contains(topElement))
+      ) {
+        result.push({
+          kind: "tooltip-occlusion",
+          selector: identity(tooltip),
+          detail: `${identity(control)} paints above the tooltip`,
+        });
+        break;
+      }
+    }
+  }
+
   const guidanceLayouts = new Set(["block", "compact", "inline"]);
   for (const surface of document.querySelectorAll("[data-guidance-surface]")) {
     if (!visible(surface)) continue;
