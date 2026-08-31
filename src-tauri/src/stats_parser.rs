@@ -172,6 +172,9 @@ pub fn parse_stats<R: BufRead>(
                 continue;
             }
             if directive.is_none() {
+                if is_market_block_separator(line) {
+                    continue;
+                }
                 parse_market_block_row(
                     block,
                     line,
@@ -445,6 +448,11 @@ pub fn parse_stats<R: BufRead>(
                 .collect(),
         },
     })
+}
+
+fn is_market_block_separator(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.len() >= 3 && trimmed.bytes().all(|byte| byte == b'-')
 }
 
 impl MarketCollector {
@@ -941,6 +949,29 @@ mod tests {
             .find(|row| parsed.market.resources[row.resource_index as usize] == "waste")
             .expect("signed disposal row");
         assert_eq!(waste.account_value, -8.0);
+    }
+
+    #[test]
+    fn ignores_the_game_market_block_separator_without_hiding_bad_rows() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let input = include_str!("../fixtures/market.stats.txt")
+            .replace("fuel 20 0.95\n$end", "fuel 20 0.95\n-------------\n$end");
+        let parsed = parse_stats(Cursor::new(input.as_bytes()), &profile)
+            .expect("decorative separator remains valid");
+
+        assert_eq!(parsed.market.records[0].rows.prices.len(), 2);
+        assert!(parsed.market.warnings.is_empty());
+
+        let malformed = input.replace("-------------", "not-a-market-row");
+        let parsed = parse_stats(Cursor::new(malformed.as_bytes()), &profile)
+            .expect("receiver facts remain isolated from a malformed market row");
+        assert!(
+            parsed
+                .market
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "malformed_market_row")
+        );
     }
 
     #[test]

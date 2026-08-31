@@ -386,6 +386,7 @@ pub(crate) struct MarketWarehouseProjection {
     pub profile_version: String,
     pub resolved_profile_hash: String,
     pub mapping_classification: String,
+    pub parser_engine_version: String,
     pub records: Vec<MarketWarehouseRecord>,
     pub prices: Vec<MarketWarehousePriceFact>,
     pub trades: Vec<MarketWarehouseTradeFact>,
@@ -416,6 +417,9 @@ pub(crate) struct MarketEvidenceDataset {
     pub warnings: Vec<CoverageWarning>,
     pub baskets: Vec<MarketBasketSummary>,
     pub scenarios: Vec<MarketScenarioSummary>,
+    pub recorded_save_count: u32,
+    pub indexed_save_count: u32,
+    pub current_engine_indexed_save_count: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -1343,6 +1347,53 @@ pub struct MarketScenarioDraft {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct MarketCoverageFacet {
+    pub facet_id: String,
+    pub status: String,
+    pub observed_slots: u32,
+    pub expected_slots: u32,
+    pub resource_count: u32,
+    pub currencies: Vec<String>,
+    pub channels: Vec<String>,
+    pub source_fields: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketCommissioningSummary {
+    pub recorded_save_count: u32,
+    pub indexed_save_count: u32,
+    pub current_engine_indexed_save_count: u32,
+    pub pending_current_engine_save_count: u32,
+    pub active_engine_current: bool,
+    pub active_parser_engine_version: Option<String>,
+    pub recommended_currency: Option<String>,
+    pub recommended_channel: Option<String>,
+    pub recommended_price_resource: Option<String>,
+    pub facets: Vec<MarketCoverageFacet>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketPriceSeriesPoint {
+    pub record_hash: String,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub purchase_price: Option<f64>,
+    pub sell_price: Option<f64>,
+    pub base_price: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MarketPriceSeries {
+    pub available: bool,
+    pub currency: String,
+    pub resource_token: String,
+    pub points: Vec<MarketPriceSeriesPoint>,
+    pub context: MarketMetricContext,
+    pub limitation: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct MarketWorkspace {
     pub analysis_context: AnalysisContext,
     pub available: bool,
@@ -1366,6 +1417,7 @@ pub struct MarketWorkspace {
     pub reserves_available: bool,
     pub terms_of_trade_available: bool,
     pub limitations: Vec<String>,
+    pub commissioning: MarketCommissioningSummary,
 }
 
 #[derive(Clone, Debug)]

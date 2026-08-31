@@ -95,6 +95,7 @@ pub fn run() {
             commands::get_published_metric_contexts,
             commands::get_republic_plan_workspace,
             commands::get_market_workspace,
+            commands::get_market_price_series,
             commands::save_market_basket,
             commands::save_market_scenario,
             commands::select_market_definition,

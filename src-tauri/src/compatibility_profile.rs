@@ -10,7 +10,7 @@ use crate::error::ObservatoryError;
 use crate::model::{CompatibilityProvenance, RECEIVER_METRICS, SNAPSHOT_FACTS};
 
 pub const PARSER_ENGINE_API_VERSION: &str = "1.0.0";
-pub const PARSER_ENGINE_VERSION: &str = "compatibility-profile-engine.v1";
+pub const PARSER_ENGINE_VERSION: &str = "compatibility-profile-engine.v2";
 pub const BUILTIN_PROFILE_ID: &str = "org.republic-observatory.wrsr-1.1.1.9";
 const LEGACY_BUILTIN_PROFILE_VERSION: &str = "1.0.0";
 const LEGACY_BUILTIN_PROFILE_HASH: &str =

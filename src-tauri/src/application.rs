@@ -24,9 +24,9 @@ use crate::model::{
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome, MarketBasketDraft,
-    MarketIndexingPhase, MarketIndexingProgress, MarketScenarioDraft, MarketWorkspace,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    MarketIndexingPhase, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
+    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
+    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
     RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
@@ -264,6 +264,68 @@ impl ObservatoryApplication {
             evidence,
             warehouse_history_available,
         ))
+    }
+
+    pub fn market_price_series(
+        &self,
+        currency: &str,
+        resource_token: &str,
+    ) -> Result<MarketPriceSeries, ObservatoryError> {
+        if !matches!(currency, "rub" | "usd")
+            || resource_token.is_empty()
+            || resource_token.len() > 128
+            || resource_token.chars().any(char::is_control)
+        {
+            return Err(ObservatoryError::InvalidMarketDefinition(
+                "invalid_price_series_request",
+            ));
+        }
+        let workspace = self.market_workspace()?;
+        let context = workspace
+            .metric_contexts
+            .iter()
+            .find(|context| context.metric_id == format!("market.price.{currency}"))
+            .cloned()
+            .ok_or(ObservatoryError::InvalidMarketDefinition(
+                "price_series_unavailable",
+            ))?;
+        let Some(interpretation_id) = workspace.analysis_context.head_interpretation_id.as_deref()
+        else {
+            return Ok(MarketPriceSeries {
+                available: false,
+                currency: currency.to_owned(),
+                resource_token: resource_token.to_owned(),
+                points: Vec::new(),
+                context,
+                limitation: Some("selected_head_unavailable".to_owned()),
+            });
+        };
+        let points =
+            match self
+                .warehouse
+                .market_price_series(interpretation_id, currency, resource_token)
+            {
+                Ok(Some(points)) => points,
+                Ok(None) | Err(ObservatoryError::WarehouseUnavailable) => {
+                    return Ok(MarketPriceSeries {
+                        available: false,
+                        currency: currency.to_owned(),
+                        resource_token: resource_token.to_owned(),
+                        points: Vec::new(),
+                        context,
+                        limitation: Some("warehouse_history_unavailable".to_owned()),
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+        Ok(MarketPriceSeries {
+            available: !points.is_empty(),
+            currency: currency.to_owned(),
+            resource_token: resource_token.to_owned(),
+            points,
+            context,
+            limitation: None,
+        })
     }
 
     pub fn save_market_basket(

@@ -1,10 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::compatibility_profile::PARSER_ENGINE_VERSION;
 use crate::model::{
-    MarketBasketSummary, MarketCityRow, MarketCurrencyPulse, MarketEvidenceDataset,
-    MarketMetricContext, MarketPriceLedgerRow, MarketPriceVolatility, MarketResourceLedgerRow,
-    MarketScalarLedgerRow, MarketTermsOfTradeSummary, MarketTradePoint, MarketWarehouseProjection,
-    MarketWorkspace,
+    MarketBasketSummary, MarketCityRow, MarketCommissioningSummary, MarketCoverageFacet,
+    MarketCurrencyPulse, MarketEvidenceDataset, MarketMetricContext, MarketPriceLedgerRow,
+    MarketPriceVolatility, MarketResourceLedgerRow, MarketScalarLedgerRow,
+    MarketTermsOfTradeSummary, MarketTradePoint, MarketWarehouseProjection, MarketWorkspace,
 };
 
 type PriceRecordKey<'a> = (&'a str, &'a str, &'a str, &'a str);
@@ -87,6 +88,7 @@ pub(crate) fn build_workspace(
     warehouse_history_available: bool,
 ) -> MarketWorkspace {
     let Some(projection) = evidence.projection.as_ref() else {
+        let commissioning = commissioning_summary(&evidence, None, &[]);
         return MarketWorkspace {
             analysis_context: evidence.analysis_context,
             available: false,
@@ -110,6 +112,7 @@ pub(crate) fn build_workspace(
             reserves_available: false,
             terms_of_trade_available: false,
             limitations: limitations(),
+            commissioning,
         };
     };
 
@@ -134,6 +137,7 @@ pub(crate) fn build_workspace(
     let currencies = currency_pulses(projection, &resource_ledger);
     let price_index = MarketPriceIndex::new(projection);
     let price_ledger = price_ledger(projection, latest_record_hash, &price_index);
+    let commissioning = commissioning_summary(&evidence, Some(projection), &price_ledger);
     let scalar_ledger = scalar_ledger(projection, latest_record_hash);
     let cities = city_ledger(projection);
     let mut baskets = builtin_baskets(projection, latest_record_hash, &price_index);
@@ -171,6 +175,188 @@ pub(crate) fn build_workspace(
         reserves_available: false,
         terms_of_trade_available: !terms_of_trade.is_empty(),
         limitations: limitations(),
+        commissioning,
+    }
+}
+
+#[derive(Default)]
+struct CoverageFacetAccumulator {
+    slots: BTreeSet<String>,
+    resources: BTreeSet<String>,
+    currencies: BTreeSet<String>,
+    channels: BTreeSet<String>,
+    source_fields: BTreeSet<String>,
+}
+
+fn commissioning_summary(
+    evidence: &MarketEvidenceDataset,
+    projection: Option<&MarketWarehouseProjection>,
+    price_ledger: &[MarketPriceLedgerRow],
+) -> MarketCommissioningSummary {
+    let mut accumulators = BTreeMap::<&str, CoverageFacetAccumulator>::new();
+    if let Some(projection) = projection {
+        for fact in &projection.prices {
+            let entry = accumulators.entry("prices").or_default();
+            entry
+                .slots
+                .insert(format!("{}:{}", fact.currency, fact.price_side));
+            entry.resources.insert(fact.resource_token.clone());
+            entry.currencies.insert(fact.currency.clone());
+            entry.source_fields.insert(fact.source_field.clone());
+        }
+        for fact in &projection.trades {
+            let entry = accumulators.entry("trade").or_default();
+            entry.slots.insert(format!(
+                "{}:{}:{}",
+                fact.currency, fact.direction, fact.channel
+            ));
+            entry.resources.insert(fact.resource_token.clone());
+            entry.currencies.insert(fact.currency.clone());
+            entry.channels.insert(fact.channel.clone());
+            entry.source_fields.insert(fact.source_field.clone());
+        }
+        for fact in &projection.scalars {
+            let family = if fact.fact_id.starts_with("market.cost.") {
+                Some("costs")
+            } else if fact.fact_id.starts_with("market.tourism.") {
+                Some("tourism")
+            } else if fact.fact_id.starts_with("market.loan.") {
+                Some("loans")
+            } else if fact.fact_id.starts_with("market.vehicle.") {
+                Some("vehicles")
+            } else {
+                None
+            };
+            let Some(family) = family else { continue };
+            let entry = accumulators.entry(family).or_default();
+            entry.slots.insert(fact.fact_id.clone());
+            if let Some(currency) = &fact.currency {
+                entry.currencies.insert(currency.clone());
+            }
+            entry.source_fields.insert(fact.source_field.clone());
+        }
+        let mut city = CoverageFacetAccumulator::default();
+        for fact in &projection.prices {
+            if fact.scope_kind.as_deref() == Some("city") {
+                city.slots.insert("price".to_owned());
+                city.resources.insert(fact.resource_token.clone());
+                city.currencies.insert(fact.currency.clone());
+                city.source_fields.insert(fact.source_field.clone());
+            }
+        }
+        for fact in &projection.trades {
+            if fact.scope_kind.as_deref() == Some("city") {
+                city.slots.insert("trade".to_owned());
+                city.resources.insert(fact.resource_token.clone());
+                city.currencies.insert(fact.currency.clone());
+                city.channels.insert(fact.channel.clone());
+                city.source_fields.insert(fact.source_field.clone());
+            }
+        }
+        for fact in &projection.scalars {
+            if fact.scope_kind.as_deref() == Some("city") {
+                city.slots.insert("scalar".to_owned());
+                if let Some(currency) = &fact.currency {
+                    city.currencies.insert(currency.clone());
+                }
+                city.source_fields.insert(fact.source_field.clone());
+            }
+        }
+        if !city.slots.is_empty() {
+            accumulators.insert("cities", city);
+        }
+    }
+
+    let facets = [
+        ("prices", 6_u32),
+        ("trade", 8),
+        ("costs", 6),
+        ("tourism", 4),
+        ("loans", 4),
+        ("vehicles", 4),
+        ("cities", 3),
+    ]
+    .into_iter()
+    .map(|(facet_id, expected_slots)| {
+        let values = accumulators.remove(facet_id).unwrap_or_default();
+        let observed_slots = values.slots.len().min(u32::MAX as usize) as u32;
+        MarketCoverageFacet {
+            facet_id: facet_id.to_owned(),
+            status: if observed_slots == 0 {
+                "not_observed".to_owned()
+            } else if observed_slots < expected_slots {
+                "partial".to_owned()
+            } else {
+                "observed".to_owned()
+            },
+            observed_slots,
+            expected_slots,
+            resource_count: values.resources.len().min(u32::MAX as usize) as u32,
+            currencies: values.currencies.into_iter().collect(),
+            channels: values.channels.into_iter().collect(),
+            source_fields: values.source_fields.into_iter().collect(),
+        }
+    })
+    .collect();
+
+    let mut currency_scores = BTreeMap::<String, usize>::new();
+    let mut channel_scores = BTreeMap::<(String, String), usize>::new();
+    if let Some(projection) = projection {
+        for fact in &projection.prices {
+            *currency_scores.entry(fact.currency.clone()).or_default() += 1;
+        }
+        for fact in &projection.trades {
+            *currency_scores.entry(fact.currency.clone()).or_default() += 1;
+            *channel_scores
+                .entry((fact.currency.clone(), fact.channel.clone()))
+                .or_default() += 1;
+        }
+        for fact in &projection.scalars {
+            if let Some(currency) = &fact.currency {
+                *currency_scores.entry(currency.clone()).or_default() += 1;
+            }
+        }
+    }
+    let recommended_currency = currency_scores
+        .into_iter()
+        .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.cmp(&left.0)))
+        .map(|(currency, _)| currency);
+    let recommended_channel = recommended_currency.as_ref().and_then(|currency| {
+        channel_scores
+            .into_iter()
+            .filter(|((candidate, _), _)| candidate == currency)
+            .max_by(|left, right| left.1.cmp(&right.1).then_with(|| right.0.1.cmp(&left.0.1)))
+            .map(|((_, channel), _)| channel)
+    });
+    let recommended_price_resource = price_ledger
+        .iter()
+        .filter(|row| {
+            recommended_currency
+                .as_deref()
+                .is_none_or(|currency| row.currency == currency)
+        })
+        .max_by(|left, right| {
+            left.volatility_observations
+                .cmp(&right.volatility_observations)
+                .then_with(|| right.resource_token.cmp(&left.resource_token))
+        })
+        .map(|row| row.resource_token.clone());
+
+    MarketCommissioningSummary {
+        recorded_save_count: evidence.recorded_save_count,
+        indexed_save_count: evidence.indexed_save_count,
+        current_engine_indexed_save_count: evidence.current_engine_indexed_save_count,
+        pending_current_engine_save_count: evidence
+            .recorded_save_count
+            .saturating_sub(evidence.current_engine_indexed_save_count),
+        active_engine_current: projection
+            .is_some_and(|projection| projection.parser_engine_version == PARSER_ENGINE_VERSION),
+        active_parser_engine_version: projection
+            .map(|projection| projection.parser_engine_version.clone()),
+        recommended_currency,
+        recommended_channel,
+        recommended_price_resource,
+        facets,
     }
 }
 
@@ -900,13 +1086,19 @@ fn evaluate_scenarios(
                             "international_exports" => {
                                 Some(pulse.international_export_value.max(0.0) * export_factor)
                             }
-                            "tourism_spend" => scalars
-                                .iter()
-                                .find(|fact| {
-                                    fact.fact_id == "market.tourism.spend"
-                                        && fact.currency.as_deref() == Some(draft.currency.as_str())
-                                })
-                                .map(|fact| fact.value.max(0.0) * tourism_factor),
+                            "tourism_spend" => {
+                                let values = scalars
+                                    .iter()
+                                    .filter(|fact| {
+                                        fact.fact_id.starts_with("market.tourism.spending.")
+                                            && fact.currency.as_deref()
+                                                == Some(draft.currency.as_str())
+                                    })
+                                    .map(|fact| fact.value.max(0.0))
+                                    .collect::<Vec<_>>();
+                                (!values.is_empty())
+                                    .then(|| values.into_iter().sum::<f64>() * tourism_factor)
+                            }
                             _ => None,
                         };
                         if let Some(value) = value {
@@ -931,12 +1123,14 @@ mod tests {
     use std::time::{Duration, Instant};
 
     use super::{
-        MarketPriceIndex, currency_pulses, evaluate_scenarios, median_absolute_deviation,
-        price_ledger, ratio_index, resource_ledger, selected_head_facts, terms_of_trade,
+        MarketPriceIndex, PARSER_ENGINE_VERSION, currency_pulses, evaluate_scenarios,
+        median_absolute_deviation, price_ledger, ratio_index, resource_ledger, selected_head_facts,
+        terms_of_trade,
     };
     use crate::model::{
-        MarketBasketSummary, MarketScenarioDraft, MarketScenarioSummary, MarketWarehousePriceFact,
-        MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseTradeFact,
+        MarketBasketSummary, MarketCurrencyPulse, MarketScalarLedgerRow, MarketScenarioDraft,
+        MarketScenarioSummary, MarketWarehousePriceFact, MarketWarehouseProjection,
+        MarketWarehouseRecord, MarketWarehouseTradeFact,
     };
 
     #[derive(Debug)]
@@ -1088,6 +1282,7 @@ mod tests {
             profile_version: "1.1.0".to_owned(),
             resolved_profile_hash: "resolved".to_owned(),
             mapping_classification: "reviewed_mapping".to_owned(),
+            parser_engine_version: PARSER_ENGINE_VERSION.to_owned(),
             records: Vec::new(),
             prices: Vec::new(),
             trades,
@@ -1248,5 +1443,60 @@ mod tests {
         let results = evaluate_scenarios(vec![break_even, debt], &pulses, &[]);
         assert_eq!(results[0].result_value, Some(75.0));
         assert_eq!(results[1].result_value, Some(0.5));
+    }
+
+    #[test]
+    fn debt_stress_uses_the_reviewed_tourism_spending_slots() {
+        let debt = scenario_summary(MarketScenarioDraft {
+            scenario_id: "tourism-debt".to_owned(),
+            name: "Tourism debt".to_owned(),
+            scenario_kind: "debt_stress".to_owned(),
+            currency: "usd".to_owned(),
+            reason: "test".to_owned(),
+            domestic_unit_cost: None,
+            delivery_cost: None,
+            operating_efficiency_percent: None,
+            exchange_rate: None,
+            debt_service: Some(100.0),
+            export_stress_percent: None,
+            tourism_stress_percent: Some(25.0),
+            included_income_components: vec!["tourism_spend".to_owned()],
+        });
+        let pulse = MarketCurrencyPulse {
+            currency: "usd".to_owned(),
+            standard_import_value: 0.0,
+            standard_export_value: 0.0,
+            standard_trade_result: 0.0,
+            international_import_value: 0.0,
+            international_export_value: 0.0,
+            international_trade_result: 0.0,
+            positive_export_hhi: None,
+            positive_export_resource_count: 0,
+            context: crate::model::MarketMetricContext {
+                metric_id: "market.trade_result.usd".to_owned(),
+                formula: String::new(),
+                currency: Some("usd".to_owned()),
+                unit: String::new(),
+                time_basis: String::new(),
+                exclusions: Vec::new(),
+                evidence_class: String::new(),
+                profile_id: String::new(),
+                profile_version: String::new(),
+                source_fields: Vec::new(),
+                analytical_head: String::new(),
+            },
+        };
+        let scalars = vec![MarketScalarLedgerRow {
+            fact_id: "market.tourism.spending.usd".to_owned(),
+            currency: Some("usd".to_owned()),
+            category: Some(1),
+            value: 200.0,
+            source_field: "$TourismSpendUSD".to_owned(),
+            source_line: 1,
+        }];
+
+        let result = evaluate_scenarios(vec![debt], &[pulse], &scalars);
+        assert_eq!(result[0].result_value, Some(1.5));
+        assert_eq!(result[0].covered_components, 1);
     }
 }

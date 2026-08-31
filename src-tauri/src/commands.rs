@@ -12,11 +12,12 @@ use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketBasketDraft, MarketIndexingProgress,
-    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
-    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
-    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
-    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
-    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
+    MarketPriceSeries, MarketScenarioDraft, MarketWorkspace, ObservationImportResult,
+    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
+    ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
+    ProductionRouteRequest, PublishedMetricContext, ReceiverDataset, RecorderHealth,
+    ReinterpretationProgress, RepublicBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState,
+    WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -240,6 +241,24 @@ pub async fn get_market_workspace(
         application.market_workspace()
     })
     .await
+}
+
+#[tauri::command]
+pub async fn get_market_price_series(
+    currency: String,
+    resource_token: String,
+    state: State<'_, AppState>,
+) -> Result<MarketPriceSeries, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.market_price_series(&currency, &resource_token)
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "market_workspace_worker_unavailable".to_owned(),
+        diagnostic: "The Markets workspace worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

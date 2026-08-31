@@ -5,6 +5,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
 use super::{ObservatoryStorage, from_sql_integer, now_ms};
+use crate::compatibility_profile::PARSER_ENGINE_VERSION;
 use crate::error::ObservatoryError;
 use crate::model::{
     AnalysisContext, CoverageWarning, MarketBasketDraft, MarketBasketSummary,
@@ -19,6 +20,9 @@ impl ObservatoryStorage {
         &self,
         analysis_context: AnalysisContext,
     ) -> Result<MarketEvidenceDataset, ObservatoryError> {
+        let connection = self.connect()?;
+        let (recorded_save_count, indexed_save_count, current_engine_indexed_save_count) =
+            market_commissioning_counts(&connection)?;
         let Some(interpretation_id) = analysis_context.head_interpretation_id.as_deref() else {
             return Ok(MarketEvidenceDataset {
                 analysis_context,
@@ -30,9 +34,11 @@ impl ObservatoryStorage {
                 warnings: Vec::new(),
                 baskets: Vec::new(),
                 scenarios: Vec::new(),
+                recorded_save_count,
+                indexed_save_count,
+                current_engine_indexed_save_count,
             });
         };
-        let connection = self.connect()?;
         let coverage = connection
             .query_row(
                 "SELECT coverage.coverage_status, coverage.history_records, coverage.snapshot_scopes, \
@@ -160,6 +166,9 @@ impl ObservatoryStorage {
             warnings,
             baskets,
             scenarios,
+            recorded_save_count,
+            indexed_save_count,
+            current_engine_indexed_save_count,
         })
     }
 
@@ -435,7 +444,7 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         let source = connection.query_row(
             "SELECT raw_payload_hash, branch_id, profile_id, profile_semantic_version, \
-                    resolved_profile_hash, mapping_classification, payload_hash \
+                    resolved_profile_hash, mapping_classification, parser_engine_version, payload_hash \
              FROM observation_sources WHERE interpretation_id = ?1",
             [interpretation_id],
             |row| {
@@ -447,6 +456,7 @@ impl ObservatoryStorage {
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
                     row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             },
         )?;
@@ -459,7 +469,7 @@ impl ObservatoryStorage {
                  WHERE membership.payload_hash = ?1 ORDER BY membership.ordinal",
             )?;
             statement
-                .query_map([&source.6], |row| {
+                .query_map([&source.7], |row| {
                     Ok(MarketWarehouseRecord {
                         record_hash: row.get(0)?,
                         ordinal: row.get(1)?,
@@ -471,12 +481,12 @@ impl ObservatoryStorage {
                 })?
                 .collect::<Result<Vec<_>, _>>()?
         };
-        let mut prices = load_history_prices(&connection, &source.6, include_history)?;
-        prices.extend(load_snapshot_prices(&connection, &source.6)?);
-        let mut trades = load_history_trades(&connection, &source.6, include_history)?;
-        trades.extend(load_snapshot_trades(&connection, &source.6)?);
-        let mut scalars = load_history_scalars(&connection, &source.6, include_history)?;
-        scalars.extend(load_snapshot_scalars(&connection, &source.6)?);
+        let mut prices = load_history_prices(&connection, &source.7, include_history)?;
+        prices.extend(load_snapshot_prices(&connection, &source.7)?);
+        let mut trades = load_history_trades(&connection, &source.7, include_history)?;
+        trades.extend(load_snapshot_trades(&connection, &source.7)?);
+        let mut scalars = load_history_scalars(&connection, &source.7, include_history)?;
+        scalars.extend(load_snapshot_scalars(&connection, &source.7)?);
         Ok(MarketWarehouseProjection {
             interpretation_id: interpretation_id.to_owned(),
             raw_payload_hash: source.0,
@@ -485,6 +495,7 @@ impl ObservatoryStorage {
             profile_version: source.3,
             resolved_profile_hash: source.4,
             mapping_classification: source.5,
+            parser_engine_version: source.6,
             records,
             prices,
             trades,
@@ -641,6 +652,33 @@ impl ObservatoryStorage {
         )?;
         Ok(())
     }
+}
+
+fn market_commissioning_counts(
+    connection: &Connection,
+) -> Result<(u32, u32, u32), ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT \
+                 COUNT(DISTINCT source.raw_payload_hash), \
+                 COUNT(DISTINCT CASE WHEN coverage.payload_hash IS NOT NULL \
+                                     THEN source.raw_payload_hash END), \
+                 COUNT(DISTINCT CASE WHEN coverage.payload_hash IS NOT NULL \
+                                       AND source.parser_engine_version = ?1 \
+                                     THEN source.raw_payload_hash END) \
+             FROM observation_sources source \
+             LEFT JOIN market_observation_coverage coverage \
+               ON coverage.payload_hash = source.payload_hash",
+            [PARSER_ENGINE_VERSION],
+            |row| {
+                Ok((
+                    row.get::<_, u32>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, u32>(2)?,
+                ))
+            },
+        )
+        .map_err(Into::into)
 }
 
 fn market_definition_table(kind: &str) -> Result<&'static str, ObservatoryError> {

@@ -13,11 +13,11 @@ use crate::model::{
     BranchMembershipProjection, CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, MarketPriceVolatility, MarketTradePoint, MarketWarehousePriceFact,
-    MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseScalarFact,
-    MarketWarehouseTradeFact, ProductionPathwayAuxiliaryRequirement, ProductionPathwayCandidate,
-    ProductionPathwayChoice, ProductionPathwayDiagnostic, ProductionPathwayLink,
-    ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
+    DefinitionValue, MarketPriceSeriesPoint, MarketPriceVolatility, MarketTradePoint,
+    MarketWarehousePriceFact, MarketWarehouseProjection, MarketWarehouseRecord,
+    MarketWarehouseScalarFact, MarketWarehouseTradeFact, ProductionPathwayAuxiliaryRequirement,
+    ProductionPathwayCandidate, ProductionPathwayChoice, ProductionPathwayDiagnostic,
+    ProductionPathwayLink, ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
     ProductionPathwayRequirement, ProductionRouteCoverage, ProductionRouteFlow,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, UnknownDirectiveSummary,
     WarehouseHealth, WarehousePhase, WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
@@ -996,6 +996,7 @@ impl AnalyticalWarehouse {
             profile_version: metadata.profile_version.clone(),
             resolved_profile_hash: metadata.resolved_profile_hash.clone(),
             mapping_classification: metadata.mapping_classification.clone(),
+            parser_engine_version: metadata.parser_engine_version.clone(),
             records,
             prices,
             trades,
@@ -1003,6 +1004,57 @@ impl AnalyticalWarehouse {
             analytical_trade_history,
             analytical_price_volatility,
         }))
+    }
+
+    pub(crate) fn market_price_series(
+        &self,
+        interpretation_id: &str,
+        currency: &str,
+        resource_token: &str,
+    ) -> Result<Option<Vec<MarketPriceSeriesPoint>>, ObservatoryError> {
+        if !self.available {
+            return Ok(None);
+        }
+        let connection = self
+            .connection
+            .try_lock()
+            .map_err(|_| ObservatoryError::WarehouseUnavailable)?;
+        let projected = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM projection_receipts \
+             WHERE projection_kind = 'market_observation' AND source_identity = ?1)",
+            [interpretation_id],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if !projected {
+            return Ok(None);
+        }
+        let mut statement = connection.prepare(
+            "SELECT record_hash, year, day, game_day, \
+                    MAX(CASE WHEN price_side = 'purchase' THEN value END), \
+                    MAX(CASE WHEN price_side = 'sell' THEN value END), \
+                    MAX(CASE WHEN price_side = 'base' THEN value END) \
+             FROM market_price_history \
+             WHERE interpretation_id = ?1 AND currency = ?2 AND resource_token = ?3 \
+             GROUP BY record_hash, year, day, game_day \
+             ORDER BY game_day, record_hash LIMIT 10000",
+        )?;
+        let points = statement
+            .query_map(
+                params![interpretation_id, currency, resource_token],
+                |row| {
+                    Ok(MarketPriceSeriesPoint {
+                        record_hash: row.get(0)?,
+                        year: row.get(1)?,
+                        day: row.get(2)?,
+                        game_day: row.get(3)?,
+                        purchase_price: row.get(4)?,
+                        sell_price: row.get(5)?,
+                        base_price: row.get(6)?,
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Some(points))
     }
 
     pub fn project_overlay(
@@ -3020,6 +3072,7 @@ mod tests {
             profile_version: "1.1.0".to_owned(),
             resolved_profile_hash: "profile-hash".to_owned(),
             mapping_classification: "reviewed_mapping".to_owned(),
+            parser_engine_version: "compatibility-profile-engine.v2".to_owned(),
             records: vec![MarketWarehouseRecord {
                 record_hash: "record-one".to_owned(),
                 ordinal: 0,
@@ -3073,6 +3126,13 @@ mod tests {
         assert_eq!(loaded.prices.len(), 1);
         assert_eq!(loaded.trades.len(), 1);
         assert_eq!(loaded.trades[0].account_value, 24.0);
+        let series = warehouse
+            .market_price_series("interpretation-market", "rub", "steel")
+            .expect("price series query")
+            .expect("projected price series");
+        assert_eq!(series.len(), 1);
+        assert_eq!(series[0].purchase_price, Some(12.0));
+        assert_eq!(series[0].sell_price, None);
     }
 
     #[test]
@@ -3090,6 +3150,7 @@ mod tests {
             profile_version: "1.1.0".to_owned(),
             resolved_profile_hash: "profile-hash".to_owned(),
             mapping_classification: "reviewed_mapping".to_owned(),
+            parser_engine_version: "compatibility-profile-engine.v2".to_owned(),
             records: vec![MarketWarehouseRecord {
                 record_hash: "record-0".to_owned(),
                 ordinal: 0,
