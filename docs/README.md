@@ -11,6 +11,9 @@ an engineering requirement.
   models, decisions, and delivery phases
 - [Metric definitions](metric-definitions.md) — formulas, denominators, and
   guardrails
+- [Branch-bound player plans and metric context](architecture/decisions/0023-branch-bound-player-plans-and-metric-context.md)
+  — immutable plan revisions, exact-head evaluation, evidence classes, and the
+  shared metric-tooltip contract
 - [Material Periodic Table and Industrial Laboratory](material-periodic-table.md)
   — pseudo-elements, material dossiers, reaction pathways, yield, sensitivity,
   and shock experiments
@@ -94,6 +97,9 @@ an engineering requirement.
   — mouse-free native automation without a production control surface
 - [ADR-0022: bounded host-owned production pathways](architecture/decisions/0022-bounded-production-pathways.md)
   — exact multi-stage coefficients, explicit alternatives, and visible stops
+- [ADR-0023: branch-bound player plans and one metric-context contract](architecture/decisions/0023-branch-bound-player-plans-and-metric-context.md)
+  — SQLite-owned intent, deterministic schedules, exact-head integrity, and
+  standard metric explanations
 
 ## Evidence status vocabulary
 

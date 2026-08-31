@@ -35,6 +35,7 @@ const layouts = [
 ] as const;
 const smokeScenarios: UiReviewScenarioId[] = [
   "workspace-briefing",
+  "workspace-plan",
   "materials-warehouse-attention",
   "production-pathway",
   "population-probe-missing",

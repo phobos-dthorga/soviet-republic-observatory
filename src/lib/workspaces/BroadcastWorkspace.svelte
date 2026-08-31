@@ -4,12 +4,25 @@
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
-  import type { ReceiverDataset } from "../observations/types";
+  import type {
+    PublishedMetricContext,
+    ReceiverDataset,
+  } from "../observations/types";
+  import {
+    metricContextHelpFor,
+    publishedMetricContext,
+  } from "../presentation/metricContext";
+  import { briefMetricLabel } from "../presentation/republicBrief";
   import { createObservedReceiverChart } from "../presentation/receiverObservation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
 
-  let { receiverDataset = null }: { receiverDataset?: ReceiverDataset | null } =
-    $props();
+  let {
+    receiverDataset = null,
+    metricContexts = [],
+  }: {
+    receiverDataset?: ReceiverDataset | null;
+    metricContexts?: PublishedMetricContext[];
+  } = $props();
 
   const sections: Array<{
     label: TranslationKey;
@@ -36,6 +49,21 @@
       : null,
   );
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1) ?? null);
+  const receiverHelp = $derived.by(() => {
+    const context = publishedMetricContext(
+      metricContexts,
+      "core.citizens.electronics.classified_total",
+      "history",
+    );
+    return context
+      ? metricContextHelpFor(
+          "core.citizens.electronics.classified_total",
+          context,
+          $translation,
+          (metricId) => briefMetricLabel(metricId, $translation),
+        )
+      : null;
+  });
 
   function stationName(station: (typeof stationIds)[number]): string {
     return $translation(
@@ -128,6 +156,7 @@
           spec={receiverLadder}
           height="285px"
           eyebrow={$translation("broadcast-section-receivers")}
+          help={receiverHelp}
         />
         <ReceiverEvidence dataset={receiverDataset} />
       {:else}

@@ -5,6 +5,7 @@ import type {
   MetricContext,
   MetricContextLimitation,
   MetricPopulationBasis,
+  PublishedMetricContext,
 } from "../observations/types";
 import type { ContextHelpContent, ContextHelpDetail } from "../ui/types";
 
@@ -13,6 +14,7 @@ const populationKeys: Record<MetricPopulationBasis, TranslationKey> = {
   source_defined_adults: "metric-context-population-adults",
   source_defined_small_children: "metric-context-population-small-children",
   source_defined_unemployed: "metric-context-population-unemployed",
+  source_defined_movement_counter: "metric-context-population-movement",
   classified_receiver_population: "metric-context-population-receivers",
 };
 
@@ -22,6 +24,7 @@ const limitationKeys: Record<MetricContextLimitation, TranslationKey> = {
   source_age_boundary_unverified: "metric-context-limitation-age",
   source_window_unverified: "metric-context-limitation-window",
   excludes_unclassified_citizens: "metric-context-limitation-unclassified",
+  not_interval_flow: "metric-context-limitation-not-flow",
 };
 
 export type MetricLabelResolver = (metricId: string) => string;
@@ -58,7 +61,11 @@ export function metricContextDetails(
     },
     {
       label: translate("metric-context-time-label"),
-      value: translate("metric-context-time-exact"),
+      value: translate(
+        context.time_basis === "exact_selected_observation"
+          ? "metric-context-time-exact"
+          : "metric-context-time-history",
+      ),
     },
     {
       label: translate("metric-context-geography-label"),
@@ -70,7 +77,11 @@ export function metricContextDetails(
     },
     {
       label: translate("metric-context-comparison-label"),
-      value: translate("metric-context-comparison-preceding"),
+      value: translate(
+        context.comparison_basis === "proven_preceding_same_branch_and_profile"
+          ? "metric-context-comparison-preceding"
+          : "metric-context-comparison-plan",
+      ),
     },
     {
       label: translate("metric-context-limitations-label"),
@@ -93,4 +104,28 @@ export function metricContextHelp(
     text: translate("metric-context-help-text"),
     details: metricContextDetails(metric.context, translate, metricLabel),
   };
+}
+
+export function metricContextHelpFor(
+  metricId: string,
+  context: MetricContext,
+  translate: Translator,
+  metricLabel: MetricLabelResolver,
+): ContextHelpContent {
+  const label = metricLabel(metricId);
+  return {
+    topic: `metric-context-${metricId.replaceAll(".", "-")}`,
+    title: translate("metric-context-help-title", { metric: label }),
+    text: translate("metric-context-help-text"),
+    details: metricContextDetails(context, translate, metricLabel),
+  };
+}
+
+export function publishedMetricContext(
+  catalogue: PublishedMetricContext[],
+  metricId: string,
+  mode: "exact" | "history",
+): MetricContext | null {
+  const entry = catalogue.find((metric) => metric.metric_id === metricId);
+  return entry?.[mode] ?? null;
 }

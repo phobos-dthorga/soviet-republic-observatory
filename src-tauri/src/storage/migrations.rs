@@ -64,6 +64,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "first-class attention cues and native research setup",
         include_str!("../../migrations/0012_attention_and_research_setup.sql"),
     ),
+    (
+        13,
+        "immutable branch-aware republic plans",
+        include_str!("../../migrations/0013_republic_plans.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

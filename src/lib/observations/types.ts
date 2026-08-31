@@ -185,20 +185,24 @@ export type MetricPopulationBasis =
   | "source_defined_adults"
   | "source_defined_small_children"
   | "source_defined_unemployed"
+  | "source_defined_movement_counter"
   | "classified_receiver_population";
 
-export type MetricTimeBasis = "exact_selected_observation";
+export type MetricTimeBasis =
+  "exact_selected_observation" | "branch_observations_through_selected_head";
 
 export type MetricGeographicScope = "whole_republic";
 
-export type MetricComparisonBasis = "proven_preceding_same_branch_and_profile";
+export type MetricComparisonBasis =
+  "proven_preceding_same_branch_and_profile" | "player_plan_schedule";
 
 export type MetricContextLimitation =
   | "not_employment_count"
   | "not_workers_only"
   | "source_age_boundary_unverified"
   | "source_window_unverified"
-  | "excludes_unclassified_citizens";
+  | "excludes_unclassified_citizens"
+  | "not_interval_flow";
 
 export type MetricContext = {
   population_basis: MetricPopulationBasis;
@@ -207,6 +211,126 @@ export type MetricContext = {
   denominator_metric_id: string | null;
   comparison_basis: MetricComparisonBasis;
   limitations: MetricContextLimitation[];
+};
+
+export type PublishedMetricContext = {
+  metric_id: string;
+  exact: MetricContext;
+  history: MetricContext;
+};
+
+export type PlanScheduleKind = "linear" | "milestone" | "hold_then_change";
+export type PlanDirection = "increase" | "decrease" | "maintain";
+export type PlanTargetState =
+  | "awaiting_start"
+  | "ahead"
+  | "on_track"
+  | "behind"
+  | "complete"
+  | "unavailable";
+
+export type PlanTargetDraft = {
+  metric_id: string;
+  target_value: number;
+  direction: PlanDirection;
+  guardrail_basis_points: number;
+};
+
+export type RepublicPlanDraft = {
+  plan_id: string | null;
+  name: string;
+  end_year: number;
+  end_day: number;
+  schedule: PlanScheduleKind;
+  targets: PlanTargetDraft[];
+};
+
+export type RepublicPlanTarget = PlanTargetDraft & {
+  baseline_value: number;
+};
+
+export type RepublicPlanRevision = {
+  plan_id: string;
+  name: string;
+  revision: number;
+  branch_id: string;
+  start_interpretation_id: string;
+  start_profile_hash: string;
+  start_year: number;
+  start_day: number;
+  start_game_day: number;
+  end_year: number;
+  end_day: number;
+  end_game_day: number;
+  schedule: PlanScheduleKind;
+  created_at_ms: number;
+  targets: RepublicPlanTarget[];
+};
+
+export type RepublicPlanListItem = {
+  plan_id: string;
+  name: string;
+  branch_id: string;
+  active_revision: number;
+  latest_revision: number;
+  revision_count: number;
+  selected: boolean;
+};
+
+export type PlanMetricOption = {
+  metric_id: string;
+  current_value: number | null;
+  active_plan_baseline_value: number | null;
+  context: MetricContext;
+};
+
+export type PlanSeriesPoint = {
+  year: number;
+  day: number;
+  game_day: number;
+  observed_value: number;
+  scheduled_value: number;
+};
+
+export type PlanTargetEvaluation = {
+  target: RepublicPlanTarget;
+  current_value: number | null;
+  scheduled_value: number | null;
+  directional_variance: number | null;
+  attainment_basis_points: number | null;
+  guardrail_breached: boolean;
+  state: PlanTargetState;
+  context: MetricContext;
+  points: PlanSeriesPoint[];
+};
+
+export type RepublicPlanEvaluation = {
+  revision: RepublicPlanRevision;
+  state: PlanTargetState;
+  attainment_basis_points: number | null;
+  guardrail_breach_count: number;
+  targets: PlanTargetEvaluation[];
+};
+
+export type RepublicPlanWorkspace = {
+  analysis_context: AnalysisContext;
+  current_year: number | null;
+  current_day: number | null;
+  available_metrics: PlanMetricOption[];
+  plans: RepublicPlanListItem[];
+  active_plan: RepublicPlanEvaluation | null;
+};
+
+export type RepublicPlanBrief = {
+  plan_id: string;
+  name: string;
+  revision: number;
+  target_count: number;
+  end_year: number;
+  end_day: number;
+  state: PlanTargetState;
+  attainment_basis_points: number | null;
+  guardrail_breach_count: number;
 };
 
 export type BriefMetric = {
@@ -287,6 +411,7 @@ export type RepublicBrief = {
   findings: BriefFinding[];
   dispatch_code: BriefFindingCode | "observation_ready" | string;
   operations: BriefOperations;
+  plan: RepublicPlanBrief | null;
   unavailable_capabilities: string[];
 };
 

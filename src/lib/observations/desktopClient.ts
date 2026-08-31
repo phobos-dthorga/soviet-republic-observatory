@@ -35,6 +35,9 @@ import type {
   ProductionRouteCoverage,
   ProductionRouteRequest,
   PopulationDataset,
+  PublishedMetricContext,
+  RepublicPlanDraft,
+  RepublicPlanWorkspace,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -72,6 +75,44 @@ export function getPopulationDataset(): Promise<PopulationDataset> {
 
 export function getRepublicBrief(): Promise<RepublicBrief> {
   return invoke<RepublicBrief>("get_republic_brief");
+}
+
+export function getPublishedMetricContexts(): Promise<
+  PublishedMetricContext[]
+> {
+  return invoke<PublishedMetricContext[]>("get_published_metric_contexts");
+}
+
+export function getRepublicPlanWorkspace(): Promise<RepublicPlanWorkspace> {
+  return invoke<RepublicPlanWorkspace>("get_republic_plan_workspace");
+}
+
+export function saveRepublicPlan(
+  draft: RepublicPlanDraft,
+): Promise<RepublicPlanWorkspace> {
+  return invoke<RepublicPlanWorkspace>("save_republic_plan", { draft });
+}
+
+export function activateRepublicPlan(
+  planId: string,
+  revision?: number,
+): Promise<RepublicPlanWorkspace> {
+  return invoke<RepublicPlanWorkspace>("activate_republic_plan", {
+    planId,
+    revision,
+  });
+}
+
+export function rollbackRepublicPlan(
+  planId: string,
+): Promise<RepublicPlanWorkspace> {
+  return invoke<RepublicPlanWorkspace>("rollback_republic_plan", { planId });
+}
+
+export function removeRepublicPlan(
+  planId: string,
+): Promise<RepublicPlanWorkspace> {
+  return invoke<RepublicPlanWorkspace>("remove_republic_plan", { planId });
 }
 
 export function getRecorderHealth(): Promise<RecorderHealth> {

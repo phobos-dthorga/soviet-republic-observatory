@@ -6,6 +6,7 @@ import type {
   ProductionPathwayModel,
   ProductionRouteModel,
   RepublicBrief,
+  RepublicPlanWorkspace,
 } from "../observations/types";
 
 const reviewContext = {
@@ -229,11 +230,120 @@ export function reviewRepublicBrief(): RepublicBrief {
       catalogue_entity_count: 6_031,
       city_scope_count: 139,
     },
-    unavailable_capabilities: [
-      "plan_attainment",
-      "import_exposure",
-      "observed_material_reliance",
+    plan: {
+      plan_id: "plan-review-five-year",
+      name: "Fifth Five-Year Plan",
+      revision: 2,
+      target_count: 2,
+      end_year: 2020,
+      end_day: 77,
+      state: "on_track",
+      attainment_basis_points: 9_740,
+      guardrail_breach_count: 0,
+    },
+    unavailable_capabilities: ["import_exposure", "observed_material_reliance"],
+  };
+}
+
+export function reviewRepublicPlanWorkspace(): RepublicPlanWorkspace {
+  const context = {
+    population_basis: "source_defined_adults" as const,
+    time_basis: "branch_observations_through_selected_head" as const,
+    geographic_scope: "whole_republic" as const,
+    denominator_metric_id: null,
+    comparison_basis: "player_plan_schedule" as const,
+    limitations: ["not_employment_count" as const],
+  };
+  const target = {
+    metric_id: "source.stats.citizens.adults",
+    baseline_value: 55_000,
+    target_value: 65_000,
+    direction: "increase" as const,
+    guardrail_basis_points: 500,
+  };
+  return {
+    analysis_context: { ...reviewContext },
+    current_year: 2015,
+    current_day: 77,
+    available_metrics: [
+      {
+        metric_id: target.metric_id,
+        current_value: 58_137,
+        active_plan_baseline_value: 55_000,
+        context,
+      },
+      {
+        metric_id: "source.stats.citizens.small_children",
+        current_value: 5_974,
+        active_plan_baseline_value: 5_700,
+        context: {
+          ...context,
+          population_basis: "source_defined_small_children",
+          limitations: ["source_age_boundary_unverified"],
+        },
+      },
     ],
+    plans: [
+      {
+        plan_id: "plan-review-five-year",
+        name: "Fifth Five-Year Plan",
+        branch_id: "main",
+        active_revision: 2,
+        latest_revision: 2,
+        revision_count: 2,
+        selected: true,
+      },
+    ],
+    active_plan: {
+      revision: {
+        plan_id: "plan-review-five-year",
+        name: "Fifth Five-Year Plan",
+        revision: 2,
+        branch_id: "main",
+        start_interpretation_id: "review-interpretation-2015-067",
+        start_profile_hash: "reviewed-profile-fixture",
+        start_year: 2015,
+        start_day: 67,
+        start_game_day: 4_083,
+        end_year: 2020,
+        end_day: 77,
+        end_game_day: 5_918,
+        schedule: "linear",
+        created_at_ms: 1_788_000_000_000,
+        targets: [target],
+      },
+      state: "on_track",
+      attainment_basis_points: 9_740,
+      guardrail_breach_count: 0,
+      targets: [
+        {
+          target,
+          current_value: 58_137,
+          scheduled_value: 58_400,
+          directional_variance: -263,
+          attainment_basis_points: 9_687,
+          guardrail_breached: false,
+          state: "on_track",
+          context,
+          points: [
+            {
+              year: 2015,
+              day: 67,
+              game_day: 4_083,
+              observed_value: 55_000,
+              scheduled_value: 55_000,
+            },
+            {
+              year: 2015,
+              day: 77,
+              game_day: 4_093,
+              observed_value: 58_137,
+              scheduled_value: 58_400,
+            },
+          ],
+        },
+      ],
+    },
   };
 }
 

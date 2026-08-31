@@ -63,6 +63,12 @@ pub enum ObservatoryError {
     InvalidPlanningOverlay(&'static str),
     #[error("The selected planning overlay profile does not exist.")]
     UnknownPlanningOverlay,
+    #[error("The republic plan is invalid: {0}")]
+    InvalidRepublicPlan(&'static str),
+    #[error("The selected republic plan does not exist.")]
+    UnknownRepublicPlan,
+    #[error("That republic plan belongs to a different timeline branch.")]
+    RepublicPlanBranchMismatch,
     #[error("The Analysis Pack is invalid: {0}")]
     InvalidAnalysisPack(&'static str),
     #[error("The selected Analysis Pack does not exist.")]
@@ -167,6 +173,9 @@ impl ObservatoryError {
             Self::CatalogueCompatibilityConflict => "catalogue_compatibility_conflict",
             Self::InvalidPlanningOverlay(_) => "invalid_planning_overlay",
             Self::UnknownPlanningOverlay => "unknown_planning_overlay",
+            Self::InvalidRepublicPlan(_) => "invalid_republic_plan",
+            Self::UnknownRepublicPlan => "unknown_republic_plan",
+            Self::RepublicPlanBranchMismatch => "republic_plan_branch_mismatch",
             Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",
             Self::UnknownAnalysisPack => "unknown_analysis_pack",
             Self::InvalidCompatibilityProfile(_) => "invalid_compatibility_profile",

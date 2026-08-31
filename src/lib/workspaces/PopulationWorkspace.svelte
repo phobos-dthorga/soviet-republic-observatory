@@ -3,9 +3,17 @@
   import AttentionCue from "../attention/AttentionCue.svelte";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import MetricContextHelp from "../ui/MetricContextHelp.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
-  import type { PopulationDataset } from "../observations/types";
+  import type {
+    PopulationDataset,
+    PublishedMetricContext,
+  } from "../observations/types";
+  import {
+    metricContextHelpFor,
+    publishedMetricContext,
+  } from "../presentation/metricContext";
   import {
     createCityMovementChart,
     createEducationProfileChart,
@@ -17,13 +25,45 @@
 
   let {
     dataset = null,
+    metricContexts = [],
     desktopAvailable,
     onopenresearch,
   }: {
     dataset?: PopulationDataset | null;
+    metricContexts?: PublishedMetricContext[];
     desktopAvailable: boolean;
     onopenresearch: () => void;
   } = $props();
+
+  const metricLabel = (metricId: string): string =>
+    populationFactLabel(metricId, $translation);
+  const adultsContext = $derived(
+    publishedMetricContext(
+      metricContexts,
+      "source.stats.citizens.adults",
+      "exact",
+    ),
+  );
+  const childrenContext = $derived(
+    publishedMetricContext(
+      metricContexts,
+      "source.stats.citizens.small_children",
+      "exact",
+    ),
+  );
+  const unemployedContext = $derived(
+    publishedMetricContext(
+      metricContexts,
+      "source.stats.citizens.unemployed",
+      "exact",
+    ),
+  );
+  const educationHelp = $derived(
+    metricHelp("source.stats.citizens.no_education", "history"),
+  );
+  const movementHelp = $derived(
+    metricHelp("source.stats.citizens.born", "history"),
+  );
 
   let selectedCityId = $state("");
   const latest = $derived(dataset?.observations.at(-1) ?? null);
@@ -126,6 +166,13 @@
       default:
         return $translation("population-probe-state-not-configured");
     }
+  }
+
+  function metricHelp(metricId: string, mode: "exact" | "history") {
+    const context = publishedMetricContext(metricContexts, metricId, mode);
+    return context
+      ? metricContextHelpFor(metricId, context, $translation, metricLabel)
+      : null;
   }
 </script>
 
@@ -251,6 +298,14 @@
             <span>{$translation("population-fact-adults")}</span><span
               class="coverage">{$translation("evidence-save-fact")}</span
             >
+            {#if adultsContext}
+              <MetricContextHelp
+                metricId="source.stats.citizens.adults"
+                context={adultsContext}
+                {metricLabel}
+                placement="left"
+              />
+            {/if}
           </header>
           <strong>{factValue("source.stats.citizens.adults")}</strong>
           <p>{$translation("population-direct-source-count")}</p>
@@ -260,6 +315,14 @@
             <span>{$translation("population-fact-small-children")}</span><span
               class="coverage">{$translation("evidence-save-fact")}</span
             >
+            {#if childrenContext}
+              <MetricContextHelp
+                metricId="source.stats.citizens.small_children"
+                context={childrenContext}
+                {metricLabel}
+                placement="left"
+              />
+            {/if}
           </header>
           <strong>{factValue("source.stats.citizens.small_children")}</strong>
           <p>{$translation("population-direct-source-count")}</p>
@@ -269,6 +332,14 @@
             <span>{$translation("population-fact-unemployed")}</span><span
               class="coverage">{$translation("evidence-save-fact")}</span
             >
+            {#if unemployedContext}
+              <MetricContextHelp
+                metricId="source.stats.citizens.unemployed"
+                context={unemployedContext}
+                {metricLabel}
+                placement="left"
+              />
+            {/if}
           </header>
           <strong>{factValue("source.stats.citizens.unemployed")}</strong>
           <p>{$translation("population-no-rate-denominator")}</p>
@@ -295,6 +366,7 @@
         <ObservatoryChart
           spec={educationChart}
           eyebrow={$translation("population-section-education")}
+          help={educationHelp}
         />
       </section>
 
@@ -307,6 +379,7 @@
           spec={movementChart}
           height="285px"
           eyebrow={$translation("population-section-movement")}
+          help={movementHelp}
         />
       </section>
 

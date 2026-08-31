@@ -7,6 +7,7 @@
   import MonitorWorkspace from "./lib/workspaces/MonitorWorkspace.svelte";
   import MaterialsWorkspace from "./lib/workspaces/MaterialsWorkspace.svelte";
   import PopulationWorkspace from "./lib/workspaces/PopulationWorkspace.svelte";
+  import PlanWorkspace from "./lib/workspaces/PlanWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
   import { initialiseThemes } from "./lib/theme/service";
@@ -39,6 +40,7 @@
     reviewPopulationDataset,
     reviewProductionPathway,
     reviewProductionRoute,
+    reviewRepublicPlanWorkspace,
     reviewRepublicBrief,
     reviewWarehouseAttention,
   } from "./lib/ui-review/fixtures";
@@ -52,7 +54,9 @@
     getDiagnosticLog,
     getLatestReceiverDataset,
     getPopulationDataset,
+    getPublishedMetricContexts,
     getRepublicBrief,
+    getRepublicPlanWorkspace,
     getReinterpretationProgress,
     getRecorderHealth,
     getSetupState,
@@ -74,11 +78,13 @@
     DiagnosticLogView,
     ReceiverDataset,
     PopulationDataset,
+    PublishedMetricContext,
     ProductionPathwayModel,
     ProductionRouteModel,
     RecorderHealth,
     RecorderUpdate,
     RepublicBrief,
+    RepublicPlanWorkspace,
     ReinterpretationProgress,
     SetupState,
     WarehouseWriteActivity,
@@ -89,6 +95,7 @@
     | "monitor"
     | "broadcast"
     | "extensions"
+    | "plan"
     | "materials"
     | "population"
     | "archive";
@@ -107,7 +114,7 @@
     { id: "monitor", label: "nav-monitor", enabled: true },
     { id: "broadcast", label: "nav-broadcast", enabled: true },
     { id: "extensions", label: "nav-extensions", enabled: true },
-    { id: "plan", label: "nav-plan", enabled: false },
+    { id: "plan", label: "nav-plan", enabled: true },
     { id: "materials", label: "nav-materials", enabled: true },
     { id: "population", label: "nav-population", enabled: true },
     { id: "markets", label: "nav-markets", enabled: false },
@@ -135,6 +142,8 @@
   let archiveOverview = $state<ArchiveOverview | null>(null);
   let recorderHealth = $state<RecorderHealth | null>(null);
   let republicBrief = $state<RepublicBrief | null>(null);
+  let republicPlan = $state<RepublicPlanWorkspace | null>(null);
+  let publishedMetricContexts = $state<PublishedMetricContext[]>([]);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
@@ -209,6 +218,7 @@
     receiverDataset = result.dataset;
     void refreshPopulationDataset();
     void refreshRepublicBrief();
+    void refreshRepublicPlan();
   }
 
   async function refreshPopulationDataset(): Promise<void> {
@@ -226,6 +236,15 @@
       republicBrief = await getRepublicBrief();
     } catch {
       republicBrief = null;
+    }
+  }
+
+  async function refreshRepublicPlan(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      republicPlan = await getRepublicPlanWorkspace();
+    } catch {
+      republicPlan = null;
     }
   }
 
@@ -266,6 +285,7 @@
     });
     void refreshPopulationDataset();
     void refreshRepublicBrief();
+    void refreshRepublicPlan();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -286,6 +306,7 @@
       );
       void refreshPopulationDataset();
       void refreshRepublicBrief();
+      void refreshRepublicPlan();
     }
   }
 
@@ -353,6 +374,10 @@
         break;
       case "workspace-extensions":
         activeWorkspace = "extensions";
+        break;
+      case "workspace-plan":
+        activeWorkspace = "plan";
+        republicPlan = reviewRepublicPlanWorkspace();
         break;
       case "workspace-materials":
         activeWorkspace = "materials";
@@ -486,15 +511,30 @@
       getRecorderHealth(),
       getPopulationDataset().catch(() => null),
       getRepublicBrief().catch(() => null),
-    ]).then(([setup, dataset, archive, health, population, brief]) => {
-      if (disposed) return;
-      setupState = setup;
-      receiverDataset = dataset;
-      archiveOverview = archive;
-      recorderHealth = health;
-      populationDataset = population;
-      republicBrief = brief;
-    });
+      getRepublicPlanWorkspace().catch(() => null),
+      getPublishedMetricContexts().catch(() => []),
+    ]).then(
+      ([
+        setup,
+        dataset,
+        archive,
+        health,
+        population,
+        brief,
+        plan,
+        metricContexts,
+      ]) => {
+        if (disposed) return;
+        setupState = setup;
+        receiverDataset = dataset;
+        archiveOverview = archive;
+        recorderHealth = health;
+        populationDataset = population;
+        republicBrief = brief;
+        republicPlan = plan;
+        publishedMetricContexts = metricContexts;
+      },
+    );
     void Promise.allSettled([themeReady, initialDataReady]).then(() => {
       if (disposed) return;
       void initialiseUiReview(applyUiReviewScenario).then((dispose) => {
@@ -516,6 +556,7 @@
       if (!disposed) {
         warehouseStatus = status;
         void refreshRepublicBrief();
+        void refreshRepublicPlan();
       }
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -817,16 +858,29 @@
       archive={archiveOverview}
       {receiverDataset}
       {desktopAvailable}
+      metricContexts={publishedMetricContexts}
       oncompare={compareArchiveObservations}
     />
   {:else if activeWorkspace === "broadcast"}
-    <BroadcastWorkspace {receiverDataset} />
+    <BroadcastWorkspace
+      {receiverDataset}
+      metricContexts={publishedMetricContexts}
+    />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace
       {desktopAvailable}
       observationContext={receiverDataset
         ? `${receiverDataset.analysis_context_id ?? "unbound"}:${receiverDataset.interpretation_id}:${receiverDataset.branch_id}`
         : ""}
+    />
+  {:else if activeWorkspace === "plan"}
+    <PlanWorkspace
+      workspace={republicPlan}
+      {desktopAvailable}
+      onupdate={(updated) => {
+        republicPlan = updated;
+        void refreshRepublicBrief();
+      }}
     />
   {:else if activeWorkspace === "materials"}
     <MaterialsWorkspace
@@ -838,6 +892,7 @@
   {:else if activeWorkspace === "population"}
     <PopulationWorkspace
       dataset={populationDataset}
+      metricContexts={publishedMetricContexts}
       {desktopAvailable}
       onopenresearch={() => (researchSetupDialogOpen = true)}
     />

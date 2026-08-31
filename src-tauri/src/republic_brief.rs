@@ -1,25 +1,15 @@
+use crate::metric_catalogue::{
+    ADULTS, BASIC_EDUCATION, HIGHER_EDUCATION, NO_EDUCATION, RECEIVER_COMPUTER, RECEIVER_NONE,
+    RECEIVER_RADIO, RECEIVER_TELEVISION, RECEIVER_TOTAL, SMALL_CHILDREN, UNEMPLOYED, exact_context,
+};
 use crate::model::{
     AnalysisContextMode, BriefComparisonAnchor, BriefEvidenceKind, BriefFinding,
     BriefFindingSeverity, BriefMetric, BriefMetricRole, BriefObservation, BriefOperations,
-    BriefSourceEvidence, CatalogueStatus, CoverageStatus, MetricComparisonBasis, MetricContext,
-    MetricContextLimitation, MetricGeographicScope, MetricPopulationBasis, MetricTimeBasis,
-    PopulationDataset, PopulationFact, PopulationObservation, RecorderHealth, RepublicBrief,
-    WarehousePhase,
+    BriefSourceEvidence, CatalogueStatus, CoverageStatus, PopulationDataset, PopulationFact,
+    PopulationObservation, RecorderHealth, RepublicBrief, RepublicPlanBrief, WarehousePhase,
 };
 
 const SCHEMA_VERSION: u32 = 1;
-const ADULTS: &str = "source.stats.citizens.adults";
-const SMALL_CHILDREN: &str = "source.stats.citizens.small_children";
-const UNEMPLOYED: &str = "source.stats.citizens.unemployed";
-const NO_EDUCATION: &str = "source.stats.citizens.no_education";
-const BASIC_EDUCATION: &str = "source.stats.citizens.basic_education";
-const HIGHER_EDUCATION: &str = "source.stats.citizens.higher_education";
-const RECEIVER_NONE: &str = "core.citizens.electronics.none";
-const RECEIVER_RADIO: &str = "core.citizens.electronics.radio";
-const RECEIVER_TELEVISION: &str = "core.citizens.electronics.television";
-const RECEIVER_COMPUTER: &str = "core.citizens.electronics.computer";
-const RECEIVER_TOTAL: &str = "core.citizens.electronics.classified_total";
-
 const RAW_METRICS: [(&str, BriefMetricRole); 9] = [
     (ADULTS, BriefMetricRole::Headline),
     (SMALL_CHILDREN, BriefMetricRole::Headline),
@@ -32,16 +22,13 @@ const RAW_METRICS: [(&str, BriefMetricRole); 9] = [
     (RECEIVER_TELEVISION, BriefMetricRole::ReceiverClass),
 ];
 
-const UNAVAILABLE_CAPABILITIES: [&str; 3] = [
-    "plan_attainment",
-    "import_exposure",
-    "observed_material_reliance",
-];
+const UNAVAILABLE_CAPABILITIES: [&str; 2] = ["import_exposure", "observed_material_reliance"];
 
 pub fn build_republic_brief(
     dataset: &PopulationDataset,
     recorder: Option<&RecorderHealth>,
     catalogue: Option<&CatalogueStatus>,
+    plan: Option<RepublicPlanBrief>,
 ) -> RepublicBrief {
     let current = dataset.observations.last();
     let previous = dataset
@@ -69,10 +56,8 @@ pub fn build_republic_brief(
             dispatch_code: dispatch_code(&findings),
             findings,
             operations,
-            unavailable_capabilities: UNAVAILABLE_CAPABILITIES
-                .iter()
-                .map(|value| (*value).to_owned())
-                .collect(),
+            unavailable_capabilities: unavailable_capabilities(plan.is_none()),
+            plan,
         };
     };
 
@@ -147,7 +132,8 @@ pub fn build_republic_brief(
                 share_basis_points: None,
                 evidence_kind: BriefEvidenceKind::Calculation,
                 sources: receiver_sources(current),
-                context: metric_context(RECEIVER_TOTAL),
+                context: exact_context(RECEIVER_TOTAL)
+                    .expect("receiver total is a published metric"),
             },
         );
     }
@@ -177,10 +163,8 @@ pub fn build_republic_brief(
         dispatch_code: dispatch_code(&findings),
         findings,
         operations,
-        unavailable_capabilities: UNAVAILABLE_CAPABILITIES
-            .iter()
-            .map(|value| (*value).to_owned())
-            .collect(),
+        unavailable_capabilities: unavailable_capabilities(plan.is_none()),
+        plan,
     }
 }
 
@@ -209,52 +193,19 @@ fn raw_metric(
             source_field: current_fact.source_field.clone(),
             source_line: current_fact.source_line,
         }],
-        context: metric_context(metric_id),
+        context: exact_context(metric_id).expect("brief metrics are published by the host"),
     })
 }
 
-fn metric_context(metric_id: &str) -> MetricContext {
-    let (population_basis, denominator_metric_id, limitations) = match metric_id {
-        ADULTS => (
-            MetricPopulationBasis::SourceDefinedAdults,
-            None,
-            vec![MetricContextLimitation::NotEmploymentCount],
-        ),
-        SMALL_CHILDREN => (
-            MetricPopulationBasis::SourceDefinedSmallChildren,
-            None,
-            vec![MetricContextLimitation::SourceAgeBoundaryUnverified],
-        ),
-        UNEMPLOYED => (
-            MetricPopulationBasis::SourceDefinedUnemployed,
-            None,
-            vec![MetricContextLimitation::SourceWindowUnverified],
-        ),
-        NO_EDUCATION | BASIC_EDUCATION | HIGHER_EDUCATION => (
-            MetricPopulationBasis::AllRecordedCitizens,
-            None,
-            vec![MetricContextLimitation::NotWorkersOnly],
-        ),
-        RECEIVER_NONE | RECEIVER_RADIO | RECEIVER_TELEVISION | RECEIVER_COMPUTER => (
-            MetricPopulationBasis::ClassifiedReceiverPopulation,
-            Some(RECEIVER_TOTAL.to_owned()),
-            vec![MetricContextLimitation::ExcludesUnclassifiedCitizens],
-        ),
-        RECEIVER_TOTAL => (
-            MetricPopulationBasis::ClassifiedReceiverPopulation,
-            None,
-            vec![MetricContextLimitation::ExcludesUnclassifiedCitizens],
-        ),
-        _ => unreachable!("Republic Brief metrics are selected from a closed host catalogue"),
-    };
-    MetricContext {
-        population_basis,
-        time_basis: MetricTimeBasis::ExactSelectedObservation,
-        geographic_scope: MetricGeographicScope::WholeRepublic,
-        denominator_metric_id,
-        comparison_basis: MetricComparisonBasis::ProvenPrecedingSameBranchAndProfile,
-        limitations,
+fn unavailable_capabilities(plan_unavailable: bool) -> Vec<String> {
+    let mut capabilities = UNAVAILABLE_CAPABILITIES
+        .iter()
+        .map(|value| (*value).to_owned())
+        .collect::<Vec<_>>();
+    if plan_unavailable {
+        capabilities.insert(0, "plan_attainment".to_owned());
     }
+    capabilities
 }
 
 fn fact<'a>(observation: &'a PopulationObservation, metric_id: &str) -> Option<&'a PopulationFact> {
@@ -441,14 +392,14 @@ mod tests {
     use super::*;
     use crate::model::{
         AnalysisContext, AnalysisContextOrigin, AutomaticObserverPhase, AutomaticObserverStatus,
-        CatalogueRefreshProgress, CatalogueStatus, PopulationCitySnapshot, RecorderHealth,
-        WarehouseHealth,
+        CatalogueRefreshProgress, CatalogueStatus, MetricContextLimitation, MetricPopulationBasis,
+        PopulationCitySnapshot, RecorderHealth, WarehouseHealth,
     };
 
     #[test]
     fn builds_exact_head_metrics_deltas_shares_and_provenance() {
         let dataset = dataset_with_two_observations();
-        let brief = build_republic_brief(&dataset, Some(&recorder()), Some(&catalogue()));
+        let brief = build_republic_brief(&dataset, Some(&recorder()), Some(&catalogue()), None);
 
         assert_eq!(brief.schema_version, 1);
         assert_eq!(brief.observation.as_ref().map(|value| value.day), Some(20));
@@ -492,6 +443,36 @@ mod tests {
     }
 
     #[test]
+    fn active_plan_replaces_only_the_plan_unavailable_capability() {
+        let plan = RepublicPlanBrief {
+            plan_id: "plan-test".to_owned(),
+            name: "Five-Year Plan".to_owned(),
+            revision: 2,
+            target_count: 3,
+            end_year: 2020,
+            end_day: 20,
+            state: crate::model::PlanTargetState::OnTrack,
+            attainment_basis_points: Some(9_500),
+            guardrail_breach_count: 0,
+        };
+
+        let brief = build_republic_brief(
+            &dataset_with_two_observations(),
+            Some(&recorder()),
+            Some(&catalogue()),
+            Some(plan.clone()),
+        );
+
+        assert_eq!(brief.plan, Some(plan));
+        assert!(
+            !brief
+                .unavailable_capabilities
+                .contains(&"plan_attainment".to_owned())
+        );
+        assert_eq!(brief.unavailable_capabilities.len(), 2);
+    }
+
+    #[test]
     fn keeps_missing_and_operational_evidence_explicit() {
         let mut dataset = dataset_with_two_observations();
         dataset.analysis_context.mode = AnalysisContextMode::HistoricalPreview;
@@ -503,7 +484,7 @@ mod tests {
         catalogue.warehouse.phase = WarehousePhase::Attention;
         catalogue.warehouse.failed_jobs = 1;
 
-        let brief = build_republic_brief(&dataset, Some(&recorder), Some(&catalogue));
+        let brief = build_republic_brief(&dataset, Some(&recorder), Some(&catalogue), None);
 
         assert!(brief.metrics.is_empty());
         assert_eq!(brief.dispatch_code, "recorder_attention");
@@ -537,7 +518,7 @@ mod tests {
             .unwrap()
             .resolved_profile_hash = "b".repeat(64);
 
-        let brief = build_republic_brief(&dataset, Some(&recorder()), Some(&catalogue()));
+        let brief = build_republic_brief(&dataset, Some(&recorder()), Some(&catalogue()), None);
 
         assert_eq!(metric(&brief, ADULTS).previous_value, None);
         assert_eq!(metric(&brief, ADULTS).delta, None);
@@ -553,7 +534,7 @@ mod tests {
     fn empty_context_does_not_invent_an_observation() {
         let mut dataset = dataset_with_two_observations();
         dataset.observations.clear();
-        let brief = build_republic_brief(&dataset, None, None);
+        let brief = build_republic_brief(&dataset, None, None, None);
 
         assert!(brief.observation.is_none());
         assert!(brief.metrics.is_empty());

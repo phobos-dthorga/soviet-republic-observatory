@@ -12,10 +12,12 @@ mod error;
 mod fixed_binary;
 mod game_vocabulary;
 mod language_pack;
+mod metric_catalogue;
 mod model;
 mod planning_overlay;
 mod recorder_service;
 mod republic_brief;
+mod republic_plan;
 mod research_setup;
 mod save_archive;
 mod stats_parser;
@@ -89,6 +91,12 @@ pub fn run() {
             commands::get_archive_overview,
             commands::get_population_dataset,
             commands::get_republic_brief,
+            commands::get_published_metric_contexts,
+            commands::get_republic_plan_workspace,
+            commands::save_republic_plan,
+            commands::activate_republic_plan,
+            commands::rollback_republic_plan,
+            commands::remove_republic_plan,
             commands::get_recorder_health,
             commands::configure_directory,
             commands::observe_latest_save,

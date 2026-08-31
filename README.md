@@ -30,7 +30,9 @@ questions:
 > GPL Tesmio research companion can now supply strictly bounded anonymous live
 > samples; it is never auto-installed, is not persisted into Observatory
 > databases, and is governed by an in-app legal/risk screen. The Republic
-> Briefing is now an exact-head, save-backed summary with deterministic findings;
+> Briefing is now an exact-head, save-backed summary with deterministic findings,
+> and the first branch-bound Five-Year Plan slice records immutable player
+> targets, schedules, guardrails, and attainment in SQLite;
 > unsupported claims remain unavailable instead of receiving example values.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
@@ -42,8 +44,10 @@ questions:
   provenance; and a deterministic save-to-save dispatch.
 - **Republic Monitor** — native recorder health, candidate lifecycle, recording
   cadence, branch warnings, and latest same-branch receiver movement.
-- **Five-Year Plan** — targets, actual-versus-plan progress, variance bridges,
-  confidence ranges, milestones, and scenario testing.
+- **Five-Year Plan** — implemented count targets, actual-versus-schedule
+  progress, directional variance, guardrails, immutable revisions, and
+  branch-safe historical evaluation; forecasts and scenarios remain later
+  model families.
 - **Material Periodic Table** — every resource presented as a compact cell with
   trade, price, use, risk, and provenance context.
 - **Industrial Laboratory** — production-chain diagrams, limiting-reagent

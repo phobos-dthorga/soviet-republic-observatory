@@ -12,6 +12,7 @@ mod observations;
 mod planning_overlays;
 mod population;
 mod recorder;
+mod republic_plans;
 mod research_setup;
 mod settings;
 mod snapshots;

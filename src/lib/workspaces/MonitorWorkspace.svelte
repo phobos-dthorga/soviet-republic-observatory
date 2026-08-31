@@ -17,6 +17,7 @@
     RecorderCandidateStatus,
     RecorderDiscoverySource,
     RecorderHealth,
+    PublishedMetricContext,
   } from "../observations/types";
 
   let {
@@ -25,16 +26,23 @@
     receiverDataset,
     desktopAvailable,
     oncompare,
+    metricContexts = [],
   }: {
     health: RecorderHealth | null;
     archive: ArchiveOverview | null;
     receiverDataset: ReceiverDataset | null;
     desktopAvailable: boolean;
+    metricContexts?: PublishedMetricContext[];
     oncompare: (
       fromPayloadHash: string,
       toPayloadHash: string,
     ) => Promise<ArchiveComparison>;
   } = $props();
+  import {
+    metricContextHelpFor,
+    publishedMetricContext,
+  } from "../presentation/metricContext";
+  import { briefMetricLabel } from "../presentation/republicBrief";
 
   const sections: Array<{
     label: TranslationKey;
@@ -77,6 +85,21 @@
     createReceiverChangeChart(comparison, $translation),
   );
   const largestInterval = $derived(largestObservationInterval(archive));
+  const receiverChangeHelp = $derived.by(() => {
+    const context = publishedMetricContext(
+      metricContexts,
+      "core.citizens.electronics.classified_total",
+      "history",
+    );
+    return context
+      ? metricContextHelpFor(
+          "core.citizens.electronics.classified_total",
+          context,
+          $translation,
+          (metricId) => briefMetricLabel(metricId, $translation),
+        )
+      : null;
+  });
 
   $effect(() => {
     const from = branchObservations.at(-2)?.payload_hash;
@@ -342,6 +365,7 @@
           <ObservatoryChart
             spec={receiverChangeChart}
             eyebrow={$translation("monitor-latest-change")}
+            help={receiverChangeHelp}
           />
         </div>
 

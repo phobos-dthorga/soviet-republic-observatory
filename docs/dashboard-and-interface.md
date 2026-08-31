@@ -45,7 +45,7 @@ changing their semantic order.
   coverage.
 
 The current application enables Briefing, Monitor, Broadcast, Extensions,
-Materials, Population, and Archive in primary navigation. The other buttons
+Plan, Materials, Population, and Archive in primary navigation. The other buttons
 remain visibly disabled until their analytical vertical slices exist. The shell
 owns only global navigation and observation context; each enabled destination
 is a presentational workspace component.
@@ -108,11 +108,31 @@ Receiver shares name the four-class classified population as their denominator
 and do not imply whole-population coverage. Svelte localises and presents this
 model but does not invent or repair metric meaning.
 
-Plan attainment, import exposure, and observed material reliance remain visible
-as unsupported capabilities without placeholder values. Installed definitions
-may answer what a route permits; they do not prove what this republic produced,
-consumed, stored, or imported. Historical previews stop at the exact selected
-head and never splice in later observations.
+An active branch plan contributes its name, revision, target count, deadline,
+guardrail count, and deterministic attainment to Briefing. Without an active
+plan, plan attainment remains an unsupported capability and links directly to
+the Plan workspace. Import exposure and observed material reliance remain
+visible as unsupported capabilities without placeholder values. Installed
+definitions may answer what a route permits; they do not prove what this
+republic produced, consumed, stored, or imported. Historical previews stop at
+the exact selected head and never splice in later observations.
+
+### Five-Year Plan
+
+Plan is a source-backed, branch-aware workspace over published republic count
+metrics. Creating a plan pins its baseline to the exact selected save and
+records one immutable SQLite revision. Linear, quarterly-milestone, and
+hold-then-change schedules compare actual observations with player intent.
+Directional variance, tolerance breaches, and attainment are calculated by
+Rust and arrive as bounded presentation models.
+
+The target chart distinguishes parsed save facts, player definitions, and
+deterministic calculations in provenance. Revising retains the original anchor
+while permitting the target set to change against anchor-save baselines;
+rollback selects the preceding
+immutable revision. Each branch has an independent active selection. An exact
+historical head excludes later observations, a compatibility mapping change
+withholds evaluation, and no gap is silently filled.
 
 ### Observer Health and Republic Pulse
 

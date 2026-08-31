@@ -14,8 +14,9 @@ use crate::model::{
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
     OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
     ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
-    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress,
-    RepublicBrief, SetupState, WarehouseSnapshot,
+    ProductionRouteRequest, PublishedMetricContext, ReceiverDataset, RecorderHealth,
+    ReinterpretationProgress, RepublicBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState,
+    WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -197,6 +198,66 @@ pub fn get_population_dataset(
 #[tauri::command]
 pub fn get_republic_brief(state: State<'_, AppState>) -> Result<RepublicBrief, CommandError> {
     state.application.republic_brief().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_published_metric_contexts() -> Vec<PublishedMetricContext> {
+    crate::metric_catalogue::published_metric_contexts()
+}
+
+#[tauri::command]
+pub fn get_republic_plan_workspace(
+    state: State<'_, AppState>,
+) -> Result<RepublicPlanWorkspace, CommandError> {
+    state
+        .application
+        .republic_plan_workspace()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn save_republic_plan(
+    draft: RepublicPlanDraft,
+    state: State<'_, AppState>,
+) -> Result<RepublicPlanWorkspace, CommandError> {
+    state
+        .application
+        .save_republic_plan(&draft)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn activate_republic_plan(
+    plan_id: String,
+    revision: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<RepublicPlanWorkspace, CommandError> {
+    state
+        .application
+        .activate_republic_plan(&plan_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn rollback_republic_plan(
+    plan_id: String,
+    state: State<'_, AppState>,
+) -> Result<RepublicPlanWorkspace, CommandError> {
+    state
+        .application
+        .rollback_republic_plan(&plan_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_republic_plan(
+    plan_id: String,
+    state: State<'_, AppState>,
+) -> Result<RepublicPlanWorkspace, CommandError> {
+    state
+        .application
+        .remove_republic_plan(&plan_id)
+        .map_err(Into::into)
 }
 
 #[tauri::command]

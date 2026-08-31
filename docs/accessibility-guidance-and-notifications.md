@@ -69,6 +69,24 @@ tooltip must not contain an action, conceal a required warning, or be the only
 way to learn information necessary to complete a task. Essential wording stays
 in the page or dialog.
 
+### Metric context standard
+
+Analytical values use the host-published Metric Context contract whenever a
+reader could reasonably mistake the counted basis, time window, denominator,
+scope, or comparison rule. Cards and consequential form fields render that
+contract through `MetricContextHelp.svelte`; charts pass the same content to
+the application-owned chart frame. All use the same question-mark trigger,
+keyboard/focus behaviour, topic identity, guidance surface, and ordered detail
+ledger.
+
+Use the complete context for a KPI, plan target, derived share, source counter,
+or chart. A short plain-language hint remains appropriate for a familiar
+control whose meaning has no statistical boundary. A metric tooltip is never
+used to conceal the displayed unit, evidence class, required scope, warning,
+or unavailable state. If the contract does not describe a composite chart or
+city-specific value honestly, omit the generic tooltip and provide a dedicated
+visible explanation instead.
+
 ### Guidance surfaces
 
 Inert previews, context tooltips, and tutorial/help messages use one

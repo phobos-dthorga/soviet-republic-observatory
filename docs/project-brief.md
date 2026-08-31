@@ -86,9 +86,12 @@ memory, injection, or frame-live telemetry.
 
 ### Five-Year Plan
 
-Players define quantities, rates, dates, guardrails, and milestones. Actual and
-scheduled progress remain separate. Forecasts use intervals, record their model
-version, and never hide missed or irregular observations.
+Players define bounded count targets, dates, guardrails, and one of three
+deterministic schedules. Plans are anchored to an exact save, scoped to one
+branch, and retained as immutable revisions in SQLite. Actual and scheduled
+progress remain separate; historical previews stop at their exact head and
+missed observations are never silently filled. Forecasts remain a later,
+separate model family with intervals and explicit model versions.
 
 ### Material Periodic Table
 

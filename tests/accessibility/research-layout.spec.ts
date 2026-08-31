@@ -253,6 +253,7 @@ test("enabled workspaces use the shared guidance surface without disguising cont
     "Monitor",
     "Broadcast",
     "Extensions",
+    "Plan",
     "Materials",
     "Population",
     "Archive",

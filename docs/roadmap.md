@@ -154,10 +154,17 @@ selected branch's normalised receiver dataset for evaluation. Packs remain
 independent of installed definitions unless a later host API explicitly
 publishes catalogue metrics.
 
-## Slice 5 — Republic Briefing and Broadcast foundation
+## Slice 5 — Republic Briefing and Broadcast foundation — active implementation
 
-- Player plans and targets
-- Plan attainment and guardrails
+- Branch-bound SQLite player plans with exact-save baselines and immutable
+  revisions — implemented
+- Linear, quarterly-milestone, and hold-then-change schedules — implemented
+- Actual-versus-scheduled target charts, directional variance, guardrails, and
+  deterministic attainment — implemented
+- Branch-specific selection, revision rollback, removal, historical-head
+  truncation, and compatibility-profile continuity — implemented
+- Briefing plan summary and app-wide host-published Metric Context help —
+  implemented
 - Demographic decomposition and rates
 - Trade exposure and concentration
 - Deterministic Ministry Dispatch

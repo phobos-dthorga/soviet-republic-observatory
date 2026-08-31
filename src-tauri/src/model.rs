@@ -412,6 +412,7 @@ pub enum MetricPopulationBasis {
     SourceDefinedAdults,
     SourceDefinedSmallChildren,
     SourceDefinedUnemployed,
+    SourceDefinedMovementCounter,
     ClassifiedReceiverPopulation,
 }
 
@@ -419,6 +420,7 @@ pub enum MetricPopulationBasis {
 #[serde(rename_all = "snake_case")]
 pub enum MetricTimeBasis {
     ExactSelectedObservation,
+    BranchObservationsThroughSelectedHead,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -431,6 +433,7 @@ pub enum MetricGeographicScope {
 #[serde(rename_all = "snake_case")]
 pub enum MetricComparisonBasis {
     ProvenPrecedingSameBranchAndProfile,
+    PlayerPlanSchedule,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -441,6 +444,7 @@ pub enum MetricContextLimitation {
     SourceAgeBoundaryUnverified,
     SourceWindowUnverified,
     ExcludesUnclassifiedCitizens,
+    NotIntervalFlow,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -451,6 +455,179 @@ pub struct MetricContext {
     pub denominator_metric_id: Option<String>,
     pub comparison_basis: MetricComparisonBasis,
     pub limitations: Vec<MetricContextLimitation>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PublishedMetricContext {
+    pub metric_id: String,
+    pub exact: MetricContext,
+    pub history: MetricContext,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanScheduleKind {
+    Linear,
+    Milestone,
+    HoldThenChange,
+}
+
+impl PlanScheduleKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Linear => "linear",
+            Self::Milestone => "milestone",
+            Self::HoldThenChange => "hold_then_change",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanDirection {
+    Increase,
+    Decrease,
+    Maintain,
+}
+
+impl PlanDirection {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Increase => "increase",
+            Self::Decrease => "decrease",
+            Self::Maintain => "maintain",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanTargetState {
+    AwaitingStart,
+    Ahead,
+    OnTrack,
+    Behind,
+    Complete,
+    Unavailable,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct PlanTargetDraft {
+    pub metric_id: String,
+    pub target_value: u64,
+    pub direction: PlanDirection,
+    pub guardrail_basis_points: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct RepublicPlanDraft {
+    pub plan_id: Option<String>,
+    pub name: String,
+    pub end_year: i32,
+    pub end_day: u16,
+    pub schedule: PlanScheduleKind,
+    pub targets: Vec<PlanTargetDraft>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct RepublicPlanTarget {
+    pub metric_id: String,
+    pub baseline_value: u64,
+    pub target_value: u64,
+    pub direction: PlanDirection,
+    pub guardrail_basis_points: u16,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct RepublicPlanRevision {
+    pub plan_id: String,
+    pub name: String,
+    pub revision: u32,
+    pub branch_id: String,
+    pub start_interpretation_id: String,
+    pub start_profile_hash: String,
+    pub start_year: i32,
+    pub start_day: u16,
+    pub start_game_day: i64,
+    pub end_year: i32,
+    pub end_day: u16,
+    pub end_game_day: i64,
+    pub schedule: PlanScheduleKind,
+    pub created_at_ms: i64,
+    pub targets: Vec<RepublicPlanTarget>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct RepublicPlanListItem {
+    pub plan_id: String,
+    pub name: String,
+    pub branch_id: String,
+    pub active_revision: u32,
+    pub latest_revision: u32,
+    pub revision_count: u32,
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PlanMetricOption {
+    pub metric_id: String,
+    pub current_value: Option<u64>,
+    pub active_plan_baseline_value: Option<u64>,
+    pub context: MetricContext,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PlanSeriesPoint {
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub observed_value: u64,
+    pub scheduled_value: u64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct PlanTargetEvaluation {
+    pub target: RepublicPlanTarget,
+    pub current_value: Option<u64>,
+    pub scheduled_value: Option<u64>,
+    pub directional_variance: Option<i64>,
+    pub attainment_basis_points: Option<u16>,
+    pub guardrail_breached: bool,
+    pub state: PlanTargetState,
+    pub context: MetricContext,
+    pub points: Vec<PlanSeriesPoint>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct RepublicPlanEvaluation {
+    pub revision: RepublicPlanRevision,
+    pub state: PlanTargetState,
+    pub attainment_basis_points: Option<u16>,
+    pub guardrail_breach_count: u32,
+    pub targets: Vec<PlanTargetEvaluation>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RepublicPlanWorkspace {
+    pub analysis_context: AnalysisContext,
+    pub current_year: Option<i32>,
+    pub current_day: Option<u16>,
+    pub available_metrics: Vec<PlanMetricOption>,
+    pub plans: Vec<RepublicPlanListItem>,
+    pub active_plan: Option<RepublicPlanEvaluation>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct RepublicPlanBrief {
+    pub plan_id: String,
+    pub name: String,
+    pub revision: u32,
+    pub target_count: u32,
+    pub end_year: i32,
+    pub end_day: u16,
+    pub state: PlanTargetState,
+    pub attainment_basis_points: Option<u16>,
+    pub guardrail_breach_count: u32,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -529,6 +706,7 @@ pub struct RepublicBrief {
     pub findings: Vec<BriefFinding>,
     pub dispatch_code: String,
     pub operations: BriefOperations,
+    pub plan: Option<RepublicPlanBrief>,
     pub unavailable_capabilities: Vec<String>,
 }
 

@@ -1,7 +1,11 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import type { TranslationKey } from "../i18n/catalog";
-  import { formatNumber, formatSignedNumber } from "../i18n/format";
+  import {
+    formatNumber,
+    formatPercent,
+    formatSignedNumber,
+  } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import type {
     BriefFinding,
@@ -19,10 +23,11 @@
     metricContextHelp,
     metricContextSummary,
   } from "../presentation/metricContext";
-  import ContextHelp from "../ui/ContextHelp.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import MetricContextHelp from "../ui/MetricContextHelp.svelte";
 
-  type LinkedWorkspace = "monitor" | "materials" | "population" | "archive";
+  type LinkedWorkspace =
+    "monitor" | "materials" | "population" | "archive" | "plan";
 
   let {
     brief = null,
@@ -337,7 +342,6 @@
         aria-label={$translation("briefing-kpis-label")}
       >
         {#each headlineMetrics as metric}
-          {@const help = metricContextHelp(metric, $translation, metricLabel)}
           <div class="metric-card-shell">
             <button
               type="button"
@@ -371,11 +375,10 @@
               </footer>
             </button>
             <span class="metric-card-help">
-              <ContextHelp
-                topic={help.topic}
-                title={help.title}
-                text={help.text}
-                details={help.details}
+              <MetricContextHelp
+                metricId={metric.metric_id}
+                context={metric.context}
+                {metricLabel}
                 placement="left"
               />
             </span>
@@ -423,6 +426,31 @@
         </div>
       </header>
       <div class="capability-grid">
+        {#if brief?.plan}
+          <article class="available-capability">
+            <span class="coverage">{$translation("briefing-plan-active")}</span>
+            <h3>{brief.plan.name}</h3>
+            <strong class="plan-attainment">
+              {brief.plan.attainment_basis_points === null
+                ? $translation("chart-unavailable")
+                : formatPercent(
+                    brief.plan.attainment_basis_points / 100,
+                    $activeLocale,
+                  )}
+            </strong>
+            <p>
+              {$translation("briefing-plan-summary", {
+                revision: brief.plan.revision,
+                targets: brief.plan.target_count,
+                year: brief.plan.end_year,
+                day: String(brief.plan.end_day).padStart(3, "0"),
+              })}
+            </p>
+            <button type="button" onclick={() => onopenworkspace("plan")}
+              >{$translation("briefing-open-plan")}</button
+            >
+          </article>
+        {/if}
         {#each brief?.unavailable_capabilities ?? ["plan_attainment", "import_exposure", "observed_material_reliance"] as capability}
           {@const copy = capabilityCopy(capability)}
           <article>
@@ -432,6 +460,10 @@
             {#if capability === "observed_material_reliance"}
               <button type="button" onclick={() => onopenworkspace("materials")}
                 >{$translation("briefing-open-materials")}</button
+              >
+            {:else if capability === "plan_attainment"}
+              <button type="button" onclick={() => onopenworkspace("plan")}
+                >{$translation("briefing-open-plan")}</button
               >
             {/if}
           </article>
@@ -736,6 +768,18 @@
     color: var(--colour-muted);
     font-size: var(--type-caption);
     line-height: 1.55;
+  }
+
+  .available-capability {
+    border-color: var(--colour-success);
+  }
+
+  .plan-attainment {
+    display: block;
+    margin: 7px 0 4px;
+    color: var(--colour-success);
+    font-family: var(--font-display);
+    font-size: 1.55rem;
   }
 
   .capability-grid button,

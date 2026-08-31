@@ -26,7 +26,7 @@ use crate::model::{
     ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
-    SetupState, WarehouseSnapshot,
+    RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -188,11 +188,66 @@ impl ObservatoryApplication {
         let population = self.population_dataset()?;
         let recorder = self.recorder_health().ok();
         let catalogue = self.catalogue_status().ok();
+        let plan = self
+            .storage
+            .republic_plan_workspace(&population)?
+            .active_plan
+            .map(|evaluation| RepublicPlanBrief {
+                plan_id: evaluation.revision.plan_id,
+                name: evaluation.revision.name,
+                revision: evaluation.revision.revision,
+                target_count: evaluation.targets.len().min(u32::MAX as usize) as u32,
+                end_year: evaluation.revision.end_year,
+                end_day: evaluation.revision.end_day,
+                state: evaluation.state,
+                attainment_basis_points: evaluation.attainment_basis_points,
+                guardrail_breach_count: evaluation.guardrail_breach_count,
+            });
         Ok(crate::republic_brief::build_republic_brief(
             &population,
             recorder.as_ref(),
             catalogue.as_ref(),
+            plan,
         ))
+    }
+
+    pub fn republic_plan_workspace(&self) -> Result<RepublicPlanWorkspace, ObservatoryError> {
+        let population = self.population_dataset()?;
+        self.storage.republic_plan_workspace(&population)
+    }
+
+    pub fn save_republic_plan(
+        &self,
+        draft: &RepublicPlanDraft,
+    ) -> Result<RepublicPlanWorkspace, ObservatoryError> {
+        let population = self.population_dataset()?;
+        self.storage.save_republic_plan(draft, &population)
+    }
+
+    pub fn activate_republic_plan(
+        &self,
+        plan_id: &str,
+        revision: Option<u32>,
+    ) -> Result<RepublicPlanWorkspace, ObservatoryError> {
+        let population = self.population_dataset()?;
+        self.storage
+            .activate_republic_plan(plan_id, revision, &population)
+    }
+
+    pub fn rollback_republic_plan(
+        &self,
+        plan_id: &str,
+    ) -> Result<RepublicPlanWorkspace, ObservatoryError> {
+        let population = self.population_dataset()?;
+        self.storage.rollback_republic_plan(plan_id, &population)
+    }
+
+    pub fn remove_republic_plan(
+        &self,
+        plan_id: &str,
+    ) -> Result<RepublicPlanWorkspace, ObservatoryError> {
+        let population = self.population_dataset()?;
+        self.storage.remove_republic_plan(plan_id, &population)
     }
 
     pub fn language_status(&self) -> Result<LanguageStatus, ObservatoryError> {

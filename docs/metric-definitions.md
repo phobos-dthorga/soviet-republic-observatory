@@ -8,15 +8,34 @@ rules are not optional.
 
 ### Plan attainment
 
-For a target with scheduled cumulative value `S(t)` and observed cumulative
-value `A(t)` at game date `t`:
+For an increase or decrease target with immutable baseline `B`, final target
+`T`, current observed value `A(t)`, and scheduled value `S(t)` at game date
+`t`, the implemented first slice reports:
 
-`plan attainment(t) = A(t) / S(t)`
+`increase attainment(t) = max(A(t) − B, 0) / (T − B)`
 
-Display the ratio with the two underlying values, target unit, target direction,
-effective game date, and whether the target is cumulative or period-based. A
-lower-is-better target uses an explicitly defined status rule rather than
-silently inverting the ratio.
+`decrease attainment(t) = max(B − A(t), 0) / (B − T)`
+
+Attainment is capped at 200%. A maintain target scores 100% at the target and
+falls towards zero across its explicit tolerance. Overall attainment is the
+unweighted mean of available target scores; it is unavailable when none of the
+active targets can be evaluated.
+
+Directional schedule variance is:
+
+- increase: `A(t) − S(t)`;
+- decrease: `S(t) − A(t)`; and
+- maintain: `−|A(t) − S(t)|`.
+
+A guardrail is breached when directional variance is more negative than the
+player-defined percentage of the final target value. The implementation keeps
+the observed and scheduled values visible alongside these derived measures.
+
+The linear schedule interpolates between `B` and `T`; milestones step at plan
+quarters; hold-then-change retains `B` for the first half and interpolates
+during the second. These are player planning paths, not forecasts. Every
+evaluation is truncated at the exact selected branch head and requires the
+same compatibility-profile identity as the baseline.
 
 ### Demographic resilience
 

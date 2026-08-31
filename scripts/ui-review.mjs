@@ -20,6 +20,7 @@ const scenarios = [
   "workspace-monitor",
   "workspace-broadcast",
   "workspace-extensions",
+  "workspace-plan",
   "workspace-materials",
   "materials-warehouse-attention",
   "production-pathway",
