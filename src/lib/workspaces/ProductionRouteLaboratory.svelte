@@ -693,6 +693,11 @@
     line-height: 1.45;
   }
 
+  .route-notice.guidance-surface,
+  .route-boundary.guidance-surface {
+    --guidance-padding: 0.6rem 0.7rem;
+  }
+
   .route-empty {
     text-align: center;
     padding: 1.2rem;

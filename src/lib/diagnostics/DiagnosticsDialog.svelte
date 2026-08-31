@@ -228,6 +228,7 @@
     color: var(--colour-risk);
   }
   .diagnostics-boundary {
+    --guidance-padding: 9px 11px;
     border-color: var(--colour-guidance);
     border-inline-start-width: 3px;
     padding: 9px 11px;

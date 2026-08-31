@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { auditInterfaceDom } from "./dom-audit";
 
 const idleProgress = {
   task_id: "research_probe_build",
@@ -347,5 +348,34 @@ test("enabled workspaces use the shared guidance surface without disguising cont
   await expect(page.locator(".research-boundary")).toHaveAttribute(
     "data-guidance-surface",
     "boundary",
+  );
+});
+
+test("guidance density rejects the collapsed Population-note regression", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const fixture = document.createElement("div");
+    fixture.className = "guidance-surface population-probe-note";
+    fixture.dataset.guidanceSurface = "instruction";
+    fixture.dataset.guidanceLayout = "compact";
+    fixture.textContent =
+      "The companion remains entirely optional. Ordinary save observation continues without it.";
+    document.body.append(fixture);
+  });
+
+  const note = page.locator(".population-probe-note");
+  await expect(note).toBeVisible();
+  expect(await page.evaluate(auditInterfaceDom)).toEqual([]);
+
+  await note.evaluate((element) => {
+    const node = element as HTMLElement;
+    node.style.padding = "0";
+    node.style.minBlockSize = "0";
+  });
+  const defects = await page.evaluate(auditInterfaceDom);
+  expect(defects.some((defect) => defect.kind === "guidance-padding")).toBe(
+    true,
   );
 });

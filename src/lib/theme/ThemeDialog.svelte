@@ -687,6 +687,7 @@
   }
 
   .semantic-state-preview {
+    --guidance-padding: 16px;
     grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.3fr);
     align-items: center;
     border-color: var(--colour-guidance);
@@ -861,6 +862,7 @@
     background: var(--colour-risk-soft);
   }
   .theme-boundary {
+    --guidance-padding: 16px;
     border-color: var(--colour-guidance);
     border-inline-start-width: 3px;
     background:

@@ -147,6 +147,7 @@
   }
 
   .attention-message {
+    --guidance-padding: 10px;
     position: relative;
     z-index: 2;
     display: grid;

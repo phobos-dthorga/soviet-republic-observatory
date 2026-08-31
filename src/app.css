@@ -621,6 +621,7 @@ h3 {
 }
 
 .sidebar-note {
+  --guidance-padding: 12px;
   display: flex;
   gap: 9px;
   margin-top: 25px;
@@ -637,6 +638,7 @@ h3 {
 }
 
 .preview-banner {
+  --guidance-padding: 9px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -647,6 +649,10 @@ h3 {
   background: var(--colour-gold-soft);
   color: var(--colour-muted);
   font-size: var(--type-caption);
+}
+
+.population-probe-note {
+  line-height: 1.5;
 }
 
 .preview-banner strong {
@@ -660,12 +666,28 @@ h3 {
  * whether content is guidance; this class supplies presentation only.
  */
 .guidance-surface {
+  box-sizing: border-box;
   border: 1px solid var(--colour-guidance);
   border-inline-start-width: 3px;
   color: var(--colour-text);
   background:
     linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
     var(--colour-surface);
+}
+
+.guidance-surface[data-guidance-layout="block"] {
+  min-block-size: 44px;
+  padding: var(--guidance-padding, 12px 14px);
+}
+
+.guidance-surface[data-guidance-layout="compact"] {
+  min-block-size: 38px;
+  padding: var(--guidance-padding, 10px 12px);
+}
+
+.guidance-surface[data-guidance-layout="inline"] {
+  min-block-size: 38px;
+  padding: var(--guidance-padding, 9px 12px);
 }
 
 .guidance-surface > :is(p, span) {
