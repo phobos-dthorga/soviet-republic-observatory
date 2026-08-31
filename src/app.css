@@ -27,6 +27,9 @@
   --colour-gold-soft: rgba(216, 184, 106, 0.11);
   --colour-risk: #d88474;
   --colour-success: #82cfa2;
+  --colour-success-soft: rgba(130, 207, 162, 0.11);
+  --colour-guidance: var(--colour-success);
+  --colour-guidance-soft: var(--colour-success-soft);
   --colour-risk-soft: rgba(216, 132, 116, 0.11);
   --colour-violet: #b6a8ce;
   --colour-overlay: rgba(8, 14, 21, 0.94);
@@ -134,10 +137,13 @@ input:focus-visible {
   width: min(300px, calc(100vw - 32px));
   display: grid;
   gap: 6px;
-  border: 1px solid var(--colour-line);
+  border: 1px solid var(--colour-guidance);
+  border-inline-start-width: 3px;
   padding: 12px 14px;
   color: var(--colour-text);
-  background: rgba(13, 23, 33, 0.99);
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
   font-size: var(--type-body);
   line-height: 1.5;
@@ -147,7 +153,7 @@ input:focus-visible {
 }
 
 .context-tooltip > strong {
-  color: var(--colour-gold);
+  color: var(--colour-guidance);
   font-size: var(--type-body);
 }
 

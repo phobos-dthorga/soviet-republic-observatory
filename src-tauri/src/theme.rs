@@ -349,19 +349,25 @@ pub(crate) fn validate_contrast(manifest: &ThemeManifest) -> ThemeValidationRepo
         ("observed_soft", colours.observed.as_str()),
         ("accent_soft", colours.accent.as_str()),
         ("risk_soft", colours.risk.as_str()),
+        ("success_soft", colours.success.as_str()),
     ] {
         for (surface_name, surface) in surfaces {
             let derived = composite_hex(foreground, surface, 0.11);
-            push_ratio_check(
-                &mut checks,
-                format!("text-on-{name}-{surface_name}"),
-                "text",
-                &format!("{name}+{surface_name}"),
-                contrast_ratio(&colours.text, &derived),
-                TEXT_MINIMUM,
-                ThemeCheckSeverity::Error,
-                "adjust_derived_soft_fill",
-            );
+            for (text_name, text) in [
+                ("text", colours.text.as_str()),
+                ("text_muted", colours.text_muted.as_str()),
+            ] {
+                push_ratio_check(
+                    &mut checks,
+                    format!("{text_name}-on-{name}-{surface_name}"),
+                    text_name,
+                    &format!("{name}+{surface_name}"),
+                    contrast_ratio(text, &derived),
+                    TEXT_MINIMUM,
+                    ThemeCheckSeverity::Error,
+                    "adjust_derived_soft_fill",
+                );
+            }
         }
     }
     for deficiency in [
@@ -635,5 +641,23 @@ mod tests {
         let report = validate_contrast(&theme);
         assert!(report.valid);
         assert!(report.warnings > 0);
+    }
+
+    #[test]
+    fn success_derived_guidance_surfaces_are_authoritatively_checked() {
+        for theme in built_in_themes() {
+            let report = validate_contrast(theme);
+            for check_id in [
+                "text-on-success_soft-surface",
+                "text_muted-on-success_soft-surface",
+            ] {
+                let check = report
+                    .checks
+                    .iter()
+                    .find(|check| check.id == check_id)
+                    .expect("success-derived guidance check");
+                assert!(check.passes, "{}: {check_id}", theme.id);
+            }
+        }
     }
 }

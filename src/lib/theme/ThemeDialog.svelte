@@ -297,14 +297,14 @@
             label={$translation("theme-state-preview-task")}
             detail={$translation("theme-state-preview-running")}
             percent={62}
-            onclick={() => undefined}
+            interactive={false}
           />
           <TaskProgressIndicator
             label={$translation("theme-state-preview-task")}
             detail={$translation("theme-state-preview-failed")}
             percent={100}
             failed
-            onclick={() => undefined}
+            interactive={false}
           />
         </div>
       </section>
@@ -683,6 +683,11 @@
   .semantic-state-preview {
     grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.3fr);
     align-items: center;
+    border-color: var(--colour-guidance);
+    border-inline-start-width: 3px;
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 72%),
+      var(--colour-surface);
   }
   .semantic-state-preview p {
     margin-top: 7px;

@@ -82,6 +82,10 @@ async function applyTheme(page: Page, theme: ThemeDocument): Promise<void> {
       alpha(documentTheme.colours.risk, 0.11),
     );
     document.documentElement.style.setProperty(
+      "--colour-success-soft",
+      alpha(documentTheme.colours.success, 0.11),
+    );
+    document.documentElement.style.setProperty(
       "--colour-overlay",
       alpha(documentTheme.colours.canvas, 0.94),
     );
@@ -224,6 +228,8 @@ for (const theme of themes) {
         (button as HTMLButtonElement).disabled = false;
       });
       await page.getByRole("button", { name: "Theme" }).click();
+      await page.getByRole("button", { name: "Data-only themes" }).click();
+      await expect(page.getByRole("tooltip")).toBeVisible();
       await audit(page, testInfo, `${theme.name} / Theme dialog`);
       await page.getByRole("button", { name: "Close" }).click();
       await page.getByRole("button", { name: "Save observer status" }).click();

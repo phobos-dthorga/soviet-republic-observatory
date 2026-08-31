@@ -202,7 +202,7 @@ test("completed build reveals a whole result region without a clipped step", asy
   });
 });
 
-test("theme assay renders readable running and failed critical-task states", async ({
+test("theme assay renders readable non-interactive critical-task states", async ({
   page,
 }) => {
   await page.goto("/");
@@ -212,6 +212,8 @@ test("theme assay renders readable running and failed critical-task states", asy
   await page.getByRole("button", { name: "Theme" }).click();
   const preview = page.locator(".semantic-state-preview");
   const failed = preview.locator(".task-indicator.failed");
+  await expect(preview.getByRole("button")).toHaveCount(0);
+  await expect(preview.locator('[data-display-mode="preview"]')).toHaveCount(2);
   await expect(failed.getByText("Failed", { exact: true })).toBeVisible();
   const failedStyle = await failed.locator("strong").evaluate((node) => {
     const style = getComputedStyle(node);
@@ -224,4 +226,19 @@ test("theme assay renders readable running and failed critical-task states", asy
     caret: "hide",
     maxDiffPixelRatio: 0.01,
   });
+  await page.getByRole("button", { name: "Data-only themes" }).click();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toBeVisible();
+  const tooltipStyle = await tooltip.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return {
+      borderInlineStartWidth: style.borderInlineStartWidth,
+      backgroundImage: style.backgroundImage,
+      interactiveChildren: node.querySelectorAll("button, a, input, select")
+        .length,
+    };
+  });
+  expect(tooltipStyle.borderInlineStartWidth).toBe("3px");
+  expect(tooltipStyle.backgroundImage).not.toBe("none");
+  expect(tooltipStyle.interactiveChildren).toBe(0);
 });

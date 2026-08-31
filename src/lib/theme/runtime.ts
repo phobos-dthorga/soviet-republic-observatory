@@ -52,6 +52,10 @@ export function applyTheme(
     withAlpha(theme.colours.risk, 0.11),
   );
   root.style.setProperty(
+    "--colour-success-soft",
+    withAlpha(theme.colours.success, 0.11),
+  );
+  root.style.setProperty(
     "--colour-overlay",
     withAlpha(theme.colours.canvas, 0.94),
   );

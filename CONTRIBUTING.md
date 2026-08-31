@@ -75,6 +75,11 @@ data cannot reach it. The audit must exercise the production component rather
 than a look-alike test implementation. Use `npm run audit:ui` for the complete
 gate or `npm run audit:contrast` for the colour-and-Axe subset.
 
+Inert previews, context tooltips, and tutorial/help copy use the shared
+guidance-surface treatment. Do not make an inert example focusable or render it
+as a no-op button. Keep real actions on ordinary control surfaces, label
+previews as non-interactive, and never rely on the guidance tint alone.
+
 Themes are inert data. Rust owns schema, contrast, duplicate-appearance,
 lifecycle, persistence, and fallback decisions. Svelte may render the returned
 report and the theme runtime may apply accepted semantic roles, but frontend

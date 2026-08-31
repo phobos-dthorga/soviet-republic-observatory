@@ -5,31 +5,49 @@
     percent,
     failed = false,
     currentItem = null,
-    onclick,
+    interactive = true,
+    onclick = () => undefined,
   } = $props<{
     label: string;
     detail: string;
     percent: number | null;
     failed?: boolean;
     currentItem?: string | null;
-    onclick: () => void;
+    interactive?: boolean;
+    onclick?: () => void;
   }>();
 </script>
 
-<button
-  type="button"
-  class="task-indicator"
-  class:failed
-  class:indeterminate={percent == null && !failed}
-  title={currentItem ?? label}
-  {onclick}
->
+{#snippet indicatorContent()}
   <span>{label}</span>
   <strong>{detail}</strong>
   <i aria-hidden="true"
     ><b style:width={percent == null ? "35%" : `${percent}%`}></b></i
   >
-</button>
+{/snippet}
+
+{#if interactive}
+  <button
+    type="button"
+    class="task-indicator"
+    class:failed
+    class:indeterminate={percent == null && !failed}
+    title={currentItem ?? label}
+    {onclick}
+  >
+    {@render indicatorContent()}
+  </button>
+{:else}
+  <div
+    class="task-indicator preview"
+    class:failed
+    class:indeterminate={percent == null && !failed}
+    data-display-mode="preview"
+    aria-label={`${label}: ${detail}`}
+  >
+    {@render indicatorContent()}
+  </div>
+{/if}
 
 <style>
   .task-indicator {
@@ -71,6 +89,10 @@
   }
   .failed b {
     background: var(--colour-risk);
+  }
+  .preview {
+    cursor: default;
+    user-select: none;
   }
   @media (prefers-reduced-motion: no-preference) {
     .task-indicator:not(.failed) i b {

@@ -147,11 +147,13 @@
     width: 100%;
     gap: 6px;
     margin-top: 9px;
-    border: 1px solid var(--colour-observed);
+    border: 1px solid var(--colour-guidance);
     border-inline-start-width: 3px;
     padding: 10px;
     color: var(--colour-text);
-    background: var(--colour-surface);
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+      var(--colour-surface);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
   }
 

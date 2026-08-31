@@ -20,6 +20,12 @@ configuration, and ECharts options are outside the contract. Secondary tokens
 such as soft fills, dividers, focus treatments, and overlays are derived by the
 host.
 
+The `success` role also supplies the host-owned translucent guidance surface
+used by inert previews, context tooltips, and tutorial/help copy. Both ordinary
+and muted text are rechecked after that colour is composited over every
+permitted surface. This is a semantic and accessibility rule, not a subjective
+complementary-colour or colour-harmony admission test.
+
 ## Authoritative validation
 
 Rust validates the structure and returns a complete `ThemeValidationReport`.

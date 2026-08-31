@@ -69,6 +69,23 @@ tooltip must not contain an action, conceal a required warning, or be the only
 way to learn information necessary to complete a task. Essential wording stays
 in the page or dialog.
 
+### Guidance surfaces
+
+Inert previews, context tooltips, and tutorial/help messages use one
+host-owned guidance-surface convention. The host derives a translucent tint
+from the theme's validated `success` role, composites it over permitted
+surfaces, and validates both ordinary and muted text against the result. This
+green-family tint is a visual affordance for explanatory material in the
+built-in themes; it does not claim that the subject succeeded.
+
+Guidance remains distinguishable without colour: tooltips retain semantic
+relationships, previews say **not interactive** and contain no focusable
+controls, and tutorial messages remain visibly separate from their real action
+buttons. Warning and error surfaces do not adopt the guidance treatment.
+Colour-harmony or complementary-colour rules are not admission criteria because
+they are subjective and culturally variable; measurable contrast, state
+distinction, colour-vision resilience, and non-colour labels remain authoritative.
+
 ## First-class notifications
 
 Transient cross-workspace feedback goes through the application notification
