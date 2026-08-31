@@ -53,9 +53,17 @@ accessibility, native-shell, responsive-layout, or review-infrastructure work;
 it does not run on every pull request or push. Trigger the Windows workflow
 manually when that depth is warranted.
 
-`npm run desktop:build` first creates the packaged binary and then runs the
-native smoke gate. A missing or incompatible toolchain fails with the exact
-`npm run ui:review:setup` remediation.
+`npm run desktop:build` is the final release gate. It runs fast contracts, Rust
+tests and Clippy, the browser interface audit, one packaged binary build, and
+then native smoke. The binary build reuses the audited web artifact. A missing
+or incompatible toolchain fails with the exact `npm run ui:review:setup`
+remediation.
+
+When only this review harness or its scenarios changed, and no application,
+native, configuration, or bundled asset changed, `npm run
+desktop:smoke:existing` reuses the already-built binary. This is not a release
+substitute. See the [development-gate guide](development-gates.md) for the
+authoritative tier boundary.
 
 ## Fixture and live review
 

@@ -129,30 +129,32 @@ ordinary mod definitions need no override.
 For interface work that does not need native folder selection or save parsing,
 `npm run dev` opens the synthetic browser preview.
 
-Validate the foundation with:
+Use the fast contract gate while developing:
 
 ```powershell
-npm run format:check
-npm run check
-npm test
-npm run build
-npm run rust:check
-npm run rust:test
+npm run verify:fast
 ```
 
-For mouse-free review of the packaged Windows interface, install the pinned
-local driver toolchain once and run either native suite:
+Once interface work has settled, run `npm run verify:browser`. At the end of a
+slice, install the pinned local driver toolchain once and run the final gate:
 
 ```powershell
 npm run ui:review:setup
 npm run desktop:build
 ```
 
+The final gate orders cheap checks before the Windows release link, creates the
+desktop binary once, reuses the audited web artifact, then performs mouse-free
+native smoke review. It records per-phase timing beneath
+`artifacts/release-gate/`. `npm run verify:release:plan` shows the sequence
+without running it.
+
 The native CLI launches its own review-only app process through WebDriver; it
 does not take over the global mouse or attach to the player's running app. See
-the [native UI review guide](docs/operations/native-ui-review.md). The exhaustive
-`npm run ui:review -- run --suite full` matrix is reserved for exceptional
-theme, accessibility, native-shell, and release validation.
+the [development-gate guide](docs/operations/development-gates.md) and [native
+UI review guide](docs/operations/native-ui-review.md). The exhaustive `npm run
+ui:review -- run --suite full` matrix is reserved for exceptional theme,
+accessibility, native-shell, and release-candidate validation.
 
 ## Proposed technical foundation
 

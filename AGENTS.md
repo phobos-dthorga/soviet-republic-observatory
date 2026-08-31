@@ -123,9 +123,21 @@
 
 ## Quality gates
 
-- Run formatting, Svelte type checking, JavaScript unit tests, the production
-  webview build, Rust formatting/check/tests/clippy, and the desktop build when
-  the native boundary changes.
+- Use the repository's staged quality gates. Run `npm run verify:fast` while
+  implementation is changing, `npm run verify:browser` once after interface
+  states settle, and `npm run desktop:build` exactly once at the end of a
+  completed slice. Do not repeatedly pay the Windows release-link and native
+  smoke cost to discover failures that an earlier tier can detect.
+- The final gate must retain the order fast contracts, Rust tests, Rust Clippy,
+  browser interface audit, one desktop package, then native smoke. Tauri may
+  reuse only the web artifact produced by that same uninterrupted final gate.
+  `npm run check` audits this workflow contract.
+- `npm run desktop:smoke:existing` may reuse a binary only when changes are
+  confined to native review scenarios or driver tooling. Application, Rust,
+  configuration, or bundled-asset changes require a new final gate.
+- Reserve the full native matrix for exceptional theme, accessibility,
+  responsive-layout, native-shell, review-infrastructure, or release-candidate
+  work. It is not an ordinary feature-loop command.
 - New calculation rules require successful, boundary, unavailable-data, and
   invalid-input tests.
 - Parser changes require sanitised fixtures and compatibility notes.

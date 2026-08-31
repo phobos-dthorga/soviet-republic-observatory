@@ -46,20 +46,43 @@ other private data.
 
 ## Local checks
 
+Use the smallest gate that can answer the current question. During
+implementation, run the fast contract gate:
+
 ```powershell
 npm install
 npx playwright install chromium
-npm run format:check
-npm run check
-npm test
-npm run build
-npm run rust:check
-npm run rust:test
-cargo fmt --manifest-path src-tauri\Cargo.toml --check
-npm run rust:clippy
+npm run verify:fast
 ```
 
-`npm run build` includes the production interface audit: contrast and Axe
+After the interface and domain contracts have settled, run the browser gate
+once:
+
+```powershell
+npm run verify:browser
+```
+
+At the end of the slice, run the final gate once:
+
+```powershell
+npm run desktop:build
+```
+
+The final gate stops at the first failed phase, records phase timings beneath
+`artifacts/release-gate/`, and does not begin the expensive Windows package
+until fast contracts, Rust tests and Clippy, and the browser interface audit
+have passed. Tauri reuses that freshly audited web artifact rather than
+building and auditing it again. `npm run verify:release:plan` lists the exact
+order without executing it. See the [development-gate
+guide](docs/operations/development-gates.md).
+
+Do not repeatedly package the application while implementation is still
+changing. When only the native review scenarios or driver harness changed and
+the application binary did not, `npm run desktop:smoke:existing` deliberately
+reuses the existing binary. Any application, Rust, configuration, or bundled
+asset change requires the final gate again.
+
+The browser gate includes the production interface audit: contrast and Axe
 checks, deterministic component-state screenshots, and geometry checks across
 narrow, laptop, FHD, QHD, ultrawide, and UHD-equivalent text/UI scales. Shared
 defects must be fixed at the semantic theme role or shared component
@@ -70,12 +93,12 @@ one native select menu on Windows because the operating-system popup is outside
 browser automation.
 
 Install the pinned native review toolchain once with `npm run
-ui:review:setup`. `npm run desktop:build` runs the packaged-app smoke suite;
+ui:review:setup`. The final gate runs the packaged-app smoke suite;
 `npm run ui:review -- run --suite full` exercises the complete native scenario,
 theme, viewport, and text-scale matrix without moving the global mouse. Reserve
-the full matrix for releases and exceptional changes to themes, accessibility,
-responsive layout, native controls, or the review system itself; ordinary
-pull requests and pushes run the smoke gate. New
+the full matrix for release candidates and exceptional changes to themes,
+accessibility, responsive layout, native controls, or the review system itself;
+ordinary pull requests and pushes run the smoke gate. New
 workspaces, dialogs, notifications, guidance states, task states, and native
 controls must add or extend a typed fixture scenario. Do not add arbitrary
 selector, JavaScript, Tauri-command, SQL, or filesystem facilities to the
