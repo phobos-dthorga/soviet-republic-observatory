@@ -43,6 +43,9 @@ an engineering requirement.
   logging, and privacy
 - [Native UI review](operations/native-ui-review.md) — mouse-free packaged-app
   automation, fixture/live boundaries, commands, artifacts, and troubleshooting
+- [Development quality gates](operations/development-gates.md) — staged build
+  costs, one-package final validation, timing evidence, and deferred optimisation
+  options
 - [Roadmap](roadmap.md) — vertical slices from synthetic preview to advanced
   industrial analysis
 - [Community Extensions](extensions/overview.md) — Analysis Packs now and the

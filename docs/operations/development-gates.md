@@ -87,3 +87,30 @@ batch related fixes, rerun the cheapest affected gate, and return to the final
 desktop gate only after the implementation is stable. The final gate records
 the failed phase and elapsed time and deliberately skips every later expensive
 phase.
+
+## Deferred optimisation reserve
+
+Long-running phases are not defects merely because they take time. The first
+complete timed run on 31 August 2026 took 291 seconds; desktop release linking
+accounted for 178 seconds, principally around the bundled native DuckDB build
+and the production release profile. This is reference-machine evidence, not a
+duration promise or a current optimisation project.
+
+Keep the following options in reserve if build duration later becomes a
+material development or CI constraint:
+
+- retain comparable warm and clean timing histories and flag meaningful phase
+  regressions against a rolling baseline;
+- benchmark alternative Cargo release settings, including LTO and codegen-unit
+  choices, while measuring binary size, startup, and analytical runtime as well
+  as link duration;
+- investigate safe compiler and dependency-cache reuse before weakening the
+  production profile; and
+- separate ordinary native review from a stricter release-candidate profile
+  only if evidence shows the distinction saves material time without hiding
+  release-only defects.
+
+Do not implement this machinery pre-emptively. Revisit it only when comparable
+timings show a sustained regression, the release linker materially impedes
+delivery, or CI duration becomes an operational problem. Correctness and
+diagnostic visibility take priority over making every phase short.
