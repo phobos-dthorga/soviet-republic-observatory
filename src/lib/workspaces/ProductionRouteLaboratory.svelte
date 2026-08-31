@@ -3,7 +3,7 @@
   import { formatNumber } from "../i18n/format";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import ProductionPathwayLaboratory from "./ProductionPathwayLaboratory.svelte";
-  import { createMaterialFlowPreview } from "../presentation/materialFlowPreview";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import {
     createProductionRouteChart,
     productionResourceLabel,
@@ -57,7 +57,6 @@
       ? createProductionRouteChart(route, $translation, $activeLocale)
       : null,
   );
-  const syntheticPreview = $derived(createMaterialFlowPreview($translation));
   const outputs = $derived(
     route?.flows.filter((flow) => flow.direction === "production_output") ?? [],
   );
@@ -271,18 +270,10 @@
   </header>
 
   {#if !reviewRoute && (!desktopAvailable || !gameConfigured)}
-    <div
-      class="route-notice guidance-surface"
-      data-guidance-surface="preview"
-      data-guidance-layout="compact"
-      role="status"
-    >
-      {$translation("production-route-synthetic-note")}
-    </div>
-    <ObservatoryChart
-      spec={syntheticPreview}
-      eyebrow={$translation("catalogue-flow-eyebrow")}
-    />
+    <GuidanceSurface kind="help" layout="block" semanticRole="status">
+      <strong>{$translation("production-route-no-catalogue")}</strong>
+      <span>{$translation("production-route-unavailable-note")}</span>
+    </GuidanceSurface>
   {:else if !generationId}
     <div class="route-empty">
       {$translation("production-route-no-catalogue")}
@@ -744,7 +735,6 @@
     color: var(--colour-guidance);
   }
 
-  .route-notice.guidance-surface,
   .route-boundary.guidance-surface {
     border-color: var(--colour-guidance);
     border-inline-start: 3px solid var(--colour-guidance);

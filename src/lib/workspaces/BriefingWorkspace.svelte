@@ -1,13 +1,30 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import type { EvidenceCoverage, EvidenceKind } from "../charts/types";
-  import {
-    createBriefingPreview,
-    type MaterialCell,
-  } from "../presentation/sample";
   import type { TranslationKey } from "../i18n/catalog";
+  import { formatNumber, formatSignedNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import type {
+    BriefFinding,
+    BriefMetric,
+    RepublicBrief,
+  } from "../observations/types";
+  import {
+    briefMetricLabel,
+    createBriefChangeChart,
+    createBriefEducationChart,
+    createBriefReceiverChart,
+  } from "../presentation/republicBrief";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+
+  type LinkedWorkspace = "monitor" | "materials" | "population" | "archive";
+
+  let {
+    brief = null,
+    onopenworkspace = () => {},
+  }: {
+    brief?: RepublicBrief | null;
+    onopenworkspace?: (workspace: LinkedWorkspace) => void;
+  } = $props();
 
   const sections: Array<{
     label: TranslationKey;
@@ -15,45 +32,185 @@
     marker: string;
   }> = [
     { label: "briefing-section-state", href: "#briefing", marker: "01" },
-    { label: "briefing-section-plan", href: "#plan", marker: "02" },
-    { label: "briefing-section-materials", href: "#materials", marker: "03" },
+    { label: "briefing-section-assays", href: "#assays", marker: "02" },
+    {
+      label: "briefing-section-capabilities",
+      href: "#capabilities",
+      marker: "03",
+    },
     { label: "briefing-section-dispatch", href: "#dispatch", marker: "04" },
   ];
-  const familyKeys: Record<MaterialCell["family"], TranslationKey> = {
-    raw: "material-family-raw",
-    industrial: "material-family-industrial",
-    construction: "material-family-construction",
-    consumer: "material-family-consumer",
-    energy: "material-family-energy",
-    waste: "material-family-waste",
-  };
-  const statusKeys: Record<MaterialCell["status"], TranslationKey> = {
-    stable: "status-stable",
-    watch: "status-watch",
-    exposed: "status-exposed",
-  };
-  const evidenceKeys: Record<EvidenceKind, TranslationKey> = {
-    save_fact: "evidence-save-fact",
-    game_definition: "evidence-game-definition",
-    calculation: "evidence-calculation",
-    extension_calculation: "evidence-extension-calculation",
-    player_override: "evidence-player-override",
-    player_definition: "evidence-player-definition",
-    estimate: "evidence-estimate",
-    recommendation: "evidence-recommendation",
-  };
-  const coverageKeys: Record<EvidenceCoverage, TranslationKey> = {
-    complete: "coverage-complete",
-    partial: "coverage-partial",
-    experimental: "coverage-experimental",
-  };
 
-  let selectedMaterialCode = $state("Ch");
-  const preview = $derived(createBriefingPreview($translation, $activeLocale));
-  const selectedMaterial = $derived(
-    preview.materialCells.find((item) => item.code === selectedMaterialCode) ??
-      preview.materialCells[0],
+  const findingKeys = {
+    no_observation: [
+      "briefing-finding-no-observation-title",
+      "briefing-finding-no-observation-detail",
+    ],
+    historical_preview: [
+      "briefing-finding-historical-title",
+      "briefing-finding-historical-detail",
+    ],
+    partial_coverage: [
+      "briefing-finding-partial-title",
+      "briefing-finding-partial-detail",
+    ],
+    player_mapping: [
+      "briefing-finding-player-mapping-title",
+      "briefing-finding-player-mapping-detail",
+    ],
+    mapping_changed: [
+      "briefing-finding-mapping-change-title",
+      "briefing-finding-mapping-change-detail",
+    ],
+    no_prior_observation: [
+      "briefing-finding-no-prior-title",
+      "briefing-finding-no-prior-detail",
+    ],
+    missing_metrics: [
+      "briefing-finding-missing-title",
+      "briefing-finding-missing-detail",
+    ],
+    recorder_attention: [
+      "briefing-finding-recorder-attention-title",
+      "briefing-finding-recorder-attention-detail",
+    ],
+    recorder_queue: [
+      "briefing-finding-recorder-queue-title",
+      "briefing-finding-recorder-queue-detail",
+    ],
+    warehouse_attention: [
+      "briefing-finding-warehouse-attention-title",
+      "briefing-finding-warehouse-attention-detail",
+    ],
+    warehouse_lagging: [
+      "briefing-finding-warehouse-lag-title",
+      "briefing-finding-warehouse-lag-detail",
+    ],
+    catalogue_unavailable: [
+      "briefing-finding-catalogue-title",
+      "briefing-finding-catalogue-detail",
+    ],
+  } as const satisfies Record<
+    string,
+    readonly [TranslationKey, TranslationKey]
+  >;
+
+  const dispatchKeys = {
+    observation_ready: "briefing-dispatch-observation-ready",
+    no_observation: "briefing-dispatch-no-observation",
+    historical_preview: "briefing-dispatch-historical",
+    partial_coverage: "briefing-dispatch-partial",
+    player_mapping: "briefing-dispatch-player-mapping",
+    mapping_changed: "briefing-dispatch-mapping-change",
+    no_prior_observation: "briefing-dispatch-no-prior",
+    missing_metrics: "briefing-dispatch-missing",
+    recorder_attention: "briefing-dispatch-recorder-attention",
+    recorder_queue: "briefing-dispatch-recorder-queue",
+    warehouse_attention: "briefing-dispatch-warehouse-attention",
+    warehouse_lagging: "briefing-dispatch-warehouse-lag",
+    catalogue_unavailable: "briefing-dispatch-catalogue",
+  } as const satisfies Record<string, TranslationKey>;
+
+  const capabilityKeys = {
+    plan_attainment: [
+      "briefing-capability-plan-title",
+      "briefing-capability-plan-detail",
+    ],
+    import_exposure: [
+      "briefing-capability-import-title",
+      "briefing-capability-import-detail",
+    ],
+    observed_material_reliance: [
+      "briefing-capability-material-title",
+      "briefing-capability-material-detail",
+    ],
+  } as const satisfies Record<
+    string,
+    readonly [TranslationKey, TranslationKey]
+  >;
+
+  const recorderPhaseKeys = {
+    disabled: "briefing-recorder-disabled",
+    not_configured: "briefing-recorder-not-configured",
+    watching: "briefing-recorder-watching",
+    waiting_for_stability: "briefing-recorder-settling",
+    retrying: "briefing-recorder-retrying",
+    observed: "briefing-recorder-observed",
+    failed: "briefing-recorder-attention",
+  } as const satisfies Record<string, TranslationKey>;
+
+  const warehousePhaseKeys = {
+    ready: "briefing-warehouse-ready",
+    lagging: "briefing-warehouse-lagging",
+    rebuilding: "briefing-warehouse-rebuilding",
+    attention: "briefing-warehouse-attention",
+  } as const satisfies Record<string, TranslationKey>;
+
+  const severityKeys = {
+    information: "briefing-severity-information",
+    watch: "briefing-severity-watch",
+    attention: "briefing-severity-attention",
+  } as const satisfies Record<string, TranslationKey>;
+
+  let selectedMetricId = $state("source.stats.citizens.adults");
+  const headlineMetrics = $derived(
+    brief?.metrics.filter((metric) => metric.role === "headline") ?? [],
   );
+  const selectedMetric = $derived(
+    brief?.metrics.find((metric) => metric.metric_id === selectedMetricId) ??
+      headlineMetrics[0] ??
+      brief?.metrics[0] ??
+      null,
+  );
+  const changeChart = $derived(
+    brief ? createBriefChangeChart(brief, $translation) : null,
+  );
+  const educationChart = $derived(
+    brief ? createBriefEducationChart(brief, $translation) : null,
+  );
+  const receiverChart = $derived(
+    brief ? createBriefReceiverChart(brief, $translation) : null,
+  );
+
+  function findingCopy(finding: BriefFinding): [string, string] {
+    const keys = findingKeys[finding.code as keyof typeof findingKeys];
+    if (!keys)
+      return [
+        $translation("briefing-finding-unknown-title"),
+        $translation("briefing-finding-unknown-detail", { code: finding.code }),
+      ];
+    return [
+      $translation(keys[0]),
+      $translation(keys[1], { count: finding.value ?? 0 }),
+    ];
+  }
+
+  function dispatchCopy(code: string): string {
+    const key = dispatchKeys[code as keyof typeof dispatchKeys];
+    return $translation(key ?? "briefing-dispatch-unknown");
+  }
+
+  function capabilityCopy(capability: string): [string, string] {
+    const keys = capabilityKeys[capability as keyof typeof capabilityKeys];
+    if (!keys)
+      return [
+        $translation("briefing-capability-unknown-title"),
+        $translation("briefing-capability-unknown-detail"),
+      ];
+    return [$translation(keys[0]), $translation(keys[1])];
+  }
+
+  function metricValue(metric: BriefMetric): string {
+    return formatNumber(metric.value, $activeLocale);
+  }
+
+  function metricChange(metric: BriefMetric): string {
+    return metric.delta == null
+      ? $translation("briefing-prior-unavailable")
+      : $translation("briefing-change-from-prior", {
+          value: formatSignedNumber(metric.delta, $activeLocale),
+        });
+  }
 </script>
 
 <section class="workspace">
@@ -66,25 +223,25 @@
         <span class="eyebrow">{$translation("briefing-directorate")}</span>
         <h2>{$translation("briefing-republic-brief")}</h2>
       </div>
-      <span class="edition">v0.1</span>
+      <span class="edition">v1</span>
     </div>
 
     <div class="lens-card">
-      <label>
-        {$translation("briefing-plan-label")}
-        <select aria-label={$translation("briefing-selected-plan")} disabled>
-          <option>{$translation("briefing-plan-name")}</option>
-        </select>
-      </label>
       <div class="lens-row">
-        <span>{$translation("filter-window")}</span><strong
-          >{$translation("filter-all-observations")}</strong
+        <span>{$translation("filter-branch")}</span>
+        <strong>{brief?.analysis_context.selected_branch_id ?? "—"}</strong>
+      </div>
+      <div class="lens-row">
+        <span>{$translation("briefing-analytical-head")}</span>
+        <strong
+          >{brief?.analysis_context.mode === "historical_preview"
+            ? $translation("briefing-mode-historical")
+            : $translation("briefing-mode-latest")}</strong
         >
       </div>
       <div class="lens-row">
-        <span>{$translation("filter-currency")}</span><strong
-          >{$translation("filter-separate-currencies")}</strong
-        >
+        <span>{$translation("filter-scope")}</span>
+        <strong>{$translation("filter-whole-republic")}</strong>
       </div>
     </div>
 
@@ -98,19 +255,31 @@
 
     <GuidanceSurface kind="help" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
-      <p>{$translation("synthetic-briefing-sidebar-note")}</p>
+      <p>{$translation("briefing-evidence-sidebar-note")}</p>
     </GuidanceSurface>
   </aside>
 
   <section class="canvas" id="briefing">
     <GuidanceSurface
-      kind="preview"
+      kind={brief?.observation ? "boundary" : "help"}
       layout="inline"
       semanticRole="status"
       class="preview-banner"
     >
-      <strong>{$translation("synthetic-interface-foundation")}</strong>
-      <span>{$translation("synthetic-no-real-save-values")}</span>
+      <strong
+        >{$translation(
+          brief?.observation
+            ? "briefing-save-evidence"
+            : "briefing-no-observation",
+        )}</strong
+      >
+      <span
+        >{$translation(
+          brief?.observation
+            ? "briefing-save-evidence-detail"
+            : "briefing-no-observation-detail",
+        )}</span
+      >
     </GuidanceSurface>
 
     <header class="page-heading">
@@ -120,91 +289,108 @@
         <p>{$translation("briefing-heading-description")}</p>
       </div>
       <div class="date-stamp">
-        <span>{$translation("briefing-plan-year")}</span><strong>04 / 05</strong
-        ><small>{$translation("briefing-plan-elapsed", { percent: 74 })}</small>
+        <span>{$translation("briefing-exact-head")}</span>
+        <strong
+          >{brief?.observation?.year ?? "—"} · {brief?.observation
+            ? String(brief.observation.day).padStart(3, "0")
+            : "—"}</strong
+        >
+        <small
+          >{brief?.observation?.source_file_name ??
+            $translation("chart-unavailable")}</small
+        >
       </div>
     </header>
 
-    <section class="kpi-grid" aria-label={$translation("briefing-kpis-label")}>
-      {#each preview.kpis as kpi}
-        <article class="kpi-card">
-          <header>
-            <span>{kpi.label}</span><span class="coverage"
-              >{$translation(coverageKeys[kpi.coverage])}</span
-            >
-          </header>
-          <strong>{kpi.value}</strong>
-          <p>{kpi.change}</p>
-          <footer>
-            <span>{kpi.context}</span><span class="badge" data-kind={kpi.kind}
-              >{$translation(evidenceKeys[kpi.kind])}</span
-            >
-          </footer>
-        </article>
-      {/each}
-    </section>
+    {#if headlineMetrics.length}
+      <section
+        class="kpi-grid"
+        aria-label={$translation("briefing-kpis-label")}
+      >
+        {#each headlineMetrics as metric}
+          <button
+            type="button"
+            class="kpi-card metric-card"
+            class:selected={selectedMetric?.metric_id === metric.metric_id}
+            aria-pressed={selectedMetric?.metric_id === metric.metric_id}
+            onclick={() => (selectedMetricId = metric.metric_id)}
+          >
+            <header>
+              <span>{briefMetricLabel(metric.metric_id, $translation)}</span>
+              <span class="coverage"
+                >{$translation(
+                  brief?.observation?.coverage_status === "complete"
+                    ? "coverage-complete"
+                    : "coverage-partial",
+                )}</span
+              >
+            </header>
+            <strong>{metricValue(metric)}</strong>
+            <p>{metricChange(metric)}</p>
+            <footer>
+              <span>{$translation("briefing-whole-republic-snapshot")}</span>
+              <span class="badge" data-kind={metric.evidence_kind}
+                >{$translation(
+                  metric.evidence_kind === "save_fact"
+                    ? "evidence-save-fact"
+                    : "evidence-calculation",
+                )}</span
+              >
+            </footer>
+          </button>
+        {/each}
+      </section>
+    {:else}
+      <GuidanceSurface kind="help" layout="block">
+        <strong>{$translation("briefing-empty-title")}</strong>
+        <span>{$translation("briefing-empty-detail")}</span>
+      </GuidanceSurface>
+    {/if}
 
-    <section
-      class="chart-grid"
-      id="plan"
-      aria-label={$translation("briefing-charts-label")}
-    >
-      <ObservatoryChart
-        spec={preview.planProgress}
-        eyebrow={$translation("briefing-section-plan")}
-      />
-      <ObservatoryChart
-        spec={preview.importDependency}
-        eyebrow={$translation("briefing-chart-external-dependency")}
-      />
-    </section>
+    {#if brief && changeChart && educationChart && receiverChart}
+      <section
+        id="assays"
+        class="brief-chart-grid"
+        aria-label={$translation("briefing-assays-label")}
+      >
+        <ObservatoryChart
+          spec={changeChart}
+          eyebrow={$translation("briefing-comparison-assay")}
+        />
+        <ObservatoryChart
+          spec={educationChart}
+          eyebrow={$translation("briefing-education-assay")}
+        />
+        <ObservatoryChart
+          spec={receiverChart}
+          eyebrow={$translation("briefing-receiver-assay")}
+        />
+      </section>
+    {/if}
 
-    <section class="material-panel" id="materials">
+    <section id="capabilities" class="capability-panel brief-capabilities">
       <header class="panel-heading">
         <div>
           <span class="eyebrow"
-            >{$translation("briefing-material-eyebrow")}</span
+            >{$translation("briefing-capability-eyebrow")}</span
           >
-          <h2>{$translation("briefing-material-title")}</h2>
-          <p>{$translation("briefing-material-description")}</p>
-        </div>
-        <div
-          class="table-legend"
-          aria-label={$translation("briefing-material-legend")}
-        >
-          <span><i class="stable"></i>{$translation("status-stable")}</span>
-          <span><i class="watch"></i>{$translation("status-watch")}</span>
-          <span><i class="exposed"></i>{$translation("status-exposed")}</span>
+          <h2>{$translation("briefing-capability-heading")}</h2>
+          <p>{$translation("briefing-capability-description")}</p>
         </div>
       </header>
-
-      <div class="material-table">
-        {#each preview.materialCells as material}
-          <button
-            type="button"
-            class="material-cell"
-            class:selected={selectedMaterial.code === material.code}
-            data-status={material.status}
-            aria-pressed={selectedMaterial.code === material.code}
-            aria-label={$translation("briefing-material-cell-label", {
-              name: material.name,
-              value: material.value,
-            })}
-            onclick={() => (selectedMaterialCode = material.code)}
-          >
-            <span class="material-code">{material.code}</span>
-            <span class="material-value">{material.value}</span>
-            <strong>{material.name}</strong>
-            <small>{$translation(familyKeys[material.family])}</small>
-            <span class="material-meter" aria-hidden="true"
-              ><i style={`width: ${material.reliance}%`}></i></span
-            >
-            <span class="material-delta"
-              >{$translation("briefing-points-value", {
-                value: material.delta,
-              })}</span
-            >
-          </button>
+      <div class="capability-grid">
+        {#each brief?.unavailable_capabilities ?? ["plan_attainment", "import_exposure", "observed_material_reliance"] as capability}
+          {@const copy = capabilityCopy(capability)}
+          <article>
+            <span class="coverage">{$translation("chart-unavailable")}</span>
+            <h3>{copy[0]}</h3>
+            <p>{copy[1]}</p>
+            {#if capability === "observed_material_reliance"}
+              <button type="button" onclick={() => onopenworkspace("materials")}
+                >{$translation("briefing-open-materials")}</button
+              >
+            {/if}
+          </article>
         {/each}
       </div>
     </section>
@@ -213,14 +399,19 @@
       <div class="dispatch-seal" aria-hidden="true">04</div>
       <div>
         <span class="eyebrow"
-          >{$translation("synthetic-ministry-dispatch-eyebrow")}</span
+          >{$translation("briefing-ministry-dispatch-eyebrow")}</span
         >
-        <h2>{$translation("briefing-dispatch-title")}</h2>
-        <p>{$translation("briefing-dispatch-body")}</p>
+        <h2>{$translation("briefing-ministry-dispatch-title")}</h2>
+        <p>{dispatchCopy(brief?.dispatch_code ?? "no_observation")}</p>
         <div class="dispatch-links">
-          <a href="#plan">{$translation("briefing-inspect-variance")}</a>
-          <a href="#materials"
-            >{$translation("briefing-open-material-evidence")}</a
+          <button type="button" onclick={() => onopenworkspace("population")}
+            >{$translation("briefing-open-population")}</button
+          >
+          <button type="button" onclick={() => onopenworkspace("monitor")}
+            >{$translation("briefing-open-monitor")}</button
+          >
+          <button type="button" onclick={() => onopenworkspace("archive")}
+            >{$translation("briefing-open-archive")}</button
           >
         </div>
       </div>
@@ -239,86 +430,211 @@
         <span class="eyebrow"
           >{$translation("briefing-evidence-inspector")}</span
         >
-        <h2>{selectedMaterial.name}</h2>
+        <h2>
+          {selectedMetric
+            ? briefMetricLabel(selectedMetric.metric_id, $translation)
+            : $translation("briefing-snapshot-ledger")}
+        </h2>
       </div>
-      <span class="status-chip" data-status={selectedMaterial.status}
-        >{$translation(statusKeys[selectedMaterial.status])}</span
+      <span
+        class="status-chip"
+        data-status={brief?.observation?.coverage_status === "complete"
+          ? "stable"
+          : "watch"}
+        >{$translation(
+          brief?.observation?.coverage_status === "complete"
+            ? "coverage-complete"
+            : "coverage-partial",
+        )}</span
       >
     </div>
 
-    <div class="selected-reading">
-      <span>{$translation("briefing-recorded-import-reliance")}</span>
-      <strong>{selectedMaterial.value}</strong>
-      <small
-        >{$translation("briefing-comparison-points", {
-          value: selectedMaterial.delta,
-        })}</small
-      >
-      <p>{selectedMaterial.note}</p>
-    </div>
+    {#if selectedMetric}
+      <div class="selected-reading">
+        <span>{$translation("briefing-recorded-value")}</span>
+        <strong>{metricValue(selectedMetric)}</strong>
+        <small>{metricChange(selectedMetric)}</small>
+        <p>
+          {$translation("briefing-metric-evidence-detail", {
+            count: selectedMetric.sources.length,
+          })}
+        </p>
+      </div>
+      <section class="evidence-ledger">
+        <span class="eyebrow">{$translation("briefing-source-ledger")}</span>
+        {#each selectedMetric.sources as source}
+          <div>
+            <strong>{source.source_field}</strong>
+            <span
+              >{$translation("evidence-source-line", {
+                line: source.source_line,
+              })}</span
+            >
+          </div>
+        {/each}
+      </section>
+    {/if}
 
-    <div class="fact-grid">
+    <div class="fact-grid brief-operations">
       <article>
-        <span>{$translation("briefing-family")}</span><strong
-          >{$translation(familyKeys[selectedMaterial.family])}</strong
+        <span>{$translation("briefing-recorder-state")}</span>
+        <strong
+          >{$translation(
+            brief?.operations.recorder_phase
+              ? (recorderPhaseKeys[brief.operations.recorder_phase] ??
+                  "briefing-state-unavailable")
+              : "briefing-state-unavailable",
+          )}</strong
         >
       </article>
       <article>
-        <span>{$translation("briefing-evidence")}</span><strong
-          >{$translation("evidence-estimate")}</strong
+        <span>{$translation("briefing-warehouse-state")}</span>
+        <strong
+          >{$translation(
+            brief?.operations.warehouse_phase
+              ? (warehousePhaseKeys[brief.operations.warehouse_phase] ??
+                  "briefing-state-unavailable")
+              : "briefing-state-unavailable",
+          )}</strong
         >
       </article>
       <article>
-        <span>{$translation("briefing-coverage")}</span><strong
-          >{$translation("coverage-experimental")}</strong
+        <span>{$translation("briefing-catalogue-entities")}</span>
+        <strong
+          >{brief?.operations.catalogue_entity_count == null
+            ? "—"
+            : formatNumber(
+                brief.operations.catalogue_entity_count,
+                $activeLocale,
+              )}</strong
         >
       </article>
       <article>
-        <span>{$translation("briefing-observed")}</span><strong
-          >{$translation("synthetic-observed-day-230")}</strong
+        <span>{$translation("briefing-city-scopes")}</span>
+        <strong
+          >{formatNumber(
+            brief?.operations.city_scope_count ?? 0,
+            $activeLocale,
+          )}</strong
         >
       </article>
     </div>
 
     <section class="attention-queue">
       <header>
-        <span class="eyebrow">{$translation("briefing-attention-queue")}</span
-        ><strong
+        <span class="eyebrow">{$translation("briefing-attention-queue")}</span>
+        <strong
           >{$translation("briefing-findings-count", {
-            count: preview.attention.length,
+            count: brief?.findings.length ?? 0,
           })}</strong
         >
       </header>
-      {#each preview.attention as item}
-        <article>
-          <span>{item.level}</span><strong>{item.title}</strong>
-          <p>{item.detail}</p>
+      {#each brief?.findings ?? [] as finding}
+        {@const copy = findingCopy(finding)}
+        <article data-severity={finding.severity}>
+          <span>{$translation(severityKeys[finding.severity])}</span>
+          <strong>{copy[0]}</strong>
+          <p>{copy[1]}</p>
         </article>
+      {:else}
+        <GuidanceSurface kind="boundary" layout="compact">
+          <strong>{$translation("briefing-no-findings-title")}</strong>
+          <span>{$translation("briefing-no-findings-detail")}</span>
+        </GuidanceSurface>
       {/each}
-    </section>
-
-    <section class="provenance-key">
-      <span class="eyebrow">{$translation("briefing-evidence-key")}</span>
-      <div>
-        <i data-kind="save_fact"></i><span
-          >{$translation("evidence-save-fact")}</span
-        >
-      </div>
-      <div>
-        <i data-kind="calculation"></i><span
-          >{$translation("evidence-calculation")}</span
-        >
-      </div>
-      <div>
-        <i data-kind="estimate"></i><span
-          >{$translation("evidence-estimate")}</span
-        >
-      </div>
-      <div>
-        <i data-kind="recommendation"></i><span
-          >{$translation("evidence-recommendation")}</span
-        >
-      </div>
     </section>
   </aside>
 </section>
+
+<style>
+  .metric-card {
+    width: 100%;
+    color: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .metric-card.selected {
+    border-color: var(--colour-observed);
+    box-shadow: inset 0 0 0 1px var(--colour-observed-soft);
+  }
+
+  .brief-chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+    scroll-margin-top: 18px;
+  }
+
+  .brief-chart-grid :global(.chart-card:last-child) {
+    grid-column: 1 / -1;
+  }
+
+  .brief-capabilities {
+    scroll-margin-top: 18px;
+  }
+
+  .capability-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .capability-grid article {
+    min-width: 0;
+    border: 1px solid var(--colour-line-faint);
+    padding: 13px;
+    background: var(--colour-surface-raised);
+  }
+
+  .capability-grid h3 {
+    margin-top: 8px;
+    font-size: var(--type-body);
+  }
+
+  .capability-grid p {
+    margin-top: 7px;
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+    line-height: 1.55;
+  }
+
+  .capability-grid button,
+  .dispatch-links button {
+    min-height: 32px;
+    margin-top: 10px;
+    border: 1px solid var(--colour-line);
+    padding: 6px 10px;
+    color: var(--colour-observed);
+    background: var(--colour-surface-raised);
+    cursor: pointer;
+  }
+
+  .dispatch-links button {
+    margin-top: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: var(--type-caption);
+  }
+
+  .attention-queue article[data-severity="attention"] > span {
+    color: var(--colour-risk);
+  }
+
+  .attention-queue article[data-severity="information"] > span {
+    color: var(--colour-observed);
+  }
+
+  @media (max-width: 1100px) {
+    .brief-chart-grid,
+    .capability-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .brief-chart-grid :global(.chart-card:last-child) {
+      grid-column: auto;
+    }
+  }
+</style>

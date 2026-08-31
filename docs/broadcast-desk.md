@@ -10,9 +10,11 @@ in the locally reviewed game version **1.1.1.9** and the official
 and [Citizens](https://wiki.hoodedhorse.com/Workers_Resources_Soviet_Republic/Citizens)
 references. Compatibility must be rechecked for later game versions.
 
-The desktop interface can now replace the Receiver Ladder with parsed save
-facts. Every other Broadcast panel remains synthetic and is marked accordingly;
-the application does not claim that binary station telemetry has been decoded.
+The desktop interface can now fill the Receiver Ladder with parsed save facts.
+Every other Broadcast panel states its missing source contract and remains
+unavailable; ordinary application mode does not substitute illustrative station,
+audience, programme, outcome, notebook, or bulletin values. The application does
+not claim that binary station telemetry has been decoded.
 
 ## Implemented receiver slice
 

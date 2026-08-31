@@ -25,8 +25,8 @@ use crate::model::{
     ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
     ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
-    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, SetupState,
-    WarehouseSnapshot,
+    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
+    SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -182,6 +182,17 @@ impl ObservatoryApplication {
         let game_media_directory = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
         dataset.tesmio_probe = tesmio_probe::inspect(game_media_directory.as_deref());
         Ok(dataset)
+    }
+
+    pub fn republic_brief(&self) -> Result<RepublicBrief, ObservatoryError> {
+        let population = self.population_dataset()?;
+        let recorder = self.recorder_health().ok();
+        let catalogue = self.catalogue_status().ok();
+        Ok(crate::republic_brief::build_republic_brief(
+            &population,
+            recorder.as_ref(),
+            catalogue.as_ref(),
+        ))
     }
 
     pub fn language_status(&self) -> Result<LanguageStatus, ObservatoryError> {

@@ -384,6 +384,105 @@ pub struct PopulationDataset {
     pub tesmio_probe: TesmioProbeStatus,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BriefMetricRole {
+    Headline,
+    Education,
+    ReceiverClass,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BriefEvidenceKind {
+    SaveFact,
+    Calculation,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefSourceEvidence {
+    pub source_field: String,
+    pub source_line: u64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefMetric {
+    pub metric_id: String,
+    pub role: BriefMetricRole,
+    pub value: u64,
+    pub previous_value: Option<u64>,
+    pub delta: Option<i64>,
+    pub share_basis_points: Option<u16>,
+    pub evidence_kind: BriefEvidenceKind,
+    pub sources: Vec<BriefSourceEvidence>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefObservation {
+    pub interpretation_id: String,
+    pub source_file_name: String,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub coverage_status: CoverageStatus,
+    pub mapping_classification: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefComparisonAnchor {
+    pub interpretation_id: String,
+    pub source_file_name: String,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BriefFindingSeverity {
+    Information,
+    Watch,
+    Attention,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefFinding {
+    pub code: String,
+    pub severity: BriefFindingSeverity,
+    pub value: Option<u64>,
+    pub metric_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct BriefOperations {
+    pub recorder_phase: Option<AutomaticObserverPhase>,
+    pub recorder_queue_depth: Option<u32>,
+    pub recorder_attention_count: Option<u32>,
+    pub warehouse_phase: Option<WarehousePhase>,
+    pub warehouse_pending_jobs: Option<u32>,
+    pub warehouse_failed_jobs: Option<u32>,
+    pub warehouse_lag_ms: Option<i64>,
+    pub catalogue_generation_id: Option<String>,
+    pub catalogue_entity_count: Option<u32>,
+    pub city_scope_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RepublicBrief {
+    pub schema_version: u32,
+    pub analysis_context: AnalysisContext,
+    pub observation: Option<BriefObservation>,
+    pub comparison: Option<BriefComparisonAnchor>,
+    pub metrics: Vec<BriefMetric>,
+    pub findings: Vec<BriefFinding>,
+    pub dispatch_code: String,
+    pub operations: BriefOperations,
+    pub unavailable_capabilities: Vec<String>,
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TesmioProbeState {

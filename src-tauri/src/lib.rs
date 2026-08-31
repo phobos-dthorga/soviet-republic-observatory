@@ -15,6 +15,7 @@ mod language_pack;
 mod model;
 mod planning_overlay;
 mod recorder_service;
+mod republic_brief;
 mod research_setup;
 mod save_archive;
 mod stats_parser;
@@ -87,6 +88,7 @@ pub fn run() {
             commands::get_latest_receiver_dataset,
             commands::get_archive_overview,
             commands::get_population_dataset,
+            commands::get_republic_brief,
             commands::get_recorder_health,
             commands::configure_directory,
             commands::observe_latest_save,

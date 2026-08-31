@@ -56,6 +56,17 @@ for (const file of files) {
     );
     for (const imported of imports) {
       if (
+        path.startsWith("src/lib/workspaces/") &&
+        /(?:^|\/)(?:sample|broadcastPreview|materialFlowPreview)$/.test(
+          imported,
+        )
+      ) {
+        fail(
+          path,
+          `Ordinary workspaces cannot import synthetic republic fallbacks: ${imported}`,
+        );
+      }
+      if (
         /(?:^|\/)(?:storage|parsers?|domain)(?:\/|$)/.test(imported) ||
         /\/(?:analysisPack|planningOverlay|profileSchema)$/.test(imported)
       ) {
@@ -65,6 +76,19 @@ for (const file of files) {
         );
       }
     }
+  }
+
+  if (
+    [
+      "src/lib/presentation/sample.ts",
+      "src/lib/presentation/broadcastPreview.ts",
+      "src/lib/presentation/materialFlowPreview.ts",
+    ].includes(path)
+  ) {
+    fail(
+      path,
+      "Synthetic republic previews belong in the typed UI-review fixture boundary, not production presentation modules.",
+    );
   }
 
   if (path.startsWith("src/lib/presentation/")) {

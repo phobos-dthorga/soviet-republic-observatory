@@ -33,6 +33,11 @@ without defining how community metrics become trustworthy flow links.
 - Treat the first Materials diagram as synthetic interface proof, not catalogue
   or save evidence.
 
+Implementation note: the initial proof was subsequently removed from ordinary
+application mode after source-backed production routes became available.
+Synthetic flow states now live only in the bounded UI-review fixture registry;
+an unavailable catalogue produces an unavailable laboratory, not example data.
+
 ## Consequences
 
 High-value specialist diagrams can enter the product without creating an

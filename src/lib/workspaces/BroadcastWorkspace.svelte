@@ -1,11 +1,11 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
-  import { createBroadcastPreview } from "../presentation/broadcastPreview";
-  import { createObservedReceiverChart } from "../presentation/receiverObservation";
   import type { TranslationKey } from "../i18n/catalog";
+  import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
   import type { ReceiverDataset } from "../observations/types";
+  import { createObservedReceiverChart } from "../presentation/receiverObservation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
 
   let { receiverDataset = null }: { receiverDataset?: ReceiverDataset | null } =
@@ -23,14 +23,25 @@
     { label: "broadcast-section-bulletin", href: "#bulletin", marker: "05" },
   ];
   const stationIds = ["radio", "television"] as const;
+  const stationFactKeys = [
+    "station-workers",
+    "station-professors",
+    "station-potential-reach",
+    "station-current-audience",
+  ] as const satisfies readonly TranslationKey[];
   let selectedStation = $state<(typeof stationIds)[number]>("radio");
-  const preview = $derived(createBroadcastPreview($translation, $activeLocale));
   const receiverLadder = $derived(
     receiverDataset
       ? createObservedReceiverChart(receiverDataset, $translation)
-      : preview.receiverLadder,
+      : null,
   );
-  const station = $derived(preview.station[selectedStation]);
+  const latestReceiverPoint = $derived(receiverDataset?.points.at(-1) ?? null);
+
+  function stationName(station: (typeof stationIds)[number]): string {
+    return $translation(
+      station === "radio" ? "station-radio" : "station-television",
+    );
+  }
 </script>
 
 <section class="workspace broadcast-workspace">
@@ -43,63 +54,53 @@
         <span class="eyebrow">{$translation("broadcast-editorial-desk")}</span>
         <h2>{$translation("nav-broadcast")}</h2>
       </div>
-      <span class="edition">{$translation("broadcast-concept")}</span>
+      <span class="edition">v1</span>
     </div>
     <div class="lens-card">
       <div class="lens-row">
-        <span>{$translation("filter-branch")}</span><strong
-          >{receiverDataset
-            ? $translation("observation-branch-unassigned")
-            : "planning-preview"}</strong
+        <span>{$translation("filter-branch")}</span>
+        <strong
+          >{receiverDataset?.branch_id ??
+            $translation("observation-branch-unavailable")}</strong
         >
       </div>
       <div class="lens-row">
-        <span>{$translation("filter-window")}</span><strong
+        <span>{$translation("filter-window")}</span>
+        <strong
           >{receiverDataset
             ? $translation("observation-records", {
                 count: receiverDataset.coverage.chartable_records,
               })
-            : $translation("filter-rolling-days", { days: 360 })}</strong
+            : $translation("chart-unavailable")}</strong
         >
       </div>
       <div class="lens-row">
-        <span>{$translation("filter-scope")}</span><strong
-          >{$translation("filter-whole-republic")}</strong
-        >
+        <span>{$translation("filter-scope")}</span>
+        <strong>{$translation("filter-whole-republic")}</strong>
       </div>
     </div>
     <div class="section-list">
-      {#each sections as section}<a href={section.href}
+      {#each sections as section}
+        <a href={section.href}
           ><span>{section.marker}</span>{$translation(section.label)}</a
-        >{/each}
+        >
+      {/each}
     </div>
     <GuidanceSurface kind="help" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
-      <p>{$translation("evidence-broadcast-sidebar-note")}</p>
+      <p>{$translation("broadcast-evidence-sidebar-note")}</p>
     </GuidanceSurface>
   </aside>
 
   <section class="canvas">
     <GuidanceSurface
-      kind="preview"
+      kind="boundary"
       layout="inline"
       semanticRole="status"
       class="preview-banner"
     >
-      <strong
-        >{$translation(
-          receiverDataset
-            ? "evidence-broadcast-mixed-desk"
-            : "synthetic-broadcast-desk",
-        )}</strong
-      >
-      <span
-        >{$translation(
-          receiverDataset
-            ? "evidence-broadcast-mixed-detail"
-            : "synthetic-no-station-telemetry",
-        )}</span
-      >
+      <strong>{$translation("broadcast-evidence-desk")}</strong>
+      <span>{$translation("broadcast-evidence-desk-detail")}</span>
     </GuidanceSurface>
     <header class="page-heading">
       <div>
@@ -108,79 +109,66 @@
         <p>{$translation("broadcast-heading-description")}</p>
       </div>
       <div class="date-stamp">
-        <span>{$translation("broadcast-bulletin")}</span><strong>20:00</strong
-        ><small>{$translation("broadcast-draft-ready")}</small>
+        <span>{$translation("briefing-exact-head")}</span>
+        <strong
+          >{latestReceiverPoint?.year ?? "—"} · {latestReceiverPoint
+            ? String(latestReceiverPoint.day).padStart(3, "0")
+            : "—"}</strong
+        >
+        <small
+          >{receiverDataset?.source_file_name ??
+            $translation("chart-unavailable")}</small
+        >
       </div>
     </header>
 
     <section id="receivers" class="broadcast-chart-wide">
-      <ObservatoryChart
-        spec={receiverLadder}
-        height="285px"
-        eyebrow={$translation("broadcast-section-receivers")}
-      />
-      {#if receiverDataset}
+      {#if receiverLadder && receiverDataset}
+        <ObservatoryChart
+          spec={receiverLadder}
+          height="285px"
+          eyebrow={$translation("broadcast-section-receivers")}
+        />
         <ReceiverEvidence dataset={receiverDataset} />
+      {:else}
+        <GuidanceSurface kind="help" layout="block">
+          <strong>{$translation("broadcast-no-receiver-title")}</strong>
+          <span>{$translation("broadcast-no-receiver-detail")}</span>
+        </GuidanceSurface>
       {/if}
     </section>
 
-    <section id="audience" class="broadcast-chart-wide">
-      <div class="research-flag">
+    <section id="audience" class="unavailable-laboratory">
+      <span class="eyebrow">{$translation("broadcast-section-audience")}</span>
+      <h2>{$translation("broadcast-audience-unavailable-title")}</h2>
+      <GuidanceSurface kind="instruction" layout="block">
         <strong>{$translation("evidence-binary-research-candidate")}</strong>
-        <span>{$translation("evidence-audience-unavailable")}</span>
+        <span>{$translation("broadcast-audience-unavailable-detail")}</span>
+      </GuidanceSurface>
+    </section>
+
+    <section id="programme" class="unavailable-laboratory">
+      <span class="eyebrow">{$translation("broadcast-section-programme")}</span>
+      <h2>{$translation("broadcast-programme-unavailable-title")}</h2>
+      <div class="boundary-grid">
+        <GuidanceSurface kind="help" layout="block">
+          <strong>{$translation("broadcast-programme-mix-boundary")}</strong>
+          <span>{$translation("broadcast-programme-mix-boundary-detail")}</span>
+        </GuidanceSurface>
+        <GuidanceSurface kind="help" layout="block">
+          <strong>{$translation("broadcast-influence-boundary")}</strong>
+          <span>{$translation("broadcast-influence-boundary-detail")}</span>
+        </GuidanceSurface>
       </div>
-      <ObservatoryChart
-        spec={preview.audienceReach}
-        height="280px"
-        eyebrow={$translation("broadcast-section-audience")}
-      />
     </section>
 
-    <section
-      id="programme"
-      class="broadcast-grid"
-      aria-label={$translation("broadcast-programming-analysis")}
-    >
-      <article class="laboratory-card programme-card">
-        <header>
-          <div>
-            <span class="eyebrow"
-              >{$translation("broadcast-programme-formulation")}</span
-            >
-            <h3>{$translation("broadcast-intended-influence")}</h3>
-          </div>
-          <span class="coverage"
-            >{$translation("broadcast-allocated", { percent: 100 })}</span
-          >
-        </header>
-        <p>{$translation("synthetic-programme-formulation-note")}</p>
-        <div class="programme-list">
-          {#each preview.programmeMix as programme}
-            <div>
-              <span>{programme.label}</span><strong>{programme.value}%</strong
-              ><i aria-hidden="true"
-                ><b style={`width: ${programme.value}%`}></b></i
-              >
-            </div>
-          {/each}
-        </div>
-      </article>
-      <ObservatoryChart
-        spec={preview.influenceAssay}
-        eyebrow={$translation("broadcast-influence-assay")}
-      />
-    </section>
-
-    <section id="outcomes" class="outcome-block">
-      <div class="causation-warning" role="note">
+    <section id="outcomes" class="unavailable-laboratory">
+      <span class="eyebrow">{$translation("broadcast-section-outcomes")}</span>
+      <h2>{$translation("broadcast-outcomes-unavailable-title")}</h2>
+      <GuidanceSurface kind="boundary" layout="block">
         <strong>{$translation("causality-association-not-causation")}</strong>
-        <span>{$translation("causality-comparison-warning")}</span>
-      </div>
-      <ObservatoryChart
-        spec={preview.outcomeLaboratory}
-        height="285px"
-        eyebrow={$translation("broadcast-section-outcomes")}
-      />
+        <span>{$translation("broadcast-outcomes-unavailable-detail")}</span>
+      </GuidanceSurface>
     </section>
 
     <section class="notebook-panel" aria-labelledby="notebook-title">
@@ -193,53 +181,56 @@
           <p>{$translation("evidence-annotations-not-evidence")}</p>
         </div>
         <span class="coverage"
-          >{$translation("broadcast-open-notes", { count: 2 })}</span
+          >{$translation("broadcast-notebook-empty-state")}</span
         >
       </header>
-      <div
-        class="notebook-table"
-        role="table"
-        aria-label={$translation("synthetic-broadcast-experiments")}
-      >
-        <div class="notebook-row notebook-head" role="row">
-          <span role="columnheader">{$translation("notebook-hypothesis")}</span
-          ><span role="columnheader"
-            >{$translation("notebook-intervention")}</span
-          ><span role="columnheader">{$translation("filter-window")}</span><span
-            role="columnheader">{$translation("notebook-status")}</span
-          >
-        </div>
-        {#each preview.notebook as note}
-          <div class="notebook-row" role="row">
-            <span role="cell">{note.hypothesis}</span><span role="cell"
-              >{note.intervention}</span
-            ><span role="cell">{note.window}</span><span
-              class="notebook-status"
-              role="cell">{note.status}</span
-            >
-          </div>
-        {/each}
-      </div>
+      <GuidanceSurface kind="help" layout="compact">
+        <strong>{$translation("broadcast-notebook-empty-title")}</strong>
+        <span>{$translation("broadcast-notebook-empty-detail")}</span>
+      </GuidanceSurface>
     </section>
 
     <section class="bulletin-panel" id="bulletin">
       <div class="bulletin-masthead">
-        <span>{$translation("broadcast-evening-service")}</span><strong
-          >{$translation("broadcast-republic-signal")}</strong
-        ><time>Y4 · D050</time>
+        <span>{$translation("broadcast-evening-service")}</span>
+        <strong>{$translation("broadcast-republic-signal")}</strong>
+        <time
+          >{latestReceiverPoint
+            ? $translation("observation-game-date-compact", {
+                year: latestReceiverPoint.year,
+                day: String(latestReceiverPoint.day).padStart(3, "0"),
+              })
+            : $translation("chart-unavailable")}</time
+        >
       </div>
       <div class="bulletin-body">
         <div class="dispatch-seal" aria-hidden="true">20</div>
         <div>
           <span class="eyebrow"
-            >{$translation("synthetic-evening-bulletin-eyebrow")}</span
+            >{$translation("broadcast-evidence-bulletin-eyebrow")}</span
           >
-          <h2>{$translation("broadcast-bulletin-title")}</h2>
-          <p>{$translation("causality-bulletin-body")}</p>
+          <h2>
+            {$translation(
+              latestReceiverPoint
+                ? "broadcast-bulletin-evidence-title"
+                : "broadcast-bulletin-unavailable-title",
+            )}
+          </h2>
+          <p>
+            {latestReceiverPoint
+              ? $translation("broadcast-bulletin-evidence-body", {
+                  count: formatNumber(
+                    latestReceiverPoint.classified_total,
+                    $activeLocale,
+                  ),
+                })
+              : $translation("broadcast-bulletin-unavailable-body")}
+          </p>
           <div class="dispatch-links">
             <a href="#receivers"
               >{$translation("broadcast-receiver-evidence")}</a
-            ><a href="#outcomes">{$translation("broadcast-outcome-caveats")}</a>
+            >
+            <a href="#outcomes">{$translation("broadcast-outcome-caveats")}</a>
           </div>
         </div>
       </div>
@@ -258,7 +249,7 @@
         <span class="eyebrow"
           >{$translation("broadcast-station-inspector")}</span
         >
-        <h2>{station.name}</h2>
+        <h2>{stationName(selectedStation)}</h2>
       </div>
       <span class="status-chip" data-status="watch"
         >{$translation("evidence-research")}</span
@@ -274,60 +265,75 @@
           aria-pressed={selectedStation === stationId}
           class:active={selectedStation === stationId}
           onclick={() => (selectedStation = stationId)}
-          >{preview.station[stationId].name}</button
+          >{stationName(stationId)}</button
         >
       {/each}
     </div>
     <div class="selected-reading">
-      <span>{$translation("synthetic-rating")}</span><strong
-        >{station.rating}</strong
-      ><small>{station.availability}</small>
-      <p>{$translation("synthetic-station-values-warning")}</p>
+      <span>{$translation("broadcast-station-telemetry")}</span>
+      <strong>—</strong>
+      <small>{$translation("chart-unavailable")}</small>
+      <p>{$translation("broadcast-station-telemetry-detail")}</p>
     </div>
     <div class="fact-grid">
-      <article>
-        <span>{$translation("station-workers")}</span><strong
-          >{station.workers}</strong
-        >
-      </article>
-      <article>
-        <span>{$translation("station-professors")}</span><strong
-          >{station.professors}</strong
-        >
-      </article>
-      <article>
-        <span>{$translation("station-potential-reach")}</span><strong
-          >{station.potential}</strong
-        >
-      </article>
-      <article>
-        <span>{$translation("station-current-audience")}</span><strong
-          >{station.current}</strong
-        >
-      </article>
+      {#each stationFactKeys as key}
+        <article>
+          <span>{$translation(key)}</span>
+          <strong>—</strong>
+        </article>
+      {/each}
     </div>
     <section class="evidence-ledger">
       <span class="eyebrow">{$translation("evidence-ledger")}</span>
       <div>
-        <strong>{$translation("receiver-class")}</strong><span
-          >{$translation("evidence-plain-text-save-fact")}</span
+        <strong>{$translation("receiver-class")}</strong>
+        <span
+          >{$translation(
+            receiverDataset
+              ? "evidence-plain-text-save-fact"
+              : "chart-unavailable",
+          )}</span
         >
       </div>
       <div>
-        <strong>{$translation("station-staffing-capacity")}</strong><span
-          >{$translation("evidence-game-definition")}</span
-        >
+        <strong>{$translation("station-state")}</strong>
+        <span>{$translation("evidence-binary-research-candidate")}</span>
       </div>
       <div>
-        <strong>{$translation("station-state")}</strong><span
-          >{$translation("evidence-binary-research-candidate")}</span
-        >
-      </div>
-      <div>
-        <strong>{$translation("station-outcome-attribution")}</strong><span
-          >{$translation("causality-experimental-prohibited")}</span
-        >
+        <strong>{$translation("station-outcome-attribution")}</strong>
+        <span>{$translation("causality-experimental-prohibited")}</span>
       </div>
     </section>
   </aside>
 </section>
+
+<style>
+  .unavailable-laboratory {
+    margin-top: 10px;
+    border: 1px solid var(--colour-line-faint);
+    padding: 17px;
+    background: var(--colour-surface-raised);
+    scroll-margin-top: 18px;
+  }
+
+  .unavailable-laboratory h2 {
+    margin: 5px 0 12px;
+    font-size: 22px;
+  }
+
+  .boundary-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .notebook-panel :global(.guidance-surface) {
+    margin-top: 14px;
+  }
+
+  @media (max-width: 900px) {
+    .boundary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

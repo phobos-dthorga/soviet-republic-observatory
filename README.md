@@ -29,15 +29,17 @@ questions:
 > a documented stable-identity evidence gate. An optional, separately built
 > GPL Tesmio research companion can now supply strictly bounded anonymous live
 > samples; it is never auto-installed, is not persisted into Observatory
-> databases, and is governed by an in-app legal/risk screen. Unrelated dashboard
-> values remain visibly synthetic.
+> databases, and is governed by an in-app legal/risk screen. The Republic
+> Briefing is now an exact-head, save-backed summary with deterministic findings;
+> unsupported claims remain unavailable instead of receiving example values.
 
 ![Republic Observatory interface foundation](assets/screenshots/interface-foundation.png)
 
 ## Proposed experience
 
-- **Republic Briefing** — plan attainment, external dependency, demographic
-  resilience, guardrails, and a concise save-to-save dispatch.
+- **Republic Briefing** — exact-head population, education, and receiver facts;
+  proven preceding-observation changes; operational guardrails; source-line
+  provenance; and a deterministic save-to-save dispatch.
 - **Republic Monitor** — native recorder health, candidate lifecycle, recording
   cadence, branch warnings, and latest same-branch receiver movement.
 - **Five-Year Plan** — targets, actual-versus-plan progress, variance bridges,
@@ -127,7 +129,9 @@ identity with either a strict content pin or an explicit track-updates warning;
 ordinary mod definitions need no override.
 
 For interface work that does not need native folder selection or save parsing,
-`npm run dev` opens the synthetic browser preview.
+`npm run dev` opens the browser interface with honest unavailable-data states.
+Deterministic example values are restricted to the bounded native UI-review
+fixture scenarios and explicit authoring examples.
 
 Use the fast contract gate while developing:
 

@@ -110,6 +110,15 @@ data cannot reach it. The audit must exercise the production component rather
 than a look-alike test implementation. Use `npm run audit:ui` for the complete
 gate or `npm run audit:contrast` for the colour-and-Axe subset.
 
+Ordinary application workspaces must never substitute synthetic republic
+figures when native evidence is absent. Show the unavailable state, explain the
+missing source contract, and keep any supported neighbouring facts usable.
+Synthetic host models belong only to the typed UI-review fixture registry or to
+an explicit, player-invoked authoring example such as an Analysis Pack sample.
+They must be visibly identified as fixtures or examples and must travel through
+the same production renderer as real host models. The architecture audit
+rejects the former production preview-module pattern.
+
 Inert previews, context tooltips, and tutorial/help copy use the shared
 guidance-surface treatment. Do not make an inert example focusable or render it
 as a no-op button. Keep real actions on ordinary control surfaces, label

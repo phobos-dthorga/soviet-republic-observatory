@@ -14,8 +14,8 @@ use crate::model::{
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
     OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
     ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
-    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState,
-    WarehouseSnapshot,
+    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress,
+    RepublicBrief, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -192,6 +192,11 @@ pub fn get_population_dataset(
     state: State<'_, AppState>,
 ) -> Result<PopulationDataset, CommandError> {
     state.application.population_dataset().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_republic_brief(state: State<'_, AppState>) -> Result<RepublicBrief, CommandError> {
+    state.application.republic_brief().map_err(Into::into)
 }
 
 #[tauri::command]

@@ -103,11 +103,10 @@ visible in separate ledgers. The Sankey therefore communicates a selected
 definition pathway; it does not claim that the republic built, transported,
 stored, or consumed those volumes.
 
-When the desktop catalogue is unavailable, the interface retains the visibly
-synthetic steel-allocation proof. Its 68 domestic and 32 imported units reconcile
-with 42 construction, 24 mechanical-component, 18 vehicle, 10 export, and 6
-unaccounted units. These preview values are never presented as catalogue or save
-facts.
+When the desktop catalogue is unavailable, the Production Route Laboratory is
+unavailable and explains how to publish a source-backed catalogue. Synthetic
+flow models may be exercised only through a typed UI-review fixture; ordinary
+application mode never substitutes them for catalogue or save facts.
 
 ## Extension boundary
 

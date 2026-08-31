@@ -5,6 +5,7 @@ import type {
   PopulationDataset,
   ProductionPathwayModel,
   ProductionRouteModel,
+  RepublicBrief,
 } from "../observations/types";
 
 const reviewContext = {
@@ -22,6 +23,180 @@ const reviewContext = {
   catalogue_generation_id: "review-catalogue-generation",
   overlay_revision: null,
 };
+
+export function reviewRepublicBrief(): RepublicBrief {
+  const source = (source_field: string, source_line: number) => [
+    { source_field, source_line },
+  ];
+  return {
+    schema_version: 1,
+    analysis_context: { ...reviewContext },
+    observation: {
+      interpretation_id: "review-interpretation-2015-077",
+      source_file_name: "UI-REVIEW-PG7.zip",
+      year: 2015,
+      day: 77,
+      game_day: 4_093,
+      coverage_status: "complete",
+      mapping_classification: "reviewed_mapping",
+      profile_id: "org.republic-observatory.wrsr-1.1.1.9",
+      profile_version: "1.0.0",
+      resolved_profile_hash: "reviewed-profile-fixture",
+    },
+    comparison: {
+      interpretation_id: "review-interpretation-2015-067",
+      source_file_name: "UI-REVIEW-PG6.zip",
+      year: 2015,
+      day: 67,
+      game_day: 4_083,
+    },
+    metrics: [
+      {
+        metric_id: "source.stats.citizens.adults",
+        role: "headline",
+        value: 58_137,
+        previous_value: 57_904,
+        delta: 233,
+        share_basis_points: null,
+        evidence_kind: "save_fact",
+        sources: source("$Citizens_Adults", 1_719_858),
+      },
+      {
+        metric_id: "source.stats.citizens.small_children",
+        role: "headline",
+        value: 5_974,
+        previous_value: 5_942,
+        delta: 32,
+        share_basis_points: null,
+        evidence_kind: "save_fact",
+        sources: source("$Citizens_ChildrenSmall", 1_719_857),
+      },
+      {
+        metric_id: "source.stats.citizens.unemployed",
+        role: "headline",
+        value: 24_034,
+        previous_value: 23_811,
+        delta: 223,
+        share_basis_points: null,
+        evidence_kind: "save_fact",
+        sources: source("$Citizens_Unemployed", 1_719_860),
+      },
+      {
+        metric_id: "core.citizens.electronics.classified_total",
+        role: "headline",
+        value: 70_296,
+        previous_value: 70_041,
+        delta: 255,
+        share_basis_points: null,
+        evidence_kind: "calculation",
+        sources: [
+          { source_field: "$Citizens_ElectronicNone", source_line: 1_719_856 },
+          { source_field: "$Citizens_ElectronicRadio", source_line: 1_719_858 },
+          { source_field: "$Citizens_ElectronicTV", source_line: 1_719_859 },
+          {
+            source_field: "$Citizens_ElectronicComputer",
+            source_line: 1_719_860,
+          },
+        ],
+      },
+      ...[
+        [
+          "source.stats.citizens.no_education",
+          12_902,
+          "$Citizens_NoEducation",
+          1_719_861,
+        ],
+        [
+          "source.stats.citizens.basic_education",
+          42_345,
+          "$Citizens_BasicEducationNum",
+          1_719_862,
+        ],
+        [
+          "source.stats.citizens.higher_education",
+          22_018,
+          "$Citizens_HighEducationNum",
+          1_719_863,
+        ],
+      ].map(([metric_id, value, source_field, source_line]) => ({
+        metric_id: metric_id as string,
+        role: "education" as const,
+        value: value as number,
+        previous_value: null,
+        delta: null,
+        share_basis_points: null,
+        evidence_kind: "save_fact" as const,
+        sources: source(source_field as string, source_line as number),
+      })),
+      ...[
+        [
+          "core.citizens.electronics.none",
+          32_790,
+          4_665,
+          "$Citizens_ElectronicNone",
+          1_719_856,
+        ],
+        [
+          "core.citizens.electronics.radio",
+          25_347,
+          3_606,
+          "$Citizens_ElectronicRadio",
+          1_719_858,
+        ],
+        [
+          "core.citizens.electronics.television",
+          9_702,
+          1_380,
+          "$Citizens_ElectronicTV",
+          1_719_859,
+        ],
+        [
+          "core.citizens.electronics.computer",
+          2_457,
+          349,
+          "$Citizens_ElectronicComputer",
+          1_719_860,
+        ],
+      ].map(
+        ([
+          metric_id,
+          value,
+          share_basis_points,
+          source_field,
+          source_line,
+        ]) => ({
+          metric_id: metric_id as string,
+          role: "receiver_class" as const,
+          value: value as number,
+          previous_value: null,
+          delta: null,
+          share_basis_points: share_basis_points as number,
+          evidence_kind: "save_fact" as const,
+          sources: source(source_field as string, source_line as number),
+        }),
+      ),
+    ],
+    findings: [],
+    dispatch_code: "observation_ready",
+    operations: {
+      recorder_phase: "watching",
+      recorder_queue_depth: 0,
+      recorder_attention_count: 0,
+      warehouse_phase: "ready",
+      warehouse_pending_jobs: 0,
+      warehouse_failed_jobs: 0,
+      warehouse_lag_ms: 0,
+      catalogue_generation_id: "review-catalogue-generation",
+      catalogue_entity_count: 6_031,
+      city_scope_count: 139,
+    },
+    unavailable_capabilities: [
+      "plan_attainment",
+      "import_exposure",
+      "observed_material_reliance",
+    ],
+  };
+}
 
 export function reviewPopulationDataset(): PopulationDataset {
   return {

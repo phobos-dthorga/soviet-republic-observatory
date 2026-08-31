@@ -39,6 +39,7 @@
     reviewPopulationDataset,
     reviewProductionPathway,
     reviewProductionRoute,
+    reviewRepublicBrief,
     reviewWarehouseAttention,
   } from "./lib/ui-review/fixtures";
   import {
@@ -51,6 +52,7 @@
     getDiagnosticLog,
     getLatestReceiverDataset,
     getPopulationDataset,
+    getRepublicBrief,
     getReinterpretationProgress,
     getRecorderHealth,
     getSetupState,
@@ -76,6 +78,7 @@
     ProductionRouteModel,
     RecorderHealth,
     RecorderUpdate,
+    RepublicBrief,
     ReinterpretationProgress,
     SetupState,
     WarehouseWriteActivity,
@@ -131,6 +134,7 @@
   let populationDataset = $state<PopulationDataset | null>(null);
   let archiveOverview = $state<ArchiveOverview | null>(null);
   let recorderHealth = $state<RecorderHealth | null>(null);
+  let republicBrief = $state<RepublicBrief | null>(null);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
@@ -171,22 +175,23 @@
   }
 
   function activeBranchLabel(): string {
-    if (!receiverDataset) return "planning-preview";
+    const branchId =
+      receiverDataset?.branch_id ??
+      republicBrief?.analysis_context.selected_branch_id;
+    if (!branchId) return $translation("observation-branch-unavailable");
     const selected = archiveOverview?.branches.find(
       (branch) => branch.selected,
     );
     if (selected?.player_label) return selected.player_label;
-    if (receiverDataset.branch_id === "main")
-      return $translation("archive-branch-main");
-    if (receiverDataset.branch_id === "unassigned")
+    if (branchId === "main") return $translation("archive-branch-main");
+    if (branchId === "unassigned")
       return $translation("archive-branch-unassigned");
     return $translation(
       selected?.origin === "manual_continuation"
         ? "archive-branch-continuation"
         : "archive-branch-fork",
       {
-        identity:
-          selected?.short_identity ?? receiverDataset.branch_id.slice(0, 12),
+        identity: selected?.short_identity ?? branchId.slice(0, 12),
       },
     );
   }
@@ -203,6 +208,7 @@
     archiveOverview = result.archive;
     receiverDataset = result.dataset;
     void refreshPopulationDataset();
+    void refreshRepublicBrief();
   }
 
   async function refreshPopulationDataset(): Promise<void> {
@@ -211,6 +217,15 @@
       populationDataset = await getPopulationDataset();
     } catch {
       populationDataset = null;
+    }
+  }
+
+  async function refreshRepublicBrief(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      republicBrief = await getRepublicBrief();
+    } catch {
+      republicBrief = null;
     }
   }
 
@@ -250,6 +265,7 @@
       setupState = setup;
     });
     void refreshPopulationDataset();
+    void refreshRepublicBrief();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -269,6 +285,7 @@
         },
       );
       void refreshPopulationDataset();
+      void refreshRepublicBrief();
     }
   }
 
@@ -326,6 +343,7 @@
     switch (request.scenario) {
       case "workspace-briefing":
         activeWorkspace = "briefing";
+        republicBrief = reviewRepublicBrief();
         break;
       case "workspace-monitor":
         activeWorkspace = "monitor";
@@ -389,6 +407,7 @@
         break;
       case "notification-error":
         activeWorkspace = "briefing";
+        republicBrief = reviewRepublicBrief();
         notify({
           title: $translation("diagnostics-title"),
           message: $translation("theme-storage-unavailable"),
@@ -405,6 +424,7 @@
         break;
       case "keyboard-focus":
         activeWorkspace = "briefing";
+        republicBrief = reviewRepublicBrief();
         break;
       case "native-dropdown":
         activeWorkspace = "population";
@@ -464,13 +484,15 @@
       getArchiveOverview(),
       getRecorderHealth(),
       getPopulationDataset().catch(() => null),
-    ]).then(([setup, dataset, archive, health, population]) => {
+      getRepublicBrief().catch(() => null),
+    ]).then(([setup, dataset, archive, health, population, brief]) => {
       if (disposed) return;
       setupState = setup;
       receiverDataset = dataset;
       archiveOverview = archive;
       recorderHealth = health;
       populationDataset = population;
+      republicBrief = brief;
     });
     void Promise.allSettled([themeReady, initialDataReady]).then(() => {
       if (disposed) return;
@@ -490,7 +512,10 @@
       },
     );
     void listenForWarehouseUpdates((status) => {
-      if (!disposed) warehouseStatus = status;
+      if (!disposed) {
+        warehouseStatus = status;
+        void refreshRepublicBrief();
+      }
     }).then((unlisten) => {
       if (disposed) unlisten();
       else stopWarehouseListening = unlisten;
@@ -728,8 +753,8 @@
             <strong>{$translation("scanner-setup-required")}</strong>
             <small>{$translation("synthetic-no-save-connected")}</small>
           {:else}
-            <strong>{$translation("synthetic-preview-mode")}</strong>
-            <small>{$translation("synthetic-no-save-connected")}</small>
+            <strong>{$translation("browser-interface-mode")}</strong>
+            <small>{$translation("browser-native-evidence-unavailable")}</small>
           {/if}
         </div>
       </button>
@@ -744,7 +769,9 @@
       <span class="history-glyph" aria-hidden="true"></span>
       <strong
         >{$translation(
-          receiverDataset ? "observation-real" : "synthetic-observation",
+          receiverDataset || republicBrief?.observation
+            ? "observation-real"
+            : "observation-unavailable",
         )}</strong
       >
       <span
@@ -754,8 +781,12 @@
       >
       <span
         >{$translation("observation-game-date", {
-          year: latestReceiverPoint?.year ?? "2004",
-          day: latestReceiverPoint?.day ?? 230,
+          year:
+            republicBrief?.observation?.year ??
+            latestReceiverPoint?.year ??
+            "—",
+          day:
+            republicBrief?.observation?.day ?? latestReceiverPoint?.day ?? "—",
         })}</span
       >
     </div>
@@ -775,7 +806,10 @@
   </section>
 
   {#if activeWorkspace === "briefing"}
-    <BriefingWorkspace />
+    <BriefingWorkspace
+      brief={republicBrief}
+      onopenworkspace={(workspace) => (activeWorkspace = workspace)}
+    />
   {:else if activeWorkspace === "monitor"}
     <MonitorWorkspace
       health={recorderHealth}

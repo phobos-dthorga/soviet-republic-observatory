@@ -21,8 +21,10 @@ workspace. The host reads receiver-class history and bounded current/city facts
 directly from `stats.ini`, compacts shared history prefixes, separates files from
 distinct states, resolves supported ancestry, compares two states within one
 branch, and renders Observer Health, Republic Pulse, and an observed Receiver
-Ladder. The rest of the Briefing and Broadcast concepts remain visibly
-synthetic. The Industrial Catalogue now retains local definition generations in
+Ladder. The Republic Briefing now reports exact-head population, education, and
+receiver facts, proven preceding-observation changes, source provenance, and
+deterministic operational findings. Unsupported Briefing and Broadcast claims
+remain visibly unavailable rather than synthetic. The Industrial Catalogue now retains local definition generations in
 DuckDB, projects save observations through a durable SQLite outbox, and supports
 strict inert planning overlays. The first local Analysis Pack lifecycle now
 validates, stores, enables, evaluates, and renders declarative packs without

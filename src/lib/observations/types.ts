@@ -171,6 +171,95 @@ export type PopulationDataset = {
   tesmio_probe: TesmioProbeStatus;
 };
 
+export type BriefMetricRole = "headline" | "education" | "receiver_class";
+
+export type BriefEvidenceKind = "save_fact" | "calculation";
+
+export type BriefSourceEvidence = {
+  source_field: string;
+  source_line: number;
+};
+
+export type BriefMetric = {
+  metric_id: string;
+  role: BriefMetricRole;
+  value: number;
+  previous_value: number | null;
+  delta: number | null;
+  share_basis_points: number | null;
+  evidence_kind: BriefEvidenceKind;
+  sources: BriefSourceEvidence[];
+};
+
+export type BriefObservation = {
+  interpretation_id: string;
+  source_file_name: string;
+  year: number;
+  day: number;
+  game_day: number;
+  coverage_status: CoverageStatus;
+  mapping_classification: string;
+  profile_id: string;
+  profile_version: string;
+  resolved_profile_hash: string;
+};
+
+export type BriefComparisonAnchor = {
+  interpretation_id: string;
+  source_file_name: string;
+  year: number;
+  day: number;
+  game_day: number;
+};
+
+export type BriefFindingSeverity = "information" | "watch" | "attention";
+
+export type BriefFindingCode =
+  | "no_observation"
+  | "historical_preview"
+  | "partial_coverage"
+  | "player_mapping"
+  | "mapping_changed"
+  | "no_prior_observation"
+  | "missing_metrics"
+  | "recorder_attention"
+  | "recorder_queue"
+  | "warehouse_attention"
+  | "warehouse_lagging"
+  | "catalogue_unavailable";
+
+export type BriefFinding = {
+  code: BriefFindingCode | string;
+  severity: BriefFindingSeverity;
+  value: number | null;
+  metric_id: string | null;
+};
+
+export type BriefOperations = {
+  recorder_phase: AutomaticObserverPhase | null;
+  recorder_queue_depth: number | null;
+  recorder_attention_count: number | null;
+  warehouse_phase: WarehousePhase | null;
+  warehouse_pending_jobs: number | null;
+  warehouse_failed_jobs: number | null;
+  warehouse_lag_ms: number | null;
+  catalogue_generation_id: string | null;
+  catalogue_entity_count: number | null;
+  city_scope_count: number;
+};
+
+export type RepublicBrief = {
+  schema_version: number;
+  analysis_context: AnalysisContext;
+  observation: BriefObservation | null;
+  comparison: BriefComparisonAnchor | null;
+  metrics: BriefMetric[];
+  findings: BriefFinding[];
+  dispatch_code: BriefFindingCode | "observation_ready" | string;
+  operations: BriefOperations;
+  unavailable_capabilities: string[];
+};
+
 export type TesmioProbeState =
   "not_configured" | "missing" | "available" | "warning" | "invalid";
 

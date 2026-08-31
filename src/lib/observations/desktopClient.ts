@@ -24,6 +24,7 @@ import type {
   ReceiverDataset,
   RecorderHealth,
   RecorderUpdate,
+  RepublicBrief,
   ReinterpretationProgress,
   SetupState,
   OverlayInspection,
@@ -67,6 +68,10 @@ export function getArchiveOverview(): Promise<ArchiveOverview> {
 
 export function getPopulationDataset(): Promise<PopulationDataset> {
   return invoke<PopulationDataset>("get_population_dataset");
+}
+
+export function getRepublicBrief(): Promise<RepublicBrief> {
+  return invoke<RepublicBrief>("get_republic_brief");
 }
 
 export function getRecorderHealth(): Promise<RecorderHealth> {

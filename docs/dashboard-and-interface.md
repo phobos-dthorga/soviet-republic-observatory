@@ -75,8 +75,8 @@ state. Directory selection, manual **Observe newest save**, and enabling
 automatic observation are distinct actions. Automatic status distinguishes
 watching, waiting for stability, retrying, observed, and terminal failure. In a
 normal browser the same dialog explains that native observation is unavailable
-and retains the synthetic preview. Closing the dialog returns focus to the
-command-bar control.
+and does not substitute republic values. Closing the dialog returns focus to
+the command-bar control.
 
 The same dialog contains a Compatibility section with detected build evidence,
 active reviewed/local profile, semantic version, short hash, exact base,
@@ -89,6 +89,20 @@ Configured mod scopes appear as matched, dormant, updated-unreviewed, or exact
 conflicts with package identity, short acknowledged/current hashes, policy,
 mapping count, and remediation guidance. Materials dossiers identify the exact
 mapping and scope that produced each affected fact.
+
+### Republic Briefing
+
+The Briefing is an exact-head, branch-aware dashboard. Rust selects the current
+and proven preceding observations, exposes bounded metrics and source-line
+provenance, calculates only same-observation receiver shares and proven
+save-to-save deltas, and emits deterministic operational findings. Svelte maps
+that host model into cards, charts, evidence ledgers, and navigation.
+
+Plan attainment, import exposure, and observed material reliance remain visible
+as unsupported capabilities without placeholder values. Installed definitions
+may answer what a route permits; they do not prove what this republic produced,
+consumed, stored, or imported. Historical previews stop at the exact selected
+head and never splice in later observations.
 
 ### Observer Health and Republic Pulse
 
@@ -111,12 +125,11 @@ window and denominator are validated.
 
 The Broadcast canvas proceeds from receiver adoption to unavailable station
 telemetry, programme intent, expected influence, and observed outcomes. A
-connected save replaces only the receiver ladder; a mixed-evidence notice keeps
-the remaining concepts visibly synthetic. The Notebook records hypotheses and
-interventions. The Evening Bulletin applies deterministic eligibility,
-ranking, wording, and caveat rules. The inspector switches between receiver
-evidence and the synthetic radio/television concept while keeping nominal
-capacity separate from station state.
+connected save supplies the receiver ladder. Audience, programming, influence,
+station, intervention, and attribution panels state their missing evidence
+contracts without example values. The current Evening Bulletin reports only
+receiver classification and its ownership-versus-audience caveat. A native,
+branch-aware Broadcast Notebook remains a future evidence-backed slice.
 
 ### Extensions workspace
 

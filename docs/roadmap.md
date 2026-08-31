@@ -25,6 +25,23 @@ numbers are assigned only when implementation begins.
 - Exceptional Visuals Doctrine plus the first bounded Sankey contract, semantic
   validation, reduced-motion rendering, and accessible flow ledger
 
+## Slice 0.5 — examples to evidence — completed
+
+- Exact-head Republic Brief contract owned by Rust, with save-fact provenance,
+  preceding-observation deltas, receiver-share calculations, deterministic
+  findings, operational health, and explicit unsupported capabilities
+- Source-backed Briefing charts and metric inspector with branch, compatibility,
+  coverage, source-field, and source-line identity
+- Broadcast now preserves the observed receiver ladder while leaving audience,
+  programme, station, influence, outcome, notebook, and attribution claims
+  unavailable until their source contracts exist
+- Materials no longer substitutes an illustrative flow when no catalogue is
+  available; its source-backed production-route and review-fixture paths remain
+  intact
+- Synthetic republic models are restricted to typed UI-review fixtures or
+  explicit player-invoked authoring examples, with an automated architecture
+  boundary preventing production fallback modules from returning
+
 ## Slice 1 — one save, one trusted chart — completed
 
 - Tauri/Rust desktop shell and player-selected save/game directories
@@ -39,8 +56,8 @@ numbers are assigned only when implementation begins.
   and missing-payload cases, plus an optional local-save conformance test
 - A versioned installed-game vocabulary-source catalogue kept separate from
   parser IDs and Observatory UI language; BTF decoding remains unavailable
-- Explicit mixed-evidence presentation: only the receiver ladder becomes a save
-  fact while the remaining Broadcast concepts stay synthetic
+- Explicit evidence-gated presentation: the receiver ladder becomes a save fact
+  while unsupported Broadcast concepts remain visibly unavailable
 
 ## Slice 2 — branch-aware archive
 
