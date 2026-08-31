@@ -2,9 +2,85 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::model::{
     MarketBasketSummary, MarketCityRow, MarketCurrencyPulse, MarketEvidenceDataset,
-    MarketMetricContext, MarketPriceLedgerRow, MarketResourceLedgerRow, MarketScalarLedgerRow,
-    MarketTermsOfTradeSummary, MarketTradePoint, MarketWarehouseProjection, MarketWorkspace,
+    MarketMetricContext, MarketPriceLedgerRow, MarketPriceVolatility, MarketResourceLedgerRow,
+    MarketScalarLedgerRow, MarketTermsOfTradeSummary, MarketTradePoint, MarketWarehouseProjection,
+    MarketWorkspace,
 };
+
+type PriceRecordKey<'a> = (&'a str, &'a str, &'a str, &'a str);
+type PriceSeriesKey<'a> = (&'a str, &'a str);
+
+struct MarketPriceIndex<'a> {
+    by_record: HashMap<PriceRecordKey<'a>, f64>,
+    purchase_history: HashMap<PriceSeriesKey<'a>, Vec<(u32, f64)>>,
+    analytical_volatility: HashMap<PriceSeriesKey<'a>, &'a MarketPriceVolatility>,
+}
+
+impl<'a> MarketPriceIndex<'a> {
+    fn new(projection: &'a MarketWarehouseProjection) -> Self {
+        let record_ordinals = projection
+            .records
+            .iter()
+            .map(|record| (record.record_hash.as_str(), record.ordinal))
+            .collect::<HashMap<_, _>>();
+        let mut by_record = HashMap::with_capacity(projection.prices.len());
+        let mut purchase_history = HashMap::<PriceSeriesKey<'a>, Vec<(u32, f64)>>::new();
+        for fact in &projection.prices {
+            let Some(record_hash) = fact.record_hash.as_deref() else {
+                continue;
+            };
+            by_record
+                .entry((
+                    record_hash,
+                    fact.currency.as_str(),
+                    fact.resource_token.as_str(),
+                    fact.price_side.as_str(),
+                ))
+                .or_insert(fact.value);
+            if fact.scope_kind.is_none()
+                && fact.price_side == "purchase"
+                && fact.value.is_finite()
+                && fact.value > 0.0
+                && let Some(ordinal) = record_ordinals.get(record_hash)
+            {
+                purchase_history
+                    .entry((fact.currency.as_str(), fact.resource_token.as_str()))
+                    .or_default()
+                    .push((*ordinal, fact.value));
+            }
+        }
+        for history in purchase_history.values_mut() {
+            history.sort_by_key(|(ordinal, _)| *ordinal);
+        }
+        let analytical_volatility = projection
+            .analytical_price_volatility
+            .iter()
+            .map(|value| {
+                (
+                    (value.currency.as_str(), value.resource_token.as_str()),
+                    value,
+                )
+            })
+            .collect();
+        Self {
+            by_record,
+            purchase_history,
+            analytical_volatility,
+        }
+    }
+
+    fn price(
+        &self,
+        record_hash: &str,
+        currency: &str,
+        resource_token: &str,
+        price_side: &str,
+    ) -> Option<f64> {
+        self.by_record
+            .get(&(record_hash, currency, resource_token, price_side))
+            .copied()
+    }
+}
 
 pub(crate) fn build_workspace(
     evidence: MarketEvidenceDataset,
@@ -56,12 +132,13 @@ pub(crate) fn build_workspace(
     );
     let resource_ledger = resource_ledger(&latest_trades);
     let currencies = currency_pulses(projection, &resource_ledger);
-    let price_ledger = price_ledger(projection, latest_record_hash);
+    let price_index = MarketPriceIndex::new(projection);
+    let price_ledger = price_ledger(projection, latest_record_hash, &price_index);
     let scalar_ledger = scalar_ledger(projection, latest_record_hash);
     let cities = city_ledger(projection);
-    let mut baskets = builtin_baskets(projection, latest_record_hash);
+    let mut baskets = builtin_baskets(projection, latest_record_hash, &price_index);
     baskets.extend(evidence.baskets.into_iter().map(|mut basket| {
-        evaluate_basket(&mut basket, projection, latest_record_hash);
+        evaluate_basket(&mut basket, latest_record_hash, &price_index);
         basket
     }));
     let metric_contexts = metric_contexts(projection);
@@ -295,6 +372,7 @@ fn currency_pulses(
 fn price_ledger(
     projection: &MarketWarehouseProjection,
     latest_record_hash: Option<&str>,
+    price_index: &MarketPriceIndex<'_>,
 ) -> Vec<MarketPriceLedgerRow> {
     let latest = selected_head_facts(
         &projection.prices,
@@ -334,42 +412,37 @@ fn price_ledger(
     }
     for row in rows.values_mut() {
         let base = first_record.and_then(|record| {
-            projection.prices.iter().find(|fact| {
-                fact.record_hash.as_deref() == Some(record.record_hash.as_str())
-                    && fact.currency == row.currency
-                    && fact.resource_token == row.resource_token
-                    && fact.price_side == "purchase"
-            })
+            price_index.price(
+                &record.record_hash,
+                &row.currency,
+                &row.resource_token,
+                "purchase",
+            )
         });
-        row.purchase_index = ratio_index(row.purchase_price, base.map(|fact| fact.value));
+        row.purchase_index = ratio_index(row.purchase_price, base);
         let sell_base = first_record.and_then(|record| {
-            projection.prices.iter().find(|fact| {
-                fact.record_hash.as_deref() == Some(record.record_hash.as_str())
-                    && fact.currency == row.currency
-                    && fact.resource_token == row.resource_token
-                    && fact.price_side == "sell"
-            })
+            price_index.price(
+                &record.record_hash,
+                &row.currency,
+                &row.resource_token,
+                "sell",
+            )
         });
-        row.sell_index = ratio_index(row.sell_price, sell_base.map(|fact| fact.value));
-        if let Some(volatility) = projection.analytical_price_volatility.iter().find(|value| {
-            value.currency == row.currency && value.resource_token == row.resource_token
-        }) {
+        row.sell_index = ratio_index(row.sell_price, sell_base);
+        if let Some(volatility) = price_index
+            .analytical_volatility
+            .get(&(row.currency.as_str(), row.resource_token.as_str()))
+        {
             row.volatility_observations = volatility.observations;
             row.robust_log_volatility = Some(volatility.robust_log_volatility);
         } else {
-            let prices = projection
-                .records
-                .iter()
-                .filter_map(|record| {
-                    projection.prices.iter().find(|fact| {
-                        fact.record_hash.as_deref() == Some(record.record_hash.as_str())
-                            && fact.currency == row.currency
-                            && fact.resource_token == row.resource_token
-                            && fact.price_side == "purchase"
-                            && fact.value > 0.0
-                    })
-                })
-                .map(|fact| fact.value)
+            let prices = price_index
+                .purchase_history
+                .get(&(row.currency.as_str(), row.resource_token.as_str()));
+            let prices = prices
+                .into_iter()
+                .flatten()
+                .map(|(_, value)| *value)
                 .collect::<Vec<_>>();
             let movements = prices
                 .windows(2)
@@ -479,6 +552,7 @@ fn city_ledger(projection: &MarketWarehouseProjection) -> Vec<MarketCityRow> {
 fn builtin_baskets(
     projection: &MarketWarehouseProjection,
     base_record_hash: Option<&str>,
+    price_index: &MarketPriceIndex<'_>,
 ) -> Vec<MarketBasketSummary> {
     let mut baskets = Vec::new();
     let first_record_hash = projection
@@ -549,7 +623,7 @@ fn builtin_baskets(
             reason: "observed_positive_import_quantities".to_owned(),
             weights: import_weights,
         };
-        evaluate_basket(&mut imports, projection, base_record_hash);
+        evaluate_basket(&mut imports, base_record_hash, price_index);
         baskets.push(imports);
         let mut exports = MarketBasketSummary {
             basket_id: format!("builtin.observed-positive-exports.{currency}"),
@@ -566,7 +640,7 @@ fn builtin_baskets(
             reason: "observed_positive_export_quantities_excluding_disposal".to_owned(),
             weights: export_weights,
         };
-        evaluate_basket(&mut exports, projection, base_record_hash);
+        evaluate_basket(&mut exports, base_record_hash, price_index);
         baskets.push(exports);
     }
     baskets
@@ -574,8 +648,8 @@ fn builtin_baskets(
 
 fn evaluate_basket(
     basket: &mut MarketBasketSummary,
-    projection: &MarketWarehouseProjection,
     latest_record_hash: Option<&str>,
+    price_index: &MarketPriceIndex<'_>,
 ) {
     let Some(base_record_hash) = basket.base_record_hash.as_deref() else {
         return;
@@ -588,21 +662,21 @@ fn evaluate_basket(
     let mut coverage = 0_u32;
     for weight in &basket.weights {
         let price = |record_hash: &str| {
-            projection.prices.iter().find(|fact| {
-                fact.record_hash.as_deref() == Some(record_hash)
-                    && fact.currency == basket.currency
-                    && fact.price_side == basket.price_side
-                    && fact.resource_token == weight.resource_token
-                    && fact.value.is_finite()
-                    && fact.value >= 0.0
-            })
+            price_index
+                .price(
+                    record_hash,
+                    &basket.currency,
+                    &weight.resource_token,
+                    &basket.price_side,
+                )
+                .filter(|value| value.is_finite() && *value >= 0.0)
         };
         let (Some(base), Some(current)) = (price(base_record_hash), price(latest_record_hash))
         else {
             continue;
         };
-        base_total += weight.weight * base.value;
-        current_total += weight.weight * current.value;
+        base_total += weight.weight * base;
+        current_total += weight.weight * current;
         coverage = coverage.saturating_add(1);
     }
     basket.coverage_resources = coverage;
@@ -854,13 +928,15 @@ fn evaluate_scenarios(
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
     use super::{
-        currency_pulses, evaluate_scenarios, median_absolute_deviation, ratio_index,
-        resource_ledger, selected_head_facts, terms_of_trade,
+        MarketPriceIndex, currency_pulses, evaluate_scenarios, median_absolute_deviation,
+        price_ledger, ratio_index, resource_ledger, selected_head_facts, terms_of_trade,
     };
     use crate::model::{
-        MarketBasketSummary, MarketScenarioDraft, MarketScenarioSummary, MarketWarehouseProjection,
-        MarketWarehouseTradeFact,
+        MarketBasketSummary, MarketScenarioDraft, MarketScenarioSummary, MarketWarehousePriceFact,
+        MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseTradeFact,
     };
 
     #[derive(Debug)]
@@ -880,6 +956,69 @@ mod tests {
     fn robust_volatility_uses_log_movement_median_deviation() {
         let value = median_absolute_deviation(&[0.0, 0.1, 0.2]).expect("volatility");
         assert!((value - 0.14826).abs() < 0.00001);
+    }
+
+    #[test]
+    fn price_ledger_indexes_full_2805_record_history_with_bounded_work() {
+        const RECORDS: u32 = 2_805;
+        const RESOURCES: u32 = 8;
+        let mut projection = projection(Vec::new());
+        projection.records.reserve(RECORDS as usize);
+        projection
+            .prices
+            .reserve((RECORDS * RESOURCES * 2) as usize);
+        for ordinal in 0..RECORDS {
+            let record_hash = format!("record-{ordinal:04}");
+            projection.records.push(MarketWarehouseRecord {
+                record_hash: record_hash.clone(),
+                ordinal,
+                record_id: ordinal,
+                year: 1960 + (ordinal / 365) as i32,
+                day: (ordinal % 365) as u16,
+                game_day: ordinal as i64,
+            });
+            for resource in 0..RESOURCES {
+                for price_side in ["purchase", "sell"] {
+                    projection.prices.push(MarketWarehousePriceFact {
+                        record_hash: Some(record_hash.clone()),
+                        scope_kind: None,
+                        scope_id: None,
+                        currency: "rub".to_owned(),
+                        price_side: price_side.to_owned(),
+                        resource_token: format!("resource_{resource}"),
+                        value: f64::from(ordinal + resource + 1),
+                        modifier: 1.0,
+                        source_field: format!("${price_side}_rub"),
+                        source_line: resource + 1,
+                        mapping_id: format!("market.price.{price_side}.rub"),
+                    });
+                }
+            }
+        }
+        let latest_hash = projection
+            .records
+            .last()
+            .expect("latest record")
+            .record_hash
+            .clone();
+
+        let started = Instant::now();
+        let index = MarketPriceIndex::new(&projection);
+        let rows = price_ledger(&projection, Some(&latest_hash), &index);
+
+        assert_eq!(rows.len(), RESOURCES as usize);
+        assert!(rows.iter().all(|row| {
+            row.purchase_price.is_some()
+                && row.sell_price.is_some()
+                && row.purchase_index.is_some()
+                && row.sell_index.is_some()
+                && row.volatility_observations == RECORDS - 1
+        }));
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "indexed price ledger exceeded its two-second regression budget: {:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

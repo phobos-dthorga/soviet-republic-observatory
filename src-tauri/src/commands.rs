@@ -6,7 +6,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::analysis_pack::{AnalysisPackContribution, AnalysisPackInspection, AnalysisPackSummary};
 use crate::application::ObservatoryApplication;
-use crate::error::CommandError;
+use crate::error::{CommandError, ObservatoryError};
 use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
@@ -32,6 +32,21 @@ pub struct AppState {
 }
 
 pub const MARKET_INDEXING_PROGRESS_EVENT: &str = "market-indexing-progress";
+
+async fn run_market_workspace_command(
+    application: Arc<ObservatoryApplication>,
+    operation: impl FnOnce(&ObservatoryApplication) -> Result<MarketWorkspace, ObservatoryError>
+    + Send
+    + 'static,
+) -> Result<MarketWorkspace, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || operation(&application))
+        .await
+        .map_err(|_| CommandError {
+            code: "market_workspace_worker_unavailable".to_owned(),
+            diagnostic: "The Markets workspace worker stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
+}
 
 #[tauri::command]
 pub fn get_ui_review_context(state: State<'_, AppState>) -> UiReviewContext {
@@ -218,78 +233,83 @@ pub fn get_republic_plan_workspace(
 }
 
 #[tauri::command]
-pub fn get_market_workspace(state: State<'_, AppState>) -> Result<MarketWorkspace, CommandError> {
-    state.application.market_workspace().map_err(Into::into)
+pub async fn get_market_workspace(
+    state: State<'_, AppState>,
+) -> Result<MarketWorkspace, CommandError> {
+    run_market_workspace_command(Arc::clone(&state.application), |application| {
+        application.market_workspace()
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_market_basket(
+pub async fn save_market_basket(
     draft: MarketBasketDraft,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .save_market_basket(&draft)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.save_market_basket(&draft)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn save_market_scenario(
+pub async fn save_market_scenario(
     draft: MarketScenarioDraft,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .save_market_scenario(&draft)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.save_market_scenario(&draft)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn select_market_definition(
+pub async fn select_market_definition(
     kind: String,
     definition_id: String,
     revision: u32,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .select_market_definition(&kind, &definition_id, revision)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.select_market_definition(&kind, &definition_id, revision)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn rollback_market_definition(
+pub async fn rollback_market_definition(
     kind: String,
     definition_id: String,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .rollback_market_definition(&kind, &definition_id)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.rollback_market_definition(&kind, &definition_id)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn clear_market_selection(
+pub async fn clear_market_selection(
     kind: String,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .clear_market_selection(&kind)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.clear_market_selection(&kind)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn remove_market_definition(
+pub async fn remove_market_definition(
     kind: String,
     definition_id: String,
     state: State<'_, AppState>,
 ) -> Result<MarketWorkspace, CommandError> {
-    state
-        .application
-        .remove_market_definition(&kind, &definition_id)
-        .map_err(Into::into)
+    run_market_workspace_command(Arc::clone(&state.application), move |application| {
+        application.remove_market_definition(&kind, &definition_id)
+    })
+    .await
 }
 
 #[tauri::command]
