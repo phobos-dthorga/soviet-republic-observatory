@@ -655,6 +655,57 @@ h3 {
   text-transform: uppercase;
 }
 
+/*
+ * Application-owned explanatory presentation contract. Domain state chooses
+ * whether content is guidance; this class supplies presentation only.
+ */
+.guidance-surface {
+  border: 1px solid var(--colour-guidance);
+  border-inline-start-width: 3px;
+  color: var(--colour-text);
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
+}
+
+.guidance-surface > :is(p, span) {
+  line-height: 1.5;
+}
+
+.guidance-surface > strong,
+.guidance-surface > [data-guidance-title] {
+  color: var(--colour-guidance);
+}
+
+.sidebar-note.guidance-surface,
+.preview-banner.guidance-surface {
+  border-inline-start-width: 3px;
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
+}
+
+.sidebar-note.guidance-surface > span,
+.preview-banner.guidance-surface strong {
+  color: var(--colour-guidance);
+}
+
+.sidebar-note.guidance-surface > p,
+.preview-banner.guidance-surface > span {
+  color: var(--colour-muted);
+}
+
+.preview-banner.guidance-surface.attention {
+  border-color: var(--colour-gold);
+  background:
+    linear-gradient(110deg, var(--colour-gold-soft), transparent 76%),
+    var(--colour-surface);
+}
+
+.preview-banner.guidance-surface.attention strong {
+  color: var(--colour-gold);
+}
+
 .page-heading {
   align-items: center;
   margin-bottom: 18px;
@@ -2230,16 +2281,19 @@ h3 {
   display: grid;
   gap: 5px;
   margin-top: 14px;
-  border-inline-start: 2px solid var(--colour-gold);
+  border: 1px solid var(--colour-guidance);
+  border-inline-start-width: 3px;
   padding: 10px 12px;
   color: var(--colour-muted);
-  background: var(--colour-gold-soft);
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
   font-size: var(--type-caption);
   line-height: 1.5;
 }
 
 .language-boundary strong {
-  color: var(--colour-gold);
+  color: var(--colour-guidance);
 }
 
 .language-error {
@@ -2613,25 +2667,32 @@ h3 {
   display: grid;
   gap: 6px;
   margin-top: 12px;
-  border: 1px solid rgba(216, 184, 106, 0.3);
+  border: 1px solid var(--colour-guidance);
+  border-inline-start-width: 3px;
   padding: 11px 13px;
   color: var(--colour-muted);
-  background: var(--colour-gold-soft);
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
   font-size: var(--type-caption);
   line-height: 1.5;
 }
 
 .observer-boundary strong {
-  color: var(--colour-gold);
+  color: var(--colour-guidance);
 }
 
 .observer-browser-state {
   margin-top: 18px;
-  border-inline-start: 2px solid var(--colour-gold);
+  border-color: var(--colour-guidance);
+  border-inline-start-width: 3px;
+  background:
+    linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+    var(--colour-surface);
 }
 
 .observer-browser-state strong {
-  color: var(--colour-gold);
+  color: var(--colour-guidance);
 }
 
 .observer-browser-state p {

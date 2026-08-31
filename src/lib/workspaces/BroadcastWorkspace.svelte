@@ -6,6 +6,7 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
   import type { ReceiverDataset } from "../observations/types";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
 
   let { receiverDataset = null }: { receiverDataset?: ReceiverDataset | null } =
     $props();
@@ -72,14 +73,19 @@
           ><span>{section.marker}</span>{$translation(section.label)}</a
         >{/each}
     </div>
-    <div class="sidebar-note">
+    <GuidanceSurface kind="help" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("evidence-broadcast-sidebar-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas">
-    <div class="preview-banner" role="status">
+    <GuidanceSurface
+      kind="preview"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner"
+    >
       <strong
         >{$translation(
           receiverDataset
@@ -94,7 +100,7 @@
             : "synthetic-no-station-telemetry",
         )}</span
       >
-    </div>
+    </GuidanceSurface>
     <header class="page-heading">
       <div>
         <span class="eyebrow">{$translation("broadcast-heading-eyebrow")}</span>

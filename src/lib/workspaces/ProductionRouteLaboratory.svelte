@@ -254,7 +254,12 @@
   </header>
 
   {#if !desktopAvailable || !gameConfigured}
-    <div class="route-notice">
+    <div
+      class="route-notice guidance-surface"
+      data-guidance-surface="preview"
+      data-guidance-layout="compact"
+      role="status"
+    >
       {$translation("production-route-synthetic-note")}
     </div>
     <ObservatoryChart
@@ -374,7 +379,12 @@
         {$translation("production-route-no-routes")}
       </div>
     {:else if route}
-      <div class="route-boundary">
+      <div
+        class="route-boundary guidance-surface"
+        data-guidance-surface="boundary"
+        data-guidance-layout="block"
+        role="note"
+      >
         <strong>{$translation("production-route-boundary-title")}</strong>
         <span>{$translation("production-route-boundary")}</span>
         <span>{$translation("production-route-overlay-boundary")}</span>
@@ -695,7 +705,16 @@
   }
 
   .route-boundary strong {
-    color: var(--gold);
+    color: var(--colour-guidance);
+  }
+
+  .route-notice.guidance-surface,
+  .route-boundary.guidance-surface {
+    border-color: var(--colour-guidance);
+    border-inline-start: 3px solid var(--colour-guidance);
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+      var(--colour-surface);
   }
 
   .route-snapshot {

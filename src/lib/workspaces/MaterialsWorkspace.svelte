@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { activeLocale, translation } from "../i18n/runtime";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import ProductionRouteLaboratory from "./ProductionRouteLaboratory.svelte";
   import {
     activatePlanningOverlay,
@@ -420,24 +421,25 @@
         ><span>04</span>{$translation("catalogue-overlays")}</a
       >
     </div>
-    <div class="sidebar-note">
+    <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("catalogue-boundary-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas">
-    <div
-      class="preview-banner"
-      class:attention={status?.warehouse.phase === "attention"}
-      role="status"
+    <GuidanceSurface
+      kind="instruction"
+      layout="inline"
+      semanticRole="status"
+      class={`preview-banner ${status?.warehouse.phase === "attention" ? "attention" : ""}`}
     >
       <strong>{$translation("catalogue-local-offline")}</strong>
       <span
         >{status?.warehouse.pending_jobs ?? 0}
         {$translation("catalogue-pending-jobs")}</span
       >
-    </div>
+    </GuidanceSurface>
     <header class="page-heading">
       <div>
         <span class="eyebrow">{$translation("catalogue-heading-eyebrow")}</span>

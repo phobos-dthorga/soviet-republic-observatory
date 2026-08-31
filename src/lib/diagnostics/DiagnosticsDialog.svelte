@@ -89,7 +89,12 @@
         {/if}
       </section>
 
-      <p class="diagnostics-boundary">
+      <p
+        class="diagnostics-boundary guidance-surface"
+        data-guidance-surface="boundary"
+        data-guidance-layout="compact"
+        role="note"
+      >
         {$translation("diagnostics-boundary")}
       </p>
 
@@ -223,8 +228,12 @@
     color: var(--colour-risk);
   }
   .diagnostics-boundary {
-    padding-inline-start: 10px;
-    border-inline-start: 2px solid var(--colour-gold);
+    border-color: var(--colour-guidance);
+    border-inline-start-width: 3px;
+    padding: 9px 11px;
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+      var(--colour-surface);
   }
   footer {
     justify-content: flex-end;

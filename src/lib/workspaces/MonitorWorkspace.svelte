@@ -9,6 +9,7 @@
   import { formatDate, formatNumber } from "../i18n/format";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import type {
     ArchiveComparison,
     ArchiveOverview,
@@ -168,17 +169,22 @@
       {/each}
     </div>
 
-    <div class="sidebar-note">
+    <GuidanceSurface kind="help" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("monitor-sidebar-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas" id="monitor-health">
-    <div class="preview-banner monitor-banner" role="status">
+    <GuidanceSurface
+      kind="instruction"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner monitor-banner"
+    >
       <strong>{$translation("monitor-near-live-label")}</strong>
       <span>{$translation("monitor-near-live-detail")}</span>
-    </div>
+    </GuidanceSurface>
 
     <header class="page-heading">
       <div>
@@ -390,10 +396,14 @@
           </article>
         </div>
 
-        <div class="sidebar-note monitor-semantics-note">
+        <GuidanceSurface
+          kind="boundary"
+          layout="compact"
+          class="sidebar-note monitor-semantics-note"
+        >
           <span aria-hidden="true">◇</span>
           <p>{$translation("monitor-unverified-statistics-note")}</p>
-        </div>
+        </GuidanceSurface>
       </section>
 
       <section

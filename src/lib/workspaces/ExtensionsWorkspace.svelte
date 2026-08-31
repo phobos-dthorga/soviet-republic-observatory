@@ -14,6 +14,7 @@
   import { notify, type NotificationTone } from "../notifications/service";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import FilePicker from "../ui/FilePicker.svelte";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import {
     disableAnalysisPack,
     enableAnalysisPack,
@@ -301,14 +302,19 @@
         >
       {/each}
     </div>
-    <div class="sidebar-note">
+    <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("extensions-boundary-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas">
-    <div class="preview-banner" role="status">
+    <GuidanceSurface
+      kind="preview"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner"
+    >
       <strong
         >{$translation(
           desktopAvailable
@@ -323,7 +329,7 @@
             : "extension-permission-no-manager-host",
         )}</span
       >
-    </div>
+    </GuidanceSurface>
     <header class="page-heading">
       <div>
         <span class="eyebrow">{$translation("extensions-heading-eyebrow")}</span

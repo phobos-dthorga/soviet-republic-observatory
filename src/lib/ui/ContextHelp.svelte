@@ -36,7 +36,13 @@
     onclick={() => (open = true)}>?</button
   >
   {#if open}
-    <span class="context-tooltip" id={tooltipId} role="tooltip">
+    <span
+      class="context-tooltip guidance-surface"
+      data-guidance-surface="help"
+      data-guidance-layout="block"
+      id={tooltipId}
+      role="tooltip"
+    >
       <strong>{title}</strong>
       <span>{text}</span>
     </span>

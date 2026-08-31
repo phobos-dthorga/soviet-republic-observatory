@@ -78,6 +78,20 @@ surfaces, and validates both ordinary and muted text against the result. This
 green-family tint is a visual affordance for explanatory material in the
 built-in themes; it does not claim that the subject succeeded.
 
+`GuidanceSurface.svelte` is the reusable markup primitive for ordinary
+workspace guidance. Context tooltips and Attention Cues retain their specialised
+accessible behaviour while consuming the same `.guidance-surface` presentation
+contract. Every consumer declares one bounded semantic kind through
+`data-guidance-surface`: `help`, `instruction`, `preview`, or `boundary`.
+This inventory lets the production interface audit confirm that the convention
+has not drifted into another collection of workspace-specific callouts.
+
+Use the contract for explanatory side notes, evidence and interpretation
+boundaries, read-only setup instructions, and visibly inert previews. A preview
+must contain no enabled control. Do not use it for an active analytical context,
+validation state, live task progress, success outcome, warning, error, or legal
+disclaimer merely because a tinted panel would be convenient.
+
 Guidance remains distinguishable without colour: tooltips retain semantic
 relationships, previews say **not interactive** and contain no focusable
 controls, and tutorial messages remain visibly separate from their real action

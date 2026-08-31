@@ -242,3 +242,110 @@ test("theme assay renders readable non-interactive critical-task states", async 
   expect(tooltipStyle.backgroundImage).not.toBe("none");
   expect(tooltipStyle.interactiveChildren).toBe(0);
 });
+
+test("enabled workspaces use the shared guidance surface without disguising controls", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const workspaces = [
+    "Briefing",
+    "Monitor",
+    "Broadcast",
+    "Extensions",
+    "Materials",
+    "Population",
+    "Archive",
+  ];
+
+  for (const workspace of workspaces) {
+    await page
+      .getByRole("navigation")
+      .getByRole("button", { name: workspace })
+      .click();
+    const visibleSurfaces = page.locator("[data-guidance-surface]:visible");
+    await expect(
+      visibleSurfaces.first(),
+      `${workspace} guidance`,
+    ).toBeVisible();
+    const defects = await visibleSurfaces.evaluateAll((surfaces) =>
+      surfaces.flatMap((surface) => {
+        const style = getComputedStyle(surface);
+        const previewControls =
+          surface.getAttribute("data-guidance-surface") === "preview"
+            ? surface.querySelectorAll("button, a, input, select, textarea")
+                .length
+            : 0;
+        return style.borderInlineStartWidth === "3px" &&
+          style.backgroundImage !== "none" &&
+          previewControls === 0
+          ? []
+          : [
+              {
+                kind: surface.getAttribute("data-guidance-surface"),
+                borderInlineStartWidth: style.borderInlineStartWidth,
+                backgroundImage: style.backgroundImage,
+                previewControls,
+              },
+            ];
+      }),
+    );
+    expect(defects, `${workspace} guidance-surface contract`).toEqual([]);
+  }
+
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Broadcast" })
+    .click();
+  await expect(page.locator(".causation-warning.guidance-surface")).toHaveCount(
+    0,
+  );
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "Materials" })
+    .click();
+  await expect(
+    page.locator(".sidebar-note:not(.guidance-surface)"),
+  ).toHaveCount(1);
+
+  await page.getByRole("button", { name: /^Language/ }).click();
+  await expect(page.locator(".language-boundary")).toHaveAttribute(
+    "data-guidance-surface",
+    "boundary",
+  );
+  await page.getByRole("button", { name: "Close" }).last().click();
+
+  await page.locator(".theme-button").evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+  });
+  await page.getByRole("button", { name: "Theme" }).click();
+  await expect(page.locator(".theme-boundary")).toHaveAttribute(
+    "data-guidance-surface",
+    "boundary",
+  );
+  await page.getByRole("button", { name: "Close" }).last().click();
+
+  await page.getByRole("button", { name: "Save observer status" }).click();
+  await expect(page.locator(".observer-browser-state")).toHaveAttribute(
+    "data-guidance-surface",
+    "instruction",
+  );
+  await page.keyboard.press("Escape");
+
+  await page.locator(".diagnostics-button").evaluate((button) => {
+    (button as HTMLButtonElement).disabled = false;
+  });
+  await page.getByRole("button", { name: "Diagnostics" }).click();
+  await expect(page.locator(".diagnostics-boundary")).toHaveAttribute(
+    "data-guidance-surface",
+    "boundary",
+  );
+  await page.getByRole("button", { name: "Close" }).last().click();
+
+  await page.getByRole("button", { name: "Legal & notices" }).click();
+  await page.getByRole("tab", { name: "Read-only research" }).click();
+  await page.getByRole("button", { name: "Open research setup" }).click();
+  await expect(page.locator(".research-boundary")).toHaveAttribute(
+    "data-guidance-surface",
+    "boundary",
+  );
+});

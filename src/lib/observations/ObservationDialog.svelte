@@ -2,6 +2,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
   import { modalFocus } from "../ui/modalFocus";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { reinterpretationProgressView } from "../tasks/reinterpretationProgress";
   import {
@@ -305,10 +306,15 @@
       </p>
 
       {#if !desktopAvailable}
-        <section class="observer-browser-state">
+        <GuidanceSurface
+          kind="instruction"
+          layout="block"
+          semanticRole="note"
+          class="observer-browser-state"
+        >
           <strong>{$translation("observer-browser-title")}</strong>
           <p>{$translation("observer-browser-detail")}</p>
-        </section>
+        </GuidanceSurface>
       {:else}
         <div class="observer-source-grid">
           <article class:configured={Boolean(setup?.save_directory)}>
@@ -584,9 +590,13 @@
                   .last_validation_error}
               </p>
             {/if}
-            <p class="compatibility-boundary">
+            <GuidanceSurface
+              kind="boundary"
+              layout="compact"
+              class="compatibility-boundary"
+            >
               {$translation("compatibility-no-editor")}
-            </p>
+            </GuidanceSurface>
             <div class="compatibility-actions">
               <button
                 type="button"
@@ -621,11 +631,16 @@
           </section>
         {/if}
 
-        <aside class="observer-boundary">
+        <GuidanceSurface
+          kind="boundary"
+          layout="block"
+          semanticRole="note"
+          class="observer-boundary"
+        >
           <strong>{$translation("save-safety-observer-boundary")}</strong>
           <span>{$translation("save-safety-private-paths")}</span>
           <span>{$translation("coverage-game-vocabulary-identities")}</span>
-        </aside>
+        </GuidanceSurface>
 
         {#if errorMessage}<p class="language-error" role="alert">
             {errorMessage}

@@ -7,6 +7,7 @@
   } from "../presentation/sample";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
 
   const sections: Array<{
     label: TranslationKey;
@@ -95,17 +96,22 @@
       {/each}
     </div>
 
-    <div class="sidebar-note">
+    <GuidanceSurface kind="help" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("synthetic-briefing-sidebar-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas" id="briefing">
-    <div class="preview-banner" role="status">
+    <GuidanceSurface
+      kind="preview"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner"
+    >
       <strong>{$translation("synthetic-interface-foundation")}</strong>
       <span>{$translation("synthetic-no-real-save-values")}</span>
-    </div>
+    </GuidanceSurface>
 
     <header class="page-heading">
       <div>

@@ -84,7 +84,13 @@
 >
   <div class="attention-target">{@render children()}</div>
   {#if active}
-    <aside id={detailId} class="attention-message" role="status">
+    <aside
+      id={detailId}
+      class="attention-message guidance-surface"
+      data-guidance-surface="instruction"
+      data-guidance-layout="block"
+      role="status"
+    >
       <strong>{heading}</strong>
       <span>{detail}</span>
       <div>

@@ -291,7 +291,12 @@
       <p id="research-setup-introduction">
         {$translation("research-setup-introduction")}
       </p>
-      <p class="research-boundary">
+      <p
+        class="research-boundary guidance-surface"
+        data-guidance-surface="boundary"
+        data-guidance-layout="compact"
+        role="note"
+      >
         <strong>{$translation("research-setup-boundary-title")}</strong>
         {$translation("research-setup-boundary-detail")}
       </p>
@@ -603,19 +608,23 @@
     width: 36px;
     font-size: 20px;
   }
-  .research-boundary,
-  .research-error {
-    border-inline-start: 3px solid var(--colour-gold);
+  .research-boundary {
+    border-color: var(--colour-guidance);
+    border-inline-start-width: 3px;
     padding: 9px 11px;
     color: var(--colour-text);
-    background: var(--colour-gold-soft);
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+      var(--colour-surface);
   }
   .research-boundary strong {
     margin-inline-end: 5px;
-    color: var(--colour-gold);
+    color: var(--colour-guidance);
   }
   .research-error {
-    border-color: var(--colour-risk);
+    border-inline-start: 3px solid var(--colour-risk);
+    padding: 9px 11px;
+    color: var(--colour-text);
     background: var(--colour-risk-soft);
   }
   .research-content {

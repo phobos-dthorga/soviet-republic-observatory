@@ -2,6 +2,7 @@
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import AttentionCue from "../attention/AttentionCue.svelte";
   import ContextHelp from "../ui/ContextHelp.svelte";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import type { PopulationDataset } from "../observations/types";
@@ -182,17 +183,22 @@
       >
     </div>
 
-    <div class="sidebar-note">
+    <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("population-sidebar-boundary")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas">
-    <div class="preview-banner" role="status">
+    <GuidanceSurface
+      kind="instruction"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner"
+    >
       <strong>{$translation("population-evidence-banner")}</strong>
       <span>{$translation("population-evidence-banner-detail")}</span>
-    </div>
+    </GuidanceSurface>
 
     <header class="page-heading">
       <div>
@@ -456,9 +462,13 @@
               {$translation("population-probe-invalid-detail")}
             </p>
           {:else}
-            <p class="population-probe-note">
+            <GuidanceSurface
+              kind="instruction"
+              layout="compact"
+              class="population-probe-note"
+            >
               {$translation("population-probe-missing-detail")}
-            </p>
+            </GuidanceSurface>
           {/if}
         </section>
       </section>

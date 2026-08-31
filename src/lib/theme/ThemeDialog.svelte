@@ -280,7 +280,9 @@
       <p id="theme-introduction">{$translation("theme-introduction")}</p>
 
       <section
-        class="semantic-state-preview"
+        class="semantic-state-preview guidance-surface"
+        data-guidance-surface="preview"
+        data-guidance-layout="inline"
         aria-labelledby="theme-state-preview-heading"
       >
         <div>
@@ -595,7 +597,11 @@
           {errorMessage}
         </p>{/if}
 
-      <aside class="theme-boundary">
+      <aside
+        class="theme-boundary guidance-surface"
+        data-guidance-surface="boundary"
+        data-guidance-layout="block"
+      >
         <strong>{$translation("theme-data-only-title")}</strong>
         <span>{$translation("theme-data-only-detail")}</span>
       </aside>
@@ -855,7 +861,11 @@
     background: var(--colour-risk-soft);
   }
   .theme-boundary {
-    border-inline-start: 3px solid var(--colour-gold);
+    border-color: var(--colour-guidance);
+    border-inline-start-width: 3px;
+    background:
+      linear-gradient(110deg, var(--colour-guidance-soft), transparent 76%),
+      var(--colour-surface);
   }
   .theme-boundary span {
     color: var(--colour-muted);

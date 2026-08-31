@@ -2,6 +2,7 @@
   import { modalFocus } from "../ui/modalFocus";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import FilePicker from "../ui/FilePicker.svelte";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import { notify } from "../notifications/service";
   import { translation } from "./runtime";
   import type { LanguageStatus } from "./types";
@@ -255,7 +256,12 @@
         {/each}
       </div>
 
-      <aside class="language-boundary">
+      <GuidanceSurface
+        kind="boundary"
+        layout="block"
+        semanticRole="note"
+        class="language-boundary"
+      >
         <strong
           >{$translation("security-language-source-version", {
             version: $languageStatus.active_pack.source_catalog_version,
@@ -266,7 +272,7 @@
         <span>
           {$translation(storageAuthorityKey($languageStatus.storage_authority))}
         </span>
-      </aside>
+      </GuidanceSurface>
 
       {#if errorMessage}<p class="language-error" role="alert">
           {errorMessage}

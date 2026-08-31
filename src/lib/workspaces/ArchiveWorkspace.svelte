@@ -2,6 +2,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatDate, formatNumber, formatSignedNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import type {
     ArchiveObservation,
     ArchiveComparison,
@@ -285,17 +286,22 @@
       {/each}
     </div>
 
-    <div class="sidebar-note">
+    <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("archive-branch-safety-note")}</p>
-    </div>
+    </GuidanceSurface>
   </aside>
 
   <section class="canvas">
-    <div class="preview-banner archive-banner" role="status">
+    <GuidanceSurface
+      kind="instruction"
+      layout="inline"
+      semanticRole="status"
+      class="preview-banner archive-banner"
+    >
       <strong>{$translation("archive-evidence-prefix")}</strong>
       <span>{$translation("archive-evidence-explanation")}</span>
-    </div>
+    </GuidanceSurface>
 
     {#if archive?.analysis_context.mode === "historical_preview"}
       <div class="archive-context-banner" role="status">
