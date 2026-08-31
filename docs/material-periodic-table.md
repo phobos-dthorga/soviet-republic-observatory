@@ -65,13 +65,15 @@ view can propagate a target upstream, compare alternative routes, and identify
 where imports enter the chain. Recipe coefficients are game-definition facts;
 actual throughput requires republic observations.
 
-The first implemented pathway slice is the **Production Route Laboratory**. It
-selects one current catalogued recipe and output, applies one transparent scale
-factor, and shows comparable input/output coefficients as an open-boundary
-Sankey. An exact row ledger remains authoritative. The view refuses diagram
-geometry when quantities or bases are unavailable, mixed, invalid, ambiguous,
-or outside the bounded contract. It does not yet join routes into a multi-stage
-chain or apply Planning Overlay relationship changes.
+The **Production Route Laboratory** selects one current catalogued recipe and
+output, applies one transparent scale factor, and shows comparable input/output
+coefficients as an open-boundary Sankey. Its bounded multi-stage pathway can
+then expand unique upstream recipes and propagate the compatible target through
+their recorded coefficients. Alternative producers require an explicit player
+choice; external inputs, cycles, safety limits, and differently based auxiliary
+requirements remain visible rather than being fabricated into the ribbons. An
+exact row ledger remains authoritative. Planning Overlay v1 still cannot alter
+recipe relationships.
 
 ### Stoichiometry and theoretical yield
 

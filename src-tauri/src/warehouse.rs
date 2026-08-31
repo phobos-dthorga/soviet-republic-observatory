@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -13,9 +13,12 @@ use crate::model::{
     BranchMembershipProjection, CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, ProductionRouteCoverage, ProductionRouteFlow, ProductionRouteModel,
-    ProductionRouteRequest, ReceiverDataset, UnknownDirectiveSummary, WarehouseHealth,
-    WarehousePhase, WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
+    DefinitionValue, ProductionPathwayAuxiliaryRequirement, ProductionPathwayCandidate,
+    ProductionPathwayChoice, ProductionPathwayDiagnostic, ProductionPathwayLink,
+    ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
+    ProductionPathwayRequirement, ProductionRouteCoverage, ProductionRouteFlow,
+    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, UnknownDirectiveSummary,
+    WarehouseHealth, WarehousePhase, WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
 };
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
@@ -27,6 +30,11 @@ use crate::warehouse_governor::{
 pub const WAREHOUSE_SCHEMA_VERSION: u32 = 5;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
+const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
+const MAX_PRODUCTION_PATHWAY_SELECTIONS: usize = 32;
+const MAX_PRODUCTION_PATHWAY_CANDIDATES: usize = 16;
+const MAX_PRODUCTION_PATHWAY_NODES: usize = 128;
+const MAX_PRODUCTION_PATHWAY_LINKS: usize = 256;
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
 #[derive(Clone, Debug, Default)]
@@ -36,6 +44,54 @@ struct WarehouseStatusCache {
     catalogue_runtime: CatalogueRuntime,
     last_projected_at_ms: Option<i64>,
     observation_watermark: Option<String>,
+}
+
+struct PathwayBuild {
+    snapshot: WarehouseSnapshot,
+    max_depth: u32,
+    selections: BTreeMap<String, String>,
+    used_selections: BTreeSet<String>,
+    nodes: Vec<ProductionPathwayNode>,
+    links: Vec<ProductionPathwayLink>,
+    choices: Vec<ProductionPathwayChoice>,
+    terminal_requirements: BTreeMap<(String, String, String), (String, f64)>,
+    auxiliary_requirements: Vec<ProductionPathwayAuxiliaryRequirement>,
+    diagnostics: Vec<ProductionPathwayDiagnostic>,
+    next_node: u32,
+    next_link: u32,
+    player_mapped: bool,
+}
+
+impl PathwayBuild {
+    fn terminal(
+        &mut self,
+        resource_id: &str,
+        display_name: &str,
+        quantity: f64,
+        unit: &str,
+        reason: &str,
+    ) {
+        let entry = self
+            .terminal_requirements
+            .entry((resource_id.to_owned(), unit.to_owned(), reason.to_owned()))
+            .or_insert_with(|| (display_name.to_owned(), 0.0));
+        entry.1 += quantity;
+    }
+
+    fn diagnostic(
+        &mut self,
+        code: &str,
+        resource_id: Option<&str>,
+        recipe_entity_id: Option<&str>,
+        depth: u32,
+    ) {
+        self.diagnostics.push(ProductionPathwayDiagnostic {
+            code: code.to_owned(),
+            resource_id: resource_id.map(str::to_owned),
+            recipe_entity_id: recipe_entity_id.map(str::to_owned),
+            depth,
+        });
+    }
 }
 
 impl WarehouseStatusCache {
@@ -1448,6 +1504,522 @@ impl AnalyticalWarehouse {
         })
     }
 
+    pub fn production_pathway(
+        &self,
+        request: &ProductionPathwayRequest,
+    ) -> Result<ProductionPathwayModel, ObservatoryError> {
+        if request.root_recipe_entity_id.is_empty()
+            || request.root_recipe_entity_id.len() > 320
+            || !valid_resource_id(&request.output_resource_id)
+            || !request.target_quantity.is_finite()
+            || request.target_quantity <= 0.0
+            || request.target_quantity > 1_000_000_000.0
+            || request.max_depth < 2
+            || request.max_depth > MAX_PRODUCTION_PATHWAY_DEPTH
+            || request.selections.len() > MAX_PRODUCTION_PATHWAY_SELECTIONS
+        {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+
+        let mut selections = BTreeMap::new();
+        for selection in &request.selections {
+            if !valid_resource_id(&selection.resource_id)
+                || selection.recipe_entity_id.is_empty()
+                || selection.recipe_entity_id.len() > 320
+                || selections
+                    .insert(
+                        selection.resource_id.clone(),
+                        selection.recipe_entity_id.clone(),
+                    )
+                    .is_some()
+            {
+                return Err(ObservatoryError::InvalidCatalogueRequest);
+            }
+        }
+
+        let root = self.production_route(&ProductionRouteRequest {
+            entity_id: request.root_recipe_entity_id.clone(),
+            output_resource_id: Some(request.output_resource_id.clone()),
+            target_quantity: Some(request.target_quantity),
+        })?;
+        if !matches!(root.status.as_str(), "ready" | "ready_with_auxiliary") {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+        let unit = root
+            .unit
+            .clone()
+            .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+        let root_output = root
+            .flows
+            .iter()
+            .find(|flow| {
+                flow.direction == "production_output"
+                    && flow.resource_id == request.output_resource_id
+                    && flow.basis_role == "primary"
+            })
+            .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+
+        let mut build = PathwayBuild {
+            snapshot: root.snapshot.clone(),
+            max_depth: request.max_depth,
+            selections,
+            used_selections: BTreeSet::new(),
+            nodes: vec![
+                ProductionPathwayNode {
+                    id: "stage-root".to_owned(),
+                    kind: "process".to_owned(),
+                    display_name: root.display_name.clone(),
+                    resource_id: None,
+                    recipe_entity_id: Some(root.route_id.clone()),
+                    package_name: Some(root.package_name.clone()),
+                    depth: 0,
+                },
+                ProductionPathwayNode {
+                    id: "resource-target".to_owned(),
+                    kind: "resource".to_owned(),
+                    display_name: production_resource_name(&request.output_resource_id),
+                    resource_id: Some(request.output_resource_id.clone()),
+                    recipe_entity_id: None,
+                    package_name: None,
+                    depth: 0,
+                },
+            ],
+            links: vec![ProductionPathwayLink {
+                id: "pathway-link-0".to_owned(),
+                source: "stage-root".to_owned(),
+                target: "resource-target".to_owned(),
+                resource_id: request.output_resource_id.clone(),
+                quantity: request.target_quantity,
+                unit: unit.clone(),
+                source_directive: root_output.source_directive.clone(),
+                source_line: root_output.source_line,
+                mapping: root_output.mapping.clone(),
+            }],
+            choices: Vec::new(),
+            terminal_requirements: BTreeMap::new(),
+            auxiliary_requirements: Vec::new(),
+            diagnostics: Vec::new(),
+            next_node: 0,
+            next_link: 1,
+            player_mapped: root.mapping_classification == "player_mapped",
+        };
+        let mut route_path = BTreeSet::from([root.route_id.clone()]);
+        self.expand_production_pathway_stage(&root, "stage-root", 0, &mut route_path, &mut build)?;
+        if build.used_selections.len() != build.selections.len() {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
+
+        let has_limit = build.diagnostics.iter().any(|item| {
+            matches!(
+                item.code.as_str(),
+                "node_limit" | "link_limit" | "candidate_limit"
+            )
+        });
+        let has_boundary = build.diagnostics.iter().any(|item| {
+            matches!(
+                item.code.as_str(),
+                "depth_limit" | "cycle" | "unsupported_route"
+            )
+        });
+        let status = if has_limit {
+            "too_complex"
+        } else if build
+            .choices
+            .iter()
+            .any(|choice| choice.selected_recipe_entity_id.is_none())
+        {
+            "needs_selection"
+        } else if has_boundary {
+            "bounded"
+        } else if !build.auxiliary_requirements.is_empty() {
+            "ready_with_auxiliary"
+        } else {
+            "ready"
+        };
+        let terminal_requirements = build
+            .terminal_requirements
+            .into_iter()
+            .map(|((resource_id, unit, reason), (display_name, quantity))| {
+                ProductionPathwayRequirement {
+                    resource_id,
+                    display_name,
+                    quantity,
+                    unit,
+                    reason,
+                }
+            })
+            .collect();
+
+        Ok(ProductionPathwayModel {
+            schema_version: 1,
+            status: status.to_owned(),
+            root_recipe_entity_id: request.root_recipe_entity_id.clone(),
+            output_resource_id: request.output_resource_id.clone(),
+            target_quantity: request.target_quantity,
+            unit,
+            max_depth: request.max_depth,
+            mapping_classification: if build.player_mapped {
+                "player_mapped"
+            } else {
+                "reviewed_mapping"
+            }
+            .to_owned(),
+            nodes: build.nodes,
+            links: build.links,
+            choices: build.choices,
+            terminal_requirements,
+            auxiliary_requirements: build.auxiliary_requirements,
+            diagnostics: build.diagnostics,
+            snapshot: build.snapshot,
+        })
+    }
+
+    fn production_pathway_candidates(
+        &self,
+        resource_id: &str,
+        unit: &str,
+        expected_generation_id: &str,
+    ) -> Result<Vec<ProductionPathwayCandidate>, ObservatoryError> {
+        let connection = self.lock()?;
+        let current_generation_id = snapshot_from(&connection)?.catalogue_generation_id;
+        if current_generation_id != expected_generation_id {
+            return Err(ObservatoryError::CatalogueUnavailable);
+        }
+        let mut statement = connection.prepare(
+            "SELECT DISTINCT membership.entity_id, revisions.display_name, sources.package_name, \
+                    relations.quantity, relations.unit \
+             FROM catalogue_generation_entities membership \
+             JOIN definition_entity_revisions revisions USING(revision_hash) \
+             JOIN catalogue_sources sources ON sources.generation_id = membership.generation_id \
+                  AND sources.source_id = revisions.source_id \
+             JOIN definition_relations relations USING(revision_hash) \
+             WHERE membership.generation_id = ?1 AND revisions.entity_kind = 'recipe' \
+               AND relations.relation_kind = 'production_output' \
+               AND relations.target_id = ?2 AND relations.unit = ?3 \
+               AND relations.quantity IS NOT NULL AND relations.quantity > 0 \
+             ORDER BY revisions.display_name, membership.entity_id, relations.occurrence \
+             LIMIT ?4",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    expected_generation_id,
+                    resource_id,
+                    unit,
+                    (MAX_PRODUCTION_PATHWAY_CANDIDATES + 1) as u32
+                ],
+                |row| {
+                    Ok(ProductionPathwayCandidate {
+                        recipe_entity_id: row.get(0)?,
+                        display_name: row.get(1)?,
+                        package_name: row.get(2)?,
+                        output_quantity: row.get(3)?,
+                        unit: row.get(4)?,
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut distinct = BTreeMap::new();
+        for candidate in rows {
+            distinct
+                .entry(candidate.recipe_entity_id.clone())
+                .or_insert(candidate);
+        }
+        Ok(distinct.into_values().collect())
+    }
+
+    fn expand_production_pathway_stage(
+        &self,
+        route: &ProductionRouteModel,
+        stage_id: &str,
+        depth: u32,
+        route_path: &mut BTreeSet<String>,
+        build: &mut PathwayBuild,
+    ) -> Result<(), ObservatoryError> {
+        for flow in route
+            .flows
+            .iter()
+            .filter(|flow| flow.direction != "production_output")
+        {
+            if flow.mapping.mapping_classification == "player_mapped" {
+                build.player_mapped = true;
+            }
+            if flow.basis_role == "auxiliary" {
+                build
+                    .auxiliary_requirements
+                    .push(ProductionPathwayAuxiliaryRequirement {
+                        stage_id: stage_id.to_owned(),
+                        recipe_entity_id: route.route_id.clone(),
+                        resource_id: flow.resource_id.clone(),
+                        display_name: flow.display_name.clone(),
+                        quantity: flow.scaled_quantity,
+                        unit: flow.unit.clone(),
+                        reason: flow
+                            .basis_exclusion
+                            .clone()
+                            .unwrap_or_else(|| "different_unit".to_owned()),
+                        source_directive: flow.source_directive.clone(),
+                        source_line: flow.source_line,
+                        mapping: flow.mapping.clone(),
+                    });
+                continue;
+            }
+            let quantity = flow
+                .scaled_quantity
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+            let unit = flow
+                .unit
+                .as_deref()
+                .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+            if build.nodes.len() >= MAX_PRODUCTION_PATHWAY_NODES {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "node_limit",
+                );
+                build.diagnostic(
+                    "node_limit",
+                    Some(&flow.resource_id),
+                    Some(&route.route_id),
+                    depth,
+                );
+                continue;
+            }
+            let resource_node_id = format!("pathway-resource-{}", build.next_node);
+            build.next_node += 1;
+            build.nodes.push(ProductionPathwayNode {
+                id: resource_node_id.clone(),
+                kind: "resource".to_owned(),
+                display_name: production_resource_name(&flow.resource_id),
+                resource_id: Some(flow.resource_id.clone()),
+                recipe_entity_id: None,
+                package_name: None,
+                depth: depth + 1,
+            });
+            if build.links.len() >= MAX_PRODUCTION_PATHWAY_LINKS {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "link_limit",
+                );
+                build.diagnostic(
+                    "link_limit",
+                    Some(&flow.resource_id),
+                    Some(&route.route_id),
+                    depth,
+                );
+                continue;
+            }
+            build.links.push(ProductionPathwayLink {
+                id: format!("pathway-link-{}", build.next_link),
+                source: resource_node_id.clone(),
+                target: stage_id.to_owned(),
+                resource_id: flow.resource_id.clone(),
+                quantity,
+                unit: unit.to_owned(),
+                source_directive: flow.source_directive.clone(),
+                source_line: flow.source_line,
+                mapping: flow.mapping.clone(),
+            });
+            build.next_link += 1;
+
+            let candidates = self.production_pathway_candidates(
+                &flow.resource_id,
+                unit,
+                &build.snapshot.catalogue_generation_id,
+            )?;
+            if candidates.len() > MAX_PRODUCTION_PATHWAY_CANDIDATES {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "candidate_limit",
+                );
+                build.diagnostic(
+                    "candidate_limit",
+                    Some(&flow.resource_id),
+                    Some(&route.route_id),
+                    depth,
+                );
+                continue;
+            }
+            if candidates.is_empty() {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "external_input",
+                );
+                continue;
+            }
+            let requested_selection = build.selections.get(&flow.resource_id).cloned();
+            if let Some(selection) = requested_selection.as_deref() {
+                if !candidates
+                    .iter()
+                    .any(|candidate| candidate.recipe_entity_id == selection)
+                {
+                    return Err(ObservatoryError::InvalidCatalogueRequest);
+                }
+                build.used_selections.insert(flow.resource_id.clone());
+            }
+            let selected = requested_selection.or_else(|| {
+                (candidates.len() == 1).then(|| candidates[0].recipe_entity_id.clone())
+            });
+            if candidates.len() > 1 {
+                build.choices.push(ProductionPathwayChoice {
+                    resource_node_id: resource_node_id.clone(),
+                    resource_id: flow.resource_id.clone(),
+                    display_name: production_resource_name(&flow.resource_id),
+                    required_quantity: quantity,
+                    unit: unit.to_owned(),
+                    selected_recipe_entity_id: selected.clone(),
+                    candidates: candidates.clone(),
+                });
+            }
+            let Some(selected_recipe) = selected else {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "route_selection_required",
+                );
+                continue;
+            };
+            if depth + 1 >= build.max_depth {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "depth_limit",
+                );
+                build.diagnostic(
+                    "depth_limit",
+                    Some(&flow.resource_id),
+                    Some(&selected_recipe),
+                    depth + 1,
+                );
+                continue;
+            }
+            if route_path.contains(&selected_recipe) {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "cycle",
+                );
+                build.diagnostic(
+                    "cycle",
+                    Some(&flow.resource_id),
+                    Some(&selected_recipe),
+                    depth + 1,
+                );
+                continue;
+            }
+            let child = self.production_route(&ProductionRouteRequest {
+                entity_id: selected_recipe.clone(),
+                output_resource_id: Some(flow.resource_id.clone()),
+                target_quantity: Some(quantity),
+            })?;
+            if !same_snapshot(&child.snapshot, &build.snapshot) {
+                return Err(ObservatoryError::CatalogueUnavailable);
+            }
+            if !matches!(child.status.as_str(), "ready" | "ready_with_auxiliary") {
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    "unsupported_route",
+                );
+                build.diagnostic(
+                    "unsupported_route",
+                    Some(&flow.resource_id),
+                    Some(&selected_recipe),
+                    depth + 1,
+                );
+                continue;
+            }
+            if child.mapping_classification == "player_mapped" {
+                build.player_mapped = true;
+            }
+            if build.nodes.len() >= MAX_PRODUCTION_PATHWAY_NODES
+                || build.links.len() >= MAX_PRODUCTION_PATHWAY_LINKS
+            {
+                let reason = if build.nodes.len() >= MAX_PRODUCTION_PATHWAY_NODES {
+                    "node_limit"
+                } else {
+                    "link_limit"
+                };
+                build.terminal(
+                    &flow.resource_id,
+                    &flow.display_name,
+                    quantity,
+                    unit,
+                    reason,
+                );
+                build.diagnostic(
+                    reason,
+                    Some(&flow.resource_id),
+                    Some(&selected_recipe),
+                    depth + 1,
+                );
+                continue;
+            }
+            let child_output = child
+                .flows
+                .iter()
+                .find(|candidate| {
+                    candidate.direction == "production_output"
+                        && candidate.resource_id == flow.resource_id
+                        && candidate.basis_role == "primary"
+                })
+                .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
+            let child_stage_id = format!("pathway-stage-{}", build.next_node);
+            build.next_node += 1;
+            build.nodes.push(ProductionPathwayNode {
+                id: child_stage_id.clone(),
+                kind: "process".to_owned(),
+                display_name: child.display_name.clone(),
+                resource_id: None,
+                recipe_entity_id: Some(child.route_id.clone()),
+                package_name: Some(child.package_name.clone()),
+                depth: depth + 1,
+            });
+            build.links.push(ProductionPathwayLink {
+                id: format!("pathway-link-{}", build.next_link),
+                source: child_stage_id.clone(),
+                target: resource_node_id,
+                resource_id: flow.resource_id.clone(),
+                quantity,
+                unit: unit.to_owned(),
+                source_directive: child_output.source_directive.clone(),
+                source_line: child_output.source_line,
+                mapping: child_output.mapping.clone(),
+            });
+            build.next_link += 1;
+            route_path.insert(child.route_id.clone());
+            self.expand_production_pathway_stage(
+                &child,
+                &child_stage_id,
+                depth + 1,
+                route_path,
+                build,
+            )?;
+            route_path.remove(&child.route_id);
+        }
+        Ok(())
+    }
+
     pub fn production_route_coverage(&self) -> Result<ProductionRouteCoverage, ObservatoryError> {
         let connection = self.lock()?;
         let (
@@ -1847,6 +2419,25 @@ fn production_resource_name(resource_id: &str) -> String {
         .strip_prefix("resource::")
         .unwrap_or(resource_id)
         .replace('_', " ")
+}
+
+fn valid_resource_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value.starts_with("resource::")
+        && value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-' | '.')
+        })
+}
+
+fn same_snapshot(left: &WarehouseSnapshot, right: &WarehouseSnapshot) -> bool {
+    left.catalogue_generation_id == right.catalogue_generation_id
+        && left.compatibility_profile_hash == right.compatibility_profile_hash
+        && left.overlay_profile_id == right.overlay_profile_id
+        && left.overlay_revision == right.overlay_revision
+        && left.observation_watermark == right.observation_watermark
+        && left.warehouse_schema_version == right.warehouse_schema_version
+        && left.projector_version == right.projector_version
 }
 
 fn migrate(connection: &mut Connection) -> Result<(), ObservatoryError> {
@@ -2587,6 +3178,38 @@ mod tests {
                         mapping("production_output", 0, "fuel", 1.0, "per_second"),
                     ],
                 ),
+                recipe(
+                    "base::recipe::crude-oil",
+                    &"3".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "crude", 1.0, "source_rate"),
+                        mapping("production_output", 0, "oil", 1.0, "source_rate"),
+                    ],
+                ),
+                recipe(
+                    "base::recipe::bio-oil",
+                    &"2".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "plants", 2.0, "source_rate"),
+                        mapping("production_output", 0, "oil", 1.0, "source_rate"),
+                    ],
+                ),
+                recipe(
+                    "base::recipe::recycled-oil",
+                    &"1".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "chemicals", 1.0, "source_rate"),
+                        mapping("production_output", 0, "oil", 1.0, "source_rate"),
+                    ],
+                ),
+                recipe(
+                    "base::recipe::power",
+                    &"0".repeat(64),
+                    vec![
+                        mapping("production_input", 0, "coal", 3.0, "source_rate"),
+                        mapping("production_output", 0, "power", 1.0, "source_rate"),
+                    ],
+                ),
             ],
         };
         assert!(warehouse.publish_catalogue(&generation).expect("publish"));
@@ -2664,12 +3287,86 @@ mod tests {
         let coverage = warehouse
             .production_route_coverage()
             .expect("route coverage");
-        assert_eq!(coverage.route_count, 3);
-        assert_eq!(coverage.diagrammable_count, 2);
+        assert_eq!(coverage.route_count, 7);
+        assert_eq!(coverage.diagrammable_count, 6);
         assert_eq!(coverage.routes_with_auxiliary, 1);
         assert_eq!(coverage.unavailable_count, 1);
-        assert_eq!(coverage.relation_count, 8);
+        assert_eq!(coverage.relation_count, 16);
         assert_eq!(coverage.auxiliary_relation_count, 1);
+
+        assert!(
+            warehouse
+                .production_pathway(&ProductionPathwayRequest {
+                    root_recipe_entity_id: "base::recipe::chemical-plant".to_owned(),
+                    output_resource_id: "resource::chemicals".to_owned(),
+                    target_quantity: 10.0,
+                    max_depth: 1,
+                    selections: Vec::new(),
+                })
+                .is_err()
+        );
+
+        let unresolved = warehouse
+            .production_pathway(&ProductionPathwayRequest {
+                root_recipe_entity_id: "base::recipe::chemical-plant".to_owned(),
+                output_resource_id: "resource::chemicals".to_owned(),
+                target_quantity: 10.0,
+                max_depth: 4,
+                selections: Vec::new(),
+            })
+            .expect("pathway with an explicit oil-route choice");
+        assert_eq!(unresolved.status, "needs_selection");
+        assert_eq!(unresolved.choices.len(), 1);
+        assert_eq!(unresolved.choices[0].resource_id, "resource::oil");
+        assert_eq!(unresolved.choices[0].candidates.len(), 3);
+        assert!(unresolved.terminal_requirements.iter().any(|requirement| {
+            requirement.resource_id == "resource::coal" && requirement.quantity == 60.0
+        }));
+
+        let selected = warehouse
+            .production_pathway(&ProductionPathwayRequest {
+                root_recipe_entity_id: "base::recipe::chemical-plant".to_owned(),
+                output_resource_id: "resource::chemicals".to_owned(),
+                target_quantity: 10.0,
+                max_depth: 4,
+                selections: vec![crate::model::ProductionPathwaySelection {
+                    resource_id: "resource::oil".to_owned(),
+                    recipe_entity_id: "base::recipe::bio-oil".to_owned(),
+                }],
+            })
+            .expect("selected multi-stage pathway");
+        assert_eq!(selected.status, "ready");
+        assert_eq!(
+            selected
+                .nodes
+                .iter()
+                .filter(|node| node.kind == "process")
+                .count(),
+            3
+        );
+        assert_eq!(selected.links.len(), 7);
+        assert!(selected.terminal_requirements.iter().any(|requirement| {
+            requirement.resource_id == "resource::plants" && requirement.quantity == 80.0
+        }));
+        assert_eq!(
+            selected.snapshot.catalogue_generation_id,
+            generation.generation_id
+        );
+
+        let cyclic = warehouse
+            .production_pathway(&ProductionPathwayRequest {
+                root_recipe_entity_id: "base::recipe::chemical-plant".to_owned(),
+                output_resource_id: "resource::chemicals".to_owned(),
+                target_quantity: 10.0,
+                max_depth: 4,
+                selections: vec![crate::model::ProductionPathwaySelection {
+                    resource_id: "resource::oil".to_owned(),
+                    recipe_entity_id: "base::recipe::recycled-oil".to_owned(),
+                }],
+            })
+            .expect("cycle-bounded pathway");
+        assert_eq!(cyclic.status, "bounded");
+        assert!(cyclic.diagnostics.iter().any(|item| item.code == "cycle"));
 
         assert!(
             warehouse

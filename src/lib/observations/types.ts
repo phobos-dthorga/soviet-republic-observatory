@@ -703,6 +703,126 @@ export type ProductionRouteCoverage = {
   snapshot: WarehouseSnapshot;
 };
 
+export type ProductionPathwayStatus =
+  | "ready"
+  | "ready_with_auxiliary"
+  | "needs_selection"
+  | "bounded"
+  | "too_complex";
+
+export type ProductionPathwaySelection = {
+  resource_id: string;
+  recipe_entity_id: string;
+};
+
+export type ProductionPathwayRequest = {
+  root_recipe_entity_id: string;
+  output_resource_id: string;
+  target_quantity: number;
+  max_depth: number;
+  selections: ProductionPathwaySelection[];
+};
+
+export type ProductionPathwayNode = {
+  id: string;
+  kind: "resource" | "process";
+  display_name: string;
+  resource_id: string | null;
+  recipe_entity_id: string | null;
+  package_name: string | null;
+  depth: number;
+};
+
+export type ProductionPathwayLink = {
+  id: string;
+  source: string;
+  target: string;
+  resource_id: string;
+  quantity: number;
+  unit: string;
+  source_directive: string;
+  source_line: number;
+  mapping: DefinitionMappingProvenance;
+};
+
+export type ProductionPathwayCandidate = {
+  recipe_entity_id: string;
+  display_name: string;
+  package_name: string;
+  output_quantity: number;
+  unit: string;
+};
+
+export type ProductionPathwayChoice = {
+  resource_node_id: string;
+  resource_id: string;
+  display_name: string;
+  required_quantity: number;
+  unit: string;
+  selected_recipe_entity_id: string | null;
+  candidates: ProductionPathwayCandidate[];
+};
+
+export type ProductionPathwayRequirement = {
+  resource_id: string;
+  display_name: string;
+  quantity: number;
+  unit: string;
+  reason:
+    | "external_input"
+    | "route_selection_required"
+    | "depth_limit"
+    | "cycle"
+    | "unsupported_route"
+    | "candidate_limit"
+    | "node_limit"
+    | "link_limit";
+};
+
+export type ProductionPathwayAuxiliaryRequirement = {
+  stage_id: string;
+  recipe_entity_id: string;
+  resource_id: string;
+  display_name: string;
+  quantity: number | null;
+  unit: string | null;
+  reason: "different_unit" | "missing_unit";
+  source_directive: string;
+  source_line: number;
+  mapping: DefinitionMappingProvenance;
+};
+
+export type ProductionPathwayDiagnostic = {
+  code:
+    | "depth_limit"
+    | "cycle"
+    | "unsupported_route"
+    | "candidate_limit"
+    | "node_limit"
+    | "link_limit";
+  resource_id: string | null;
+  recipe_entity_id: string | null;
+  depth: number;
+};
+
+export type ProductionPathwayModel = {
+  schema_version: number;
+  status: ProductionPathwayStatus;
+  root_recipe_entity_id: string;
+  output_resource_id: string;
+  target_quantity: number;
+  unit: string;
+  max_depth: number;
+  mapping_classification: string;
+  nodes: ProductionPathwayNode[];
+  links: ProductionPathwayLink[];
+  choices: ProductionPathwayChoice[];
+  terminal_requirements: ProductionPathwayRequirement[];
+  auxiliary_requirements: ProductionPathwayAuxiliaryRequirement[];
+  diagnostics: ProductionPathwayDiagnostic[];
+  snapshot: WarehouseSnapshot;
+};
+
 export type OverlayInspection = {
   valid: boolean;
   code: string | null;

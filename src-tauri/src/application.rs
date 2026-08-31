@@ -23,9 +23,10 @@ use crate::model::{
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome,
     ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, ReceiverDataset,
-    RecorderDiscoverySource, RecorderHealth, RecorderUpdate, ReinterpretationPhase,
-    ReinterpretationProgress, SetupState, WarehouseSnapshot,
+    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
+    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, SetupState,
+    WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::inspect_save_archive;
@@ -984,6 +985,13 @@ impl ObservatoryApplication {
         request: &ProductionRouteRequest,
     ) -> Result<ProductionRouteModel, ObservatoryError> {
         self.warehouse.production_route(request)
+    }
+
+    pub fn production_pathway(
+        &self,
+        request: &ProductionPathwayRequest,
+    ) -> Result<ProductionPathwayModel, ObservatoryError> {
+        self.warehouse.production_pathway(request)
     }
 
     pub fn production_route_coverage(&self) -> Result<ProductionRouteCoverage, ObservatoryError> {

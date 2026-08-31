@@ -29,6 +29,8 @@
     DefinitionValue,
     OverlayInspection,
     OverlayProfileSummary,
+    ProductionPathwayModel,
+    ProductionRouteModel,
     WarehouseWriteActivity,
   } from "../observations/types";
   import { formatDate, formatNumber } from "../i18n/format";
@@ -40,9 +42,16 @@
     selectLatestTaskProgress,
   } from "../tasks/progress";
 
-  let { desktopAvailable, gameConfigured } = $props<{
+  let {
+    desktopAvailable,
+    gameConfigured,
+    reviewRoute = null,
+    reviewPathway = null,
+  } = $props<{
     desktopAvailable: boolean;
     gameConfigured: boolean;
+    reviewRoute?: ProductionRouteModel | null;
+    reviewPathway?: ProductionPathwayModel | null;
   }>();
   let status = $state<CatalogueStatus | null>(null);
   let refreshProgress = $state<CatalogueRefreshProgress | null>(null);
@@ -474,9 +483,13 @@
       <ProductionRouteLaboratory
         {desktopAvailable}
         {gameConfigured}
-        generationId={status?.generation?.generation_id ?? null}
+        generationId={reviewRoute?.snapshot.catalogue_generation_id ??
+          status?.generation?.generation_id ??
+          null}
         overlayProfileName={status?.active_overlay?.display_name ?? null}
         overlayRevision={status?.active_overlay?.active_revision ?? null}
+        {reviewRoute}
+        {reviewPathway}
       />
     </div>
 

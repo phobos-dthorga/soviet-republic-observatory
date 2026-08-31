@@ -36,6 +36,7 @@ const layouts = [
 const smokeScenarios: UiReviewScenarioId[] = [
   "workspace-briefing",
   "materials-warehouse-attention",
+  "production-pathway",
   "population-probe-missing",
   "critical-task-failed",
   "dialog-theme",
@@ -145,6 +146,25 @@ async function prepareInteractiveScenario(
     await (await client.$(".attention-cue.active")).waitForDisplayed();
   } else if (scenario === "notification-error") {
     await (await client.$(".notification-toast")).waitForDisplayed();
+  } else if (scenario === "production-pathway") {
+    const pathway = await client.$(".pathway-laboratory");
+    await pathway.waitForDisplayed();
+    await pathway.scrollIntoView({ block: "start", inline: "nearest" });
+    await client.execute(() => {
+      const element = document.querySelector<HTMLElement>(
+        ".pathway-laboratory",
+      );
+      const canvas = element?.closest<HTMLElement>(".canvas");
+      if (!element || !canvas) return;
+      canvas.scrollTo({
+        top:
+          element.getBoundingClientRect().top -
+          canvas.getBoundingClientRect().top +
+          canvas.scrollTop,
+        left: 0,
+        behavior: "instant",
+      });
+    });
   }
 }
 

@@ -5,6 +5,7 @@ export const UI_REVIEW_SCENARIOS = [
   "workspace-extensions",
   "workspace-materials",
   "materials-warehouse-attention",
+  "production-pathway",
   "workspace-population",
   "population-probe-missing",
   "archive-latest",

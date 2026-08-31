@@ -95,6 +95,14 @@ larger routes remain in the exact evidence ledger without fabricated ribbon
 widths. Each ribbon carries the directive, source line, mapping identity, scope
 state, and catalogue-generation provenance that produced it.
 
+The laboratory also offers an explicitly requested multi-stage pathway. The
+Rust host expands unique upstream routes, stops for player selection when
+alternatives exist, and carries exact compatible coefficients through a bounded
+acyclic graph. Auxiliary bases, external inputs, cycles, and safety limits stay
+visible in separate ledgers. The Sankey therefore communicates a selected
+definition pathway; it does not claim that the republic built, transported,
+stored, or consumed those volumes.
+
 When the desktop catalogue is unavailable, the interface retains the visibly
 synthetic steel-allocation proof. Its 68 domestic and 32 imported units reconcile
 with 42 construction, 24 mechanical-component, 18 vehicle, 10 export, and 6

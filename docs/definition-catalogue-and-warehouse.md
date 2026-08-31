@@ -85,6 +85,24 @@ auxiliary-requirement, unresolved-basis, and unquantified-relation counts from
 the same host-owned rules. It is a bounded summary over the current generation,
 not a promise that every supported directive has a verified physical unit.
 
+The `ProductionPathwayModel` v1 extends that same contract upstream without
+exposing a general graph query. Rust may recursively expand a unique compatible
+producer for an input. When multiple vanilla, DLC, Workshop, or WIP recipes can
+produce it, expansion stops and returns an explicit route choice; source or
+package order never acts as hidden precedence. A player selection is valid only
+for the exact resource and current pinned warehouse snapshot.
+
+Pathway quantities propagate only through finite positive coefficients with the
+root route's exact unit. Power, water, labour, time, or any other differently
+based requirement remains in a separate auxiliary ledger. External inputs,
+cycles, depth stops, unsupported routes, and complexity limits remain named
+terminal requirements rather than disappearing from the diagram. Requests are
+limited to six stages and 32 choices; results are limited to 16 candidate routes
+per choice, 128 nodes, and 256 links. Each link preserves its directive, source
+line, mapping identity, and catalogue snapshot. This is a proportional
+game-definition calculation, not observed throughput, physical conservation,
+capacity, inventory, transport, cost, or optimisation.
+
 ## Catalogue generations
 
 A refresh discovers the configured base game, `dlc*`/`elc*` packages,

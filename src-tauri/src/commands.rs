@@ -12,9 +12,10 @@ use crate::model::{
     AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderHealth,
-    ReinterpretationProgress, SetupState, WarehouseSnapshot,
+    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
+    ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
+    ProductionRouteRequest, ReceiverDataset, RecorderHealth, ReinterpretationProgress, SetupState,
+    WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -437,6 +438,17 @@ pub fn get_production_route(
     state
         .application
         .production_route(&request)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_production_pathway(
+    request: ProductionPathwayRequest,
+    state: State<'_, AppState>,
+) -> Result<ProductionPathwayModel, CommandError> {
+    state
+        .application
+        .production_pathway(&request)
         .map_err(Into::into)
 }
 

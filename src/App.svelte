@@ -37,6 +37,8 @@
     reviewArchiveOverview,
     reviewCatalogueProgress,
     reviewPopulationDataset,
+    reviewProductionPathway,
+    reviewProductionRoute,
     reviewWarehouseAttention,
   } from "./lib/ui-review/fixtures";
   import {
@@ -70,6 +72,8 @@
     DiagnosticLogView,
     ReceiverDataset,
     PopulationDataset,
+    ProductionPathwayModel,
+    ProductionRouteModel,
     RecorderHealth,
     RecorderUpdate,
     ReinterpretationProgress,
@@ -127,6 +131,8 @@
   let populationDataset = $state<PopulationDataset | null>(null);
   let archiveOverview = $state<ArchiveOverview | null>(null);
   let recorderHealth = $state<RecorderHealth | null>(null);
+  let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
+  let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
 
   function warehouseActivityLabel(activity: WarehouseWriteActivity): string {
@@ -314,6 +320,8 @@
     warehouseStatus = null;
     reinterpretationProgress = null;
     researchBuildProgress = null;
+    reviewRouteFixture = null;
+    reviewPathwayFixture = null;
 
     switch (request.scenario) {
       case "workspace-briefing":
@@ -334,6 +342,11 @@
       case "materials-warehouse-attention":
         activeWorkspace = "materials";
         warehouseStatus = reviewWarehouseAttention();
+        break;
+      case "production-pathway":
+        activeWorkspace = "materials";
+        reviewRouteFixture = reviewProductionRoute();
+        reviewPathwayFixture = reviewProductionPathway();
         break;
       case "workspace-population":
       case "population-probe-missing":
@@ -784,6 +797,8 @@
     <MaterialsWorkspace
       {desktopAvailable}
       gameConfigured={Boolean(setupState?.game_directory)}
+      reviewRoute={reviewRouteFixture}
+      reviewPathway={reviewPathwayFixture}
     />
   {:else if activeWorkspace === "population"}
     <PopulationWorkspace

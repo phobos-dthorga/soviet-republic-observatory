@@ -186,7 +186,10 @@ publishes catalogue metrics.
 ## Slice 8 — Industrial Laboratory
 
 - Expanded definition coverage and verified automatic-cost rules
-- Multi-stage production-chain graph building on the single-recipe laboratory
+- Bounded multi-stage production pathways on the single-recipe laboratory are
+  implemented: exact coefficient propagation, explicit alternative-route
+  choices, auxiliary ledgers, cycle/complexity stops, provenance, and an
+  accessible Sankey ledger
 - Target propagation and limiting-input analysis
 - Cost sensitivity and scenario engine
 - Linear optimisation after actual capacity evidence is available

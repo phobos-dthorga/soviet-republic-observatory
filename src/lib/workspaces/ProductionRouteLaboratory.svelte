@@ -2,6 +2,7 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
+  import ProductionPathwayLaboratory from "./ProductionPathwayLaboratory.svelte";
   import { createMaterialFlowPreview } from "../presentation/materialFlowPreview";
   import {
     createProductionRouteChart,
@@ -15,6 +16,7 @@
   } from "../observations/desktopClient";
   import type {
     DefinitionSummary,
+    ProductionPathwayModel,
     ProductionRouteFlow,
     ProductionRouteCoverage,
     ProductionRouteModel,
@@ -27,12 +29,16 @@
     generationId,
     overlayProfileName,
     overlayRevision,
+    reviewRoute = null,
+    reviewPathway = null,
   } = $props<{
     desktopAvailable: boolean;
     gameConfigured: boolean;
     generationId: string | null;
     overlayProfileName: string | null;
     overlayRevision: number | null;
+    reviewRoute?: ProductionRouteModel | null;
+    reviewPathway?: ProductionPathwayModel | null;
   }>();
 
   let recipes = $state<DefinitionSummary[]>([]);
@@ -61,7 +67,18 @@
 
   $effect(() => {
     const snapshotIdentity = currentSnapshotIdentity();
-    if (!desktopAvailable || !gameConfigured || !snapshotIdentity) {
+    if (reviewRoute) {
+      requestSequence += 1;
+      loadedSnapshot = snapshotIdentity;
+      recipes = [];
+      route = reviewRoute;
+      coverage = null;
+      selectedRouteId = reviewRoute.route_id;
+      selectedOutputId = reviewRoute.selected_output_resource_id ?? "";
+      targetValue = reviewRoute.target_quantity?.toString() ?? "";
+      busy = false;
+      error = false;
+    } else if (!desktopAvailable || !gameConfigured || !snapshotIdentity) {
       requestSequence += 1;
       loadedSnapshot = null;
       recipes = [];
@@ -253,7 +270,7 @@
     {/if}
   </header>
 
-  {#if !desktopAvailable || !gameConfigured}
+  {#if !reviewRoute && (!desktopAvailable || !gameConfigured)}
     <div
       class="route-notice guidance-surface"
       data-guidance-surface="preview"
@@ -374,7 +391,7 @@
       <div class="route-notice attention" role="alert">
         {$translation("production-route-error")}
       </div>
-    {:else if recipes.length === 0}
+    {:else if recipes.length === 0 && !route}
       <div class="route-empty">
         {$translation("production-route-no-routes")}
       </div>
@@ -473,7 +490,13 @@
               : $translation("compatibility-reviewed")}
           </span>
         </header>
-        <div class="route-table-scroll">
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard access for an intentionally scrollable evidence region) -->
+        <div
+          class="route-table-scroll"
+          role="region"
+          tabindex="0"
+          aria-labelledby="route-evidence-title"
+        >
           <table>
             <thead>
               <tr>
@@ -516,6 +539,13 @@
           </table>
         </div>
       </section>
+
+      {#if ["ready", "ready_with_auxiliary"].includes(route.status)}
+        <ProductionPathwayLaboratory
+          rootRoute={route}
+          initialPathway={reviewPathway}
+        />
+      {/if}
     {/if}
   {/if}
 </section>
@@ -524,6 +554,12 @@
   .production-route-laboratory {
     display: grid;
     gap: 0.65rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .production-route-laboratory > * {
+    min-width: 0;
   }
 
   .laboratory-heading,
@@ -691,11 +727,6 @@
     color: var(--muted);
     font-size: 0.8rem;
     line-height: 1.45;
-  }
-
-  .route-notice.guidance-surface,
-  .route-boundary.guidance-surface {
-    --guidance-padding: 0.6rem 0.7rem;
   }
 
   .route-empty {

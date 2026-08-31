@@ -89,6 +89,8 @@ an engineering requirement.
   — persistent accessible guidance and an exact-source local build assistant
 - [ADR-0021: external native UI review with bounded fixture scenarios](architecture/decisions/0021-native-ui-review-boundary.md)
   — mouse-free native automation without a production control surface
+- [ADR-0022: bounded host-owned production pathways](architecture/decisions/0022-bounded-production-pathways.md)
+  — exact multi-stage coefficients, explicit alternatives, and visible stops
 
 ## Evidence status vocabulary
 

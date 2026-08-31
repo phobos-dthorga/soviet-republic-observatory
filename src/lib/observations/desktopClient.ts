@@ -28,6 +28,8 @@ import type {
   SetupState,
   OverlayInspection,
   OverlayProfileSummary,
+  ProductionPathwayModel,
+  ProductionPathwayRequest,
   ProductionRouteModel,
   ProductionRouteCoverage,
   ProductionRouteRequest,
@@ -222,6 +224,12 @@ export function getProductionRoute(
   request: ProductionRouteRequest,
 ): Promise<ProductionRouteModel> {
   return invoke<ProductionRouteModel>("get_production_route", { request });
+}
+
+export function getProductionPathway(
+  request: ProductionPathwayRequest,
+): Promise<ProductionPathwayModel> {
+  return invoke<ProductionPathwayModel>("get_production_pathway", { request });
 }
 
 export function getProductionRouteCoverage(): Promise<ProductionRouteCoverage> {

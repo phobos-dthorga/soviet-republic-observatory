@@ -1099,6 +1099,116 @@ pub struct ProductionRouteCoverage {
     pub snapshot: WarehouseSnapshot,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ProductionPathwaySelection {
+    pub resource_id: String,
+    pub recipe_entity_id: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ProductionPathwayRequest {
+    pub root_recipe_entity_id: String,
+    pub output_resource_id: String,
+    pub target_quantity: f64,
+    pub max_depth: u32,
+    #[serde(default)]
+    pub selections: Vec<ProductionPathwaySelection>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayNode {
+    pub id: String,
+    pub kind: String,
+    pub display_name: String,
+    pub resource_id: Option<String>,
+    pub recipe_entity_id: Option<String>,
+    pub package_name: Option<String>,
+    pub depth: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayLink {
+    pub id: String,
+    pub source: String,
+    pub target: String,
+    pub resource_id: String,
+    pub quantity: f64,
+    pub unit: String,
+    pub source_directive: String,
+    pub source_line: u32,
+    pub mapping: DefinitionMappingProvenance,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayCandidate {
+    pub recipe_entity_id: String,
+    pub display_name: String,
+    pub package_name: String,
+    pub output_quantity: f64,
+    pub unit: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayChoice {
+    pub resource_node_id: String,
+    pub resource_id: String,
+    pub display_name: String,
+    pub required_quantity: f64,
+    pub unit: String,
+    pub selected_recipe_entity_id: Option<String>,
+    pub candidates: Vec<ProductionPathwayCandidate>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayRequirement {
+    pub resource_id: String,
+    pub display_name: String,
+    pub quantity: f64,
+    pub unit: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayAuxiliaryRequirement {
+    pub stage_id: String,
+    pub recipe_entity_id: String,
+    pub resource_id: String,
+    pub display_name: String,
+    pub quantity: Option<f64>,
+    pub unit: Option<String>,
+    pub reason: String,
+    pub source_directive: String,
+    pub source_line: u32,
+    pub mapping: DefinitionMappingProvenance,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayDiagnostic {
+    pub code: String,
+    pub resource_id: Option<String>,
+    pub recipe_entity_id: Option<String>,
+    pub depth: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProductionPathwayModel {
+    pub schema_version: u32,
+    pub status: String,
+    pub root_recipe_entity_id: String,
+    pub output_resource_id: String,
+    pub target_quantity: f64,
+    pub unit: String,
+    pub max_depth: u32,
+    pub mapping_classification: String,
+    pub nodes: Vec<ProductionPathwayNode>,
+    pub links: Vec<ProductionPathwayLink>,
+    pub choices: Vec<ProductionPathwayChoice>,
+    pub terminal_requirements: Vec<ProductionPathwayRequirement>,
+    pub auxiliary_requirements: Vec<ProductionPathwayAuxiliaryRequirement>,
+    pub diagnostics: Vec<ProductionPathwayDiagnostic>,
+    pub snapshot: WarehouseSnapshot,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct UnknownDirectiveSummary {
     pub directive: String,
