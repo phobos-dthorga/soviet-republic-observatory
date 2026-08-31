@@ -428,7 +428,8 @@ mod tests {
         assert!(validate_target_direction(&target()).is_ok());
         let mut invalid = target();
         invalid.direction = PlanDirection::Decrease;
-        assert!(validate_target_direction(&invalid).is_err());
+        let error = validate_target_direction(&invalid).expect_err("direction mismatch");
+        assert_eq!(error.code(), "invalid_republic_plan_direction_mismatch");
     }
 
     #[test]

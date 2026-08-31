@@ -1,7 +1,42 @@
 import type { ChartSpec } from "../charts/types";
+import type { TranslationKey } from "../i18n/catalog";
 import type { Translator } from "../i18n/runtime";
-import type { PlanTargetEvaluation } from "../observations/types";
+import type {
+  PlanDirection,
+  PlanTargetEvaluation,
+} from "../observations/types";
 import { briefMetricLabel } from "./republicBrief";
+
+const planErrorKeys = {
+  invalid_republic_plan_name: "plan-error-name",
+  invalid_republic_plan_end_date: "plan-error-end-date",
+  invalid_republic_plan_target_count: "plan-error-target-count",
+  invalid_republic_plan_unknown_metric: "plan-error-unknown-metric",
+  invalid_republic_plan_duplicate_metric: "plan-error-duplicate-metric",
+  invalid_republic_plan_guardrail: "plan-error-guardrail",
+  invalid_republic_plan_direction_mismatch: "plan-error-direction-mismatch",
+  invalid_republic_plan_window: "plan-error-window",
+  invalid_republic_plan_metric_unavailable: "plan-error-metric-unavailable",
+  unknown_republic_plan: "plan-error-unknown-plan",
+  republic_plan_branch_mismatch: "plan-error-branch-mismatch",
+} as const satisfies Record<string, TranslationKey>;
+
+export function planDirectionForValues(
+  baseline: number | null,
+  target: number,
+): PlanDirection | null {
+  if (baseline === null || !Number.isFinite(target)) return null;
+  if (target === baseline) return "maintain";
+  return target > baseline ? "increase" : "decrease";
+}
+
+export function planErrorTranslationKey(error: unknown): TranslationKey {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return "plan-error-save";
+  }
+  const code = String(error.code);
+  return planErrorKeys[code as keyof typeof planErrorKeys] ?? "plan-error-save";
+}
 
 export function createPlanTargetChart(
   target: PlanTargetEvaluation,

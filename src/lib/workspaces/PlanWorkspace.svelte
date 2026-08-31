@@ -25,7 +25,11 @@
   } from "../observations/types";
   import { metricContextHelpFor } from "../presentation/metricContext";
   import { briefMetricLabel } from "../presentation/republicBrief";
-  import { createPlanTargetChart } from "../presentation/republicPlan";
+  import {
+    createPlanTargetChart,
+    planDirectionForValues,
+    planErrorTranslationKey,
+  } from "../presentation/republicPlan";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import MetricContextHelp from "../ui/MetricContextHelp.svelte";
 
@@ -55,6 +59,12 @@
     milestone: "plan-schedule-milestone",
     hold_then_change: "plan-schedule-hold-then-change",
   } as const satisfies Record<PlanScheduleKind, TranslationKey>;
+
+  const directionKeys = {
+    increase: "plan-direction-increase",
+    decrease: "plan-direction-decrease",
+    maintain: "plan-direction-maintain",
+  } as const satisfies Record<PlanDirection, TranslationKey>;
 
   let busy = $state(false);
   let editingPlanId = $state<string | null>(null);
@@ -215,12 +225,8 @@
 
   function updateDirectionForValue(index: number, value: number): void {
     const baseline = baselineValue(targets[index].metric_id);
-    const direction: PlanDirection =
-      baseline == null || value === baseline
-        ? "maintain"
-        : value > baseline
-          ? "increase"
-          : "decrease";
+    const direction =
+      planDirectionForValues(baseline, value) ?? targets[index].direction;
     targets = targets.map((target, targetIndex) =>
       targetIndex === index
         ? { ...target, target_value: value, direction }
@@ -255,7 +261,11 @@
       targets: targets.map((target) => ({
         metric_id: target.metric_id,
         target_value: target.target_value,
-        direction: target.direction,
+        direction:
+          planDirectionForValues(
+            baselineValue(target.metric_id),
+            target.target_value,
+          ) ?? target.direction,
         guardrail_basis_points: Math.round(target.guardrail_percent * 100),
       })),
     };
@@ -275,10 +285,7 @@
     } catch (error) {
       notify({
         title: $translation("plan-notification-title"),
-        message:
-          typeof error === "object" && error && "diagnostic" in error
-            ? String(error.diagnostic)
-            : $translation("plan-error-save"),
+        message: $translation(planErrorTranslationKey(error)),
         tone: "error",
       });
     } finally {
@@ -340,12 +347,13 @@
   function notifyPlanError(error: unknown): void {
     notify({
       title: $translation("plan-notification-title"),
-      message:
-        typeof error === "object" && error && "diagnostic" in error
-          ? String(error.diagnostic)
-          : $translation("plan-error-save"),
+      message: $translation(planErrorTranslationKey(error)),
       tone: "error",
     });
+  }
+
+  function directionLabel(direction: PlanDirection): string {
+    return $translation(directionKeys[direction]);
   }
 
   function reading(value: number | null): string {
@@ -674,25 +682,14 @@
                 </label>
                 <label>
                   <span>{$translation("plan-direction")}</span>
-                  <select
-                    value={target.direction}
-                    onchange={(event) =>
-                      updateTarget(
-                        index,
-                        "direction",
-                        event.currentTarget.value as PlanDirection,
-                      )}
+                  <output
+                    class="calculated-direction"
+                    aria-describedby={`plan-direction-help-${index}`}
+                    >{directionLabel(target.direction)}</output
                   >
-                    <option value="increase"
-                      >{$translation("plan-direction-increase")}</option
-                    >
-                    <option value="decrease"
-                      >{$translation("plan-direction-decrease")}</option
-                    >
-                    <option value="maintain"
-                      >{$translation("plan-direction-maintain")}</option
-                    >
-                  </select>
+                  <small id={`plan-direction-help-${index}`}
+                    >{$translation("plan-direction-derived")}</small
+                  >
                 </label>
                 <label>
                   <span>{$translation("plan-guardrail")}</span>
@@ -991,6 +988,17 @@
     border: 1px solid var(--colour-line-faint);
     padding: 0 10px;
     color: var(--colour-text);
+  }
+
+  .calculated-direction {
+    border-color: var(--colour-guidance);
+    background: var(--colour-guidance-soft);
+  }
+
+  .plan-target-row small {
+    color: var(--colour-muted);
+    font-size: 11px;
+    line-height: 1.4;
   }
 
   .plan-target-editor {
