@@ -1647,7 +1647,7 @@ pub struct SetupState {
     pub compatibility: CompatibilityStatus,
 }
 
-pub const APPLICATION_PREFERENCES_SCHEMA_VERSION: u32 = 1;
+pub const APPLICATION_PREFERENCES_SCHEMA_VERSION: u32 = 2;
 pub const MIN_STORAGE_PATIENCE_SECONDS: u16 = 5;
 pub const MAX_STORAGE_PATIENCE_SECONDS: u16 = 300;
 
@@ -1678,6 +1678,14 @@ pub enum MotionPreference {
     Reduced,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WordingMode {
+    #[default]
+    PlayerFriendly,
+    Technical,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct ApplicationPreferencesDraft {
     pub storage_patience_preset: StoragePatiencePreset,
@@ -1685,6 +1693,7 @@ pub struct ApplicationPreferencesDraft {
     pub background_work_priority: BackgroundWorkPriority,
     pub text_scale_percent: u16,
     pub motion_preference: MotionPreference,
+    pub wording_mode: WordingMode,
     pub automatic_observation_enabled: bool,
 }
 
@@ -1697,6 +1706,7 @@ pub struct ApplicationPreferences {
     pub background_work_priority: BackgroundWorkPriority,
     pub text_scale_percent: u16,
     pub motion_preference: MotionPreference,
+    pub wording_mode: WordingMode,
     pub automatic_observation_enabled: bool,
 }
 

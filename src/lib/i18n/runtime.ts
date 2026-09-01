@@ -1,7 +1,9 @@
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { writable } from "svelte/store";
+import type { WordingMode } from "../settings/types";
 import { sourceLanguagePack } from "./catalog";
 import type { TranslationKey } from "./catalog";
+import { technicalWordingOverlay } from "./technical";
 import { messageResource, validateBuiltInLanguagePack } from "./validation";
 import type { LanguagePackManifest, TextDirection } from "./types";
 
@@ -20,7 +22,12 @@ if (!builtInValidation.ok) {
 }
 
 const sourceBundle = buildBundle(sourceLanguagePack);
+const technicalBundle = buildMessageBundle(
+  sourceLanguagePack.locale,
+  technicalWordingOverlay.messages,
+);
 let activeBundle = sourceBundle;
+let wordingMode: WordingMode = "player_friendly";
 
 export const translation = writable<Translator>(translate);
 export const activeLocale = writable(sourceLanguagePack.locale);
@@ -28,6 +35,7 @@ export const activeDirection = writable<TextDirection>(
   sourceLanguagePack.direction,
 );
 export const activeLanguagePackId = writable(sourceLanguagePack.id);
+export const activeWordingMode = writable<WordingMode>(wordingMode);
 
 export function applyLanguage(manifest: LanguagePackManifest): void {
   activeBundle =
@@ -47,24 +55,44 @@ export function applyLanguage(manifest: LanguagePackManifest): void {
   }
 }
 
+export function applyWordingMode(mode: WordingMode): void {
+  wordingMode = mode;
+  activeWordingMode.set(mode);
+  translation.set(translate);
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.wordingMode = mode;
+  }
+}
+
 export function translate(
   messageId: TranslationKey,
   arguments_: TranslationArguments = {},
   fallback: string = messageId,
 ): string {
+  const technical =
+    wordingMode === "technical" &&
+    activeBundle === sourceBundle &&
+    formatMessage(technicalBundle, messageId, arguments_);
   return (
-    formatMessage(activeBundle, messageId, arguments_) ??
+    (technical || formatMessage(activeBundle, messageId, arguments_)) ??
     formatMessage(sourceBundle, messageId, arguments_) ??
     fallback
   );
 }
 
-function buildBundle(manifest: LanguagePackManifest): FluentBundle {
-  const bundle = new FluentBundle(manifest.locale, { useIsolating: true });
-  for (const [messageId, pattern] of Object.entries(manifest.messages)) {
+function buildMessageBundle(
+  locale: string,
+  messages: Record<string, string>,
+): FluentBundle {
+  const bundle = new FluentBundle(locale, { useIsolating: true });
+  for (const [messageId, pattern] of Object.entries(messages)) {
     bundle.addResource(new FluentResource(messageResource(messageId, pattern)));
   }
   return bundle;
+}
+
+function buildBundle(manifest: LanguagePackManifest): FluentBundle {
+  return buildMessageBundle(manifest.locale, manifest.messages);
 }
 
 function formatMessage(

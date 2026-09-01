@@ -7,6 +7,11 @@ export type RecoveryProposal = {
   message: string;
   consequence?: string;
   actionLabel: string;
+  technicalDetails?: {
+    code?: string;
+    operation?: string;
+    detail?: string;
+  };
   run: () => void | Promise<void>;
 };
 

@@ -9,7 +9,7 @@ use crate::model::{
     MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference, ParsedMarketData,
     ReceiverRecord, RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS,
     SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
-    StoragePatiencePreset,
+    StoragePatiencePreset, WordingMode,
 };
 
 #[test]
@@ -22,6 +22,7 @@ fn application_preferences_are_bounded_atomic_and_restart_safe() {
         .expect("default preferences");
     assert_eq!(defaults.effective_storage_patience_seconds, 60);
     assert_eq!(defaults.text_scale_percent, 100);
+    assert_eq!(defaults.wording_mode, WordingMode::PlayerFriendly);
 
     let saved = storage
         .save_application_preferences(&ApplicationPreferencesDraft {
@@ -30,6 +31,7 @@ fn application_preferences_are_bounded_atomic_and_restart_safe() {
             background_work_priority: BackgroundWorkPriority::Balanced,
             text_scale_percent: 150,
             motion_preference: MotionPreference::Reduced,
+            wording_mode: WordingMode::Technical,
             automatic_observation_enabled: true,
         })
         .expect("saved preferences");
@@ -51,6 +53,7 @@ fn application_preferences_are_bounded_atomic_and_restart_safe() {
             background_work_priority: BackgroundWorkPriority::Gentle,
             text_scale_percent: 125,
             motion_preference: MotionPreference::System,
+            wording_mode: WordingMode::PlayerFriendly,
             automatic_observation_enabled: false,
         })
         .expect_err("out-of-range patience must fail");
@@ -75,6 +78,7 @@ fn corrupt_application_preference_fields_fall_back_individually() {
         ("background_work_priority", "dangerous"),
         ("interface_text_scale_percent", "73"),
         ("motion_preference", "spin"),
+        ("wording_mode", "obscure"),
     ] {
         connection
             .execute(
@@ -98,6 +102,7 @@ fn corrupt_application_preference_fields_fall_back_individually() {
     );
     assert_eq!(preferences.text_scale_percent, 100);
     assert_eq!(preferences.motion_preference, MotionPreference::System);
+    assert_eq!(preferences.wording_mode, WordingMode::PlayerFriendly);
 }
 
 #[test]

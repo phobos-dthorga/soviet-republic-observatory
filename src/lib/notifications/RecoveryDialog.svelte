@@ -1,6 +1,7 @@
 <script lang="ts">
   import { translation } from "../i18n/runtime";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import { modalFocus } from "../ui/modalFocus";
   import { dismissRecoveryProposal, recoveryProposal } from "./service";
 
@@ -66,6 +67,10 @@
 
       {#if failure}
         <p class="recovery-failure" role="alert">{failure}</p>
+      {/if}
+
+      {#if $recoveryProposal.technicalDetails}
+        <TechnicalDetails {...$recoveryProposal.technicalDetails} />
       {/if}
 
       <footer>

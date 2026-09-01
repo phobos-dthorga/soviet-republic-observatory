@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "target_flesch_kincaid_grade": 10.5,
+  "maximum_primary_sentence_words": 25,
+  "discouraged_phrases": {
+    "analytical head": "selected save",
+    "immutable revision": "saved version; earlier versions are kept",
+    "deterministic calculation": "calculated by Observatory",
+    "evidence assay": "save-data check",
+    "source-backed": "from your save or game files",
+    "host-owned": "handled by Observatory",
+    "analytical warehouse": "analysis database",
+    "projection": "background update",
+    "interpretation": "how the save was read",
+    "denominator": "what this value is divided by",
+    "guardrail": "allowed difference",
+    "trajectory": "progress toward the target",
+    "coefficient": "recipe amount",
+    "provenance": "source details",
+    "ledger": "history, records, or source details",
+    "bounded": "limited, safe, or omitted when the limit is not useful to the player"
+  },
+  "implementation_terms": [
+    "SQLite",
+    "DuckDB",
+    "Rust",
+    "outbox",
+    "parser engine"
+  ],
+  "allowed_named_terms": {
+    "W&R": "Game abbreviation",
+    "RUB": "Recorded game currency",
+    "USD": "Recorded game currency",
+    "Sankey": "May appear only when introduced as a production-flow diagram"
+  },
+  "exceptions": []
+}

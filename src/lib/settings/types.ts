@@ -6,12 +6,15 @@ export type BackgroundWorkPriority = "gentle" | "balanced" | "finish_sooner";
 
 export type MotionPreference = "system" | "reduced";
 
+export type WordingMode = "player_friendly" | "technical";
+
 export type ApplicationPreferencesDraft = {
   storage_patience_preset: StoragePatiencePreset;
   custom_storage_patience_seconds: number | null;
   background_work_priority: BackgroundWorkPriority;
   text_scale_percent: 100 | 125 | 150 | 175 | 200;
   motion_preference: MotionPreference;
+  wording_mode: WordingMode;
   automatic_observation_enabled: boolean;
 };
 

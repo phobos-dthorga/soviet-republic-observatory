@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { activeLocale, translation } from "../i18n/runtime";
+  import { sourceLanguagePack } from "../i18n/catalog";
+  import {
+    activeLanguagePackId,
+    activeLocale,
+    translation,
+  } from "../i18n/runtime";
   import { activeTheme } from "../theme/runtime";
   import { notify } from "../notifications/service";
   import {
@@ -58,13 +63,14 @@
 
   function fallbackPreferences(): ApplicationPreferences {
     return {
-      schema_version: 1,
+      schema_version: 2,
       storage_patience_preset: "balanced",
       custom_storage_patience_seconds: null,
       effective_storage_patience_seconds: 60,
       background_work_priority: "gentle",
       text_scale_percent: 100,
       motion_preference: "system",
+      wording_mode: "player_friendly",
       automatic_observation_enabled: setup?.automatic_observer.enabled ?? false,
     };
   }
@@ -81,6 +87,7 @@
           background_work_priority: view.preferences.background_work_priority,
           text_scale_percent: view.preferences.text_scale_percent,
           motion_preference: view.preferences.motion_preference,
+          wording_mode: view.preferences.wording_mode,
           automatic_observation_enabled:
             view.preferences.automatic_observation_enabled,
         }),
@@ -96,6 +103,7 @@
       background_work_priority: preferences.background_work_priority,
       text_scale_percent: preferences.text_scale_percent,
       motion_preference: preferences.motion_preference,
+      wording_mode: preferences.wording_mode,
       automatic_observation_enabled: preferences.automatic_observation_enabled,
     };
   }
@@ -432,7 +440,26 @@
                   >
                 </select>
               </label>
+              <label class="setting-row">
+                <span>
+                  <strong>{$translation("settings-wording-style")}</strong>
+                  <small>{$translation("settings-wording-style-detail")}</small>
+                </span>
+                <select bind:value={draft.wording_mode}>
+                  <option value="player_friendly"
+                    >{$translation("settings-wording-player")}</option
+                  >
+                  <option value="technical"
+                    >{$translation("settings-wording-technical")}</option
+                  >
+                </select>
+              </label>
             </div>
+            {#if $activeLanguagePackId !== sourceLanguagePack.id}
+              <GuidanceSurface kind="help" layout="compact">
+                <p>{$translation("settings-wording-community-fallback")}</p>
+              </GuidanceSurface>
+            {/if}
           {/if}
         </section>
 

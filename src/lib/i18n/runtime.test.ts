@@ -5,6 +5,7 @@ import {
   activeDirection,
   activeLocale,
   applyLanguage,
+  applyWordingMode,
   translate,
 } from "./runtime";
 import type { LanguagePackManifest } from "./types";
@@ -26,6 +27,7 @@ const partial: LanguagePackManifest = {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  applyWordingMode("player_friendly");
   applyLanguage(sourceLanguagePack);
 });
 
@@ -42,6 +44,20 @@ describe("translation runtime", () => {
     ).toContain("Titre");
     expect(get(activeLocale)).toBe("fr");
     expect(get(activeDirection)).toBe("right_to_left");
+  });
+
+  it("uses technical wording only with built-in English", () => {
+    applyLanguage(sourceLanguagePack);
+    applyWordingMode("technical");
+    expect(translate("settings-rebuild-action")).toBe(
+      "Rebuild analytical warehouse",
+    );
+
+    applyLanguage(partial);
+    expect(translate("settings-rebuild-action")).toBe(
+      sourceLanguagePack.messages["settings-rebuild-action"],
+    );
+    expect(translate("nav-briefing")).toBe("Rapport");
   });
 
   it("formats canonical plural branches", () => {
@@ -62,10 +78,14 @@ describe("translation runtime", () => {
     };
     vi.stubGlobal("document", { documentElement });
     applyLanguage(partial);
+    applyWordingMode("technical");
     expect(documentElement).toMatchObject({
       lang: "fr",
       dir: "rtl",
-      dataset: { languagePack: "community-fr-runtime" },
+      dataset: {
+        languagePack: "community-fr-runtime",
+        wordingMode: "technical",
+      },
     });
   });
 });

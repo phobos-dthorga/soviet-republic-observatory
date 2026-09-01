@@ -7,7 +7,7 @@ use crate::error::ObservatoryError;
 use crate::model::{
     APPLICATION_PREFERENCES_SCHEMA_VERSION, ApplicationPreferences, ApplicationPreferencesDraft,
     BackgroundWorkPriority, MAX_STORAGE_PATIENCE_SECONDS, MIN_STORAGE_PATIENCE_SECONDS,
-    MotionPreference, StoragePatiencePreset,
+    MotionPreference, StoragePatiencePreset, WordingMode,
 };
 
 const AUTOMATIC_OBSERVATION_KEY: &str = "automatic_observation_enabled";
@@ -16,6 +16,7 @@ const CUSTOM_STORAGE_PATIENCE_SECONDS_KEY: &str = "custom_storage_patience_secon
 const BACKGROUND_WORK_PRIORITY_KEY: &str = "background_work_priority";
 const TEXT_SCALE_PERCENT_KEY: &str = "interface_text_scale_percent";
 const MOTION_PREFERENCE_KEY: &str = "motion_preference";
+const WORDING_MODE_KEY: &str = "wording_mode";
 
 impl ObservatoryStorage {
     pub fn set_setting(&self, key: &str, value: &Path) -> Result<(), ObservatoryError> {
@@ -83,6 +84,10 @@ impl ObservatoryStorage {
             .as_deref()
             .and_then(parse_motion_preference)
             .unwrap_or_default();
+        let wording_mode = text_setting(&connection, WORDING_MODE_KEY)?
+            .as_deref()
+            .and_then(parse_wording_mode)
+            .unwrap_or_default();
 
         Ok(application_preferences(
             preset,
@@ -90,6 +95,7 @@ impl ObservatoryStorage {
             background_work_priority,
             text_scale_percent,
             motion_preference,
+            wording_mode,
             automatic_observation_enabled,
         ))
     }
@@ -123,6 +129,10 @@ impl ObservatoryStorage {
                 MOTION_PREFERENCE_KEY,
                 motion_preference_name(draft.motion_preference).to_owned(),
             ),
+            (
+                WORDING_MODE_KEY,
+                wording_mode_name(draft.wording_mode).to_owned(),
+            ),
         ] {
             set_text_setting_in(&transaction, key, &value)?;
         }
@@ -146,6 +156,7 @@ impl ObservatoryStorage {
             draft.background_work_priority,
             draft.text_scale_percent,
             draft.motion_preference,
+            draft.wording_mode,
             draft.automatic_observation_enabled,
         ))
     }
@@ -160,6 +171,7 @@ impl ObservatoryStorage {
             background_work_priority: BackgroundWorkPriority::Gentle,
             text_scale_percent: 100,
             motion_preference: MotionPreference::System,
+            wording_mode: WordingMode::PlayerFriendly,
             automatic_observation_enabled,
         })
     }
@@ -218,6 +230,7 @@ fn application_preferences(
     background_work_priority: BackgroundWorkPriority,
     text_scale_percent: u16,
     motion_preference: MotionPreference,
+    wording_mode: WordingMode,
     automatic_observation_enabled: bool,
 ) -> ApplicationPreferences {
     let effective_storage_patience_seconds = match preset {
@@ -234,6 +247,7 @@ fn application_preferences(
         background_work_priority,
         text_scale_percent,
         motion_preference,
+        wording_mode,
         automatic_observation_enabled,
     }
 }
@@ -286,5 +300,20 @@ fn motion_preference_name(value: MotionPreference) -> &'static str {
     match value {
         MotionPreference::System => "system",
         MotionPreference::Reduced => "reduced",
+    }
+}
+
+fn parse_wording_mode(value: &str) -> Option<WordingMode> {
+    match value {
+        "player_friendly" => Some(WordingMode::PlayerFriendly),
+        "technical" => Some(WordingMode::Technical),
+        _ => None,
+    }
+}
+
+fn wording_mode_name(value: WordingMode) -> &'static str {
+    match value {
+        WordingMode::PlayerFriendly => "player_friendly",
+        WordingMode::Technical => "technical",
     }
 }

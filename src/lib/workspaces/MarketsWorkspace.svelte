@@ -377,6 +377,7 @@
         message: $translation("markets-recovery-busy-message"),
         consequence: $translation("recovery-retained-evidence-safety"),
         actionLabel: $translation("markets-recovery-retry-action"),
+        technicalDetails: { code, operation: "market_indexing" },
         run: () => runIndexing(true),
       };
     }
@@ -389,6 +390,7 @@
         message: $translation("markets-recovery-contract-message"),
         consequence: $translation("recovery-retained-evidence-safety"),
         actionLabel: $translation("markets-recovery-repair-action"),
+        technicalDetails: { code, operation: "market_indexing_recovery" },
         run: async () => {
           await recoverMarketIndexing();
           await runIndexing(true);

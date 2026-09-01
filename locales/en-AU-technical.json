@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "source_locale": "en-AU",
+  "source_catalog_version": 1,
+  "source_catalog_revision": 45,
+  "messages": {
+    "settings-introduction": "Configure Observatory's private local sources, accessible presentation, and bounded background-work behaviour.",
+    "settings-recorder-priority-detail": "These preferences change how patiently and quickly resumable maintenance runs. They cannot weaken evidence checks, database limits, or recorder priority.",
+    "settings-maintenance-eyebrow": "Content-addressed analytical cache",
+    "settings-rebuild-action": "Rebuild analytical warehouse",
+    "settings-rebuild-confirm-title": "Rebuild derived analytics?",
+    "settings-rebuild-confirm-detail": "Observations, branches, interpretations, settings, and save files remain unchanged. DuckDB-derived analytics are cleared first and then recreated from SQLite's authoritative outbox; large histories may be temporarily unavailable.",
+    "settings-rebuild-confirm-action": "Queue full rebuild",
+    "settings-cache-detail": "Storage contract v{ $contract }. The latest run retried { $retries } times and waited about { $seconds } seconds for local storage."
+  }
+}
