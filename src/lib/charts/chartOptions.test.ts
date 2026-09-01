@@ -5,6 +5,7 @@ import {
   expandedGameDayValues,
   expandedValues,
   formatGameDayValue,
+  gameDayDomain,
   optionForChart,
   provenanceForSeries,
 } from "./chartOptions";
@@ -70,17 +71,80 @@ describe("chart options", () => {
     const option = optionForChart(gameDaySpec) as {
       xAxis: {
         type: string;
+        scale: boolean;
+        min: number;
+        max: number;
         axisLabel: { formatter: (value: number) => string };
       };
       series: Array<{ data: ReturnType<typeof expandedGameDayValues> }>;
     };
 
     expect(option.xAxis.type).toBe("value");
+    expect(option.xAxis.scale).toBe(true);
+    expect(option.xAxis.min).toBe(723056);
+    expect(option.xAxis.max).toBe(723077);
     expect(option.xAxis.axisLabel.formatter(1981 * 365 + 5)).toBe("1981 · 005");
     expect(option.series[0].data).toEqual(
       expandedGameDayValues(gameDaySpec.series[0].points),
     );
     expect(formatGameDayValue(1980 * 365 + 364)).toBe("1980 · 364");
+  });
+
+  it("focuses a long market history on its recorded years instead of year zero", () => {
+    const start = 1960 * 365;
+    const end = 2018 * 365 + 256;
+    const points = Array.from({ length: 2968 }, (_, index) => ({
+      category: `Recorded save ${index + 1}`,
+      category_value: start + ((end - start) * index) / 2967,
+      value: 250 + index / 2,
+    }));
+    const spec: ChartSpec = {
+      ...baseSpec,
+      category_axis_scale: "game_day",
+      series: [{ ...baseSpec.series[0], points }],
+    };
+    const option = optionForChart(spec) as {
+      xAxis: { min: number; max: number; scale: boolean };
+    };
+
+    expect(option.xAxis.scale).toBe(true);
+    expect(option.xAxis.min).toBe(start - 90);
+    expect(option.xAxis.max).toBe(end + 90);
+    expect(start / (option.xAxis.max - option.xAxis.min)).toBeGreaterThan(30);
+  });
+
+  it("gives a single dated save a readable local window", () => {
+    const day = 2018 * 365 + 256;
+    expect(
+      gameDayDomain([
+        {
+          id: "single",
+          label: "Single save",
+          points: [{ category: "2018 · 256", category_value: day, value: 1 }],
+        },
+      ]),
+    ).toEqual({ min: day - 30, max: day + 30 });
+  });
+
+  it("derives one shared date window across every series", () => {
+    expect(
+      gameDayDomain([
+        {
+          id: "early",
+          label: "Early",
+          points: [
+            { category: "1960 · 000", category_value: 715400, value: 1 },
+          ],
+        },
+        {
+          id: "late",
+          label: "Late",
+          points: [
+            { category: "2018 · 256", category_value: 736826, value: 2 },
+          ],
+        },
+      ]),
+    ).toEqual({ min: 715310, max: 736916 });
   });
 
   it("condenses long textual series without losing extrema or gaps", () => {

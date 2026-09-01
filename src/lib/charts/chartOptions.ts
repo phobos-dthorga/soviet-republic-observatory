@@ -39,6 +39,51 @@ export type PositionedChartValue = {
   value: [number, number | null];
 };
 
+export type GameDayDomain = {
+  min: number;
+  max: number;
+};
+
+const GAME_DAY_SINGLE_POINT_PADDING = 30;
+const GAME_DAY_MINIMUM_PADDING = 7;
+const GAME_DAY_MAXIMUM_PADDING = 90;
+const GAME_DAY_PADDING_RATIO = 0.02;
+
+/**
+ * Keeps a dated chart focused on the saves it actually contains. ECharts value
+ * axes otherwise include zero, which can compress a modern republic's entire
+ * history into a sliver at the right edge of the plot.
+ */
+export function gameDayDomain(series: ChartSeries[]): GameDayDomain | null {
+  const values = series.flatMap((item) =>
+    item.points
+      .map((point) => point.category_value)
+      .filter(
+        (value): value is number =>
+          value !== undefined && Number.isFinite(value),
+      ),
+  );
+  if (values.length === 0) return null;
+
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  if (minimum === maximum) {
+    return {
+      min: minimum - GAME_DAY_SINGLE_POINT_PADDING,
+      max: maximum + GAME_DAY_SINGLE_POINT_PADDING,
+    };
+  }
+
+  const padding = Math.min(
+    GAME_DAY_MAXIMUM_PADDING,
+    Math.max(
+      GAME_DAY_MINIMUM_PADDING,
+      (maximum - minimum) * GAME_DAY_PADDING_RATIO,
+    ),
+  );
+  return { min: minimum - padding, max: maximum + padding };
+}
+
 export function expandedGameDayValues(
   points: ChartPoint[],
   noObservationLabel = "no observation",
@@ -128,6 +173,7 @@ export function optionForChart(
   const horizontal = spec.kind === "bar" && spec.orientation === "horizontal";
   const positionedGameDays =
     spec.category_axis_scale === "game_day" && !horizontal;
+  const datedDomain = positionedGameDays ? gameDayDomain(spec.series) : null;
   const categoryAxis = {
     type: "category",
     name: horizontal ? undefined : spec.category_axis_label,
@@ -147,6 +193,9 @@ export function optionForChart(
   };
   const gameDayAxis = {
     type: "value",
+    scale: true,
+    min: datedDomain?.min,
+    max: datedDomain?.max,
     name: spec.category_axis_label,
     nameLocation: "middle",
     nameGap: 31,
