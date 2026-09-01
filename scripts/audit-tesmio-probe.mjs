@@ -12,6 +12,14 @@ const verifier = readFileSync(
   resolve(root, "verify-observation-only.ps1"),
   "utf8",
 );
+const downloader = readFileSync(
+  resolve("src-tauri/src/research_source_download.rs"),
+  "utf8",
+);
+const setupService = readFileSync(
+  resolve("src-tauri/src/research_setup.rs"),
+  "utf8",
+);
 const failures = [];
 
 const required = [
@@ -81,6 +89,44 @@ for (const marker of [
   }
 }
 
+const requiredDownloadBoundary = [
+  'const DOWNLOAD_HOST: &str = "codeload.github.com"',
+  'const DOWNLOAD_PATH_PREFIX: &str = "/MaxLegend/TesmioLoader/zip/"',
+  "Policy::none()",
+  ".https_only(true)",
+  "Duration::from_secs(30)",
+  "const MAX_TRANSFER_BYTES: u64 = 8 * 1024 * 1024",
+  '"src/tesmio_plugin.h"',
+  '"src/tesmio_api.h"',
+  '"LICENSE"',
+  '"observatory-provenance.json"',
+];
+for (const marker of requiredDownloadBoundary) {
+  if (!downloader.includes(marker)) {
+    failures.push(`reviewed-source downloader is missing ${marker}`);
+  }
+}
+for (const marker of [
+  'pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a"',
+  "pub const RESEARCH_NOTICE_REVISION: u32 = 2",
+  '"d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49"',
+  '"33c9fae4acb1041708c7b1b4675b0eb4740f0af737e7a1968c0acb0c325fff3c"',
+  "reviewed_header_hash",
+]) {
+  if (!setupService.includes(marker)) {
+    failures.push(`research setup is missing ${marker}`);
+  }
+}
+if (
+  /pub(?:\(crate\))?\s+fn\s+download_reviewed_source\s*\([^)]*(?:url|uri)/s.test(
+    downloader,
+  )
+) {
+  failures.push(
+    "reviewed-source downloader exposes an arbitrary URL parameter",
+  );
+}
+
 if (failures.length) {
   console.error("Tesmio probe source audit failed:");
   failures.forEach((failure) => console.error(`- ${failure}`));
@@ -88,5 +134,5 @@ if (failures.length) {
 }
 
 console.log(
-  "Tesmio probe audit passed: one chained observation hook, fixed output, no known game/save/database/network write surface, and a fail-closed observation-only loader profile.",
+  "Tesmio audit passed: the probe has one observation hook and no known game/save/database/network write surface; optional source acquisition is pinned to one reviewed HTTPS revision with no redirects or arbitrary URL.",
 );

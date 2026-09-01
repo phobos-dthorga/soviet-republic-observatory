@@ -21,6 +21,7 @@ mod recorder_service;
 mod republic_brief;
 mod republic_plan;
 mod research_setup;
+mod research_source_download;
 mod save_archive;
 mod setup_discovery;
 mod stats_parser;
@@ -78,7 +79,7 @@ pub fn run() {
             );
             app.manage(AppState {
                 application: Arc::clone(&application),
-                research_setup: Arc::new(ResearchSetupService::discover()),
+                research_setup: Arc::new(ResearchSetupService::discover(&data_directory)),
                 ui_review: ui_review.context.clone(),
             });
             if !ui_review.context.enabled {
@@ -101,6 +102,8 @@ pub fn run() {
             commands::get_research_setup,
             commands::set_research_notice_accepted,
             commands::configure_research_tesmio_checkout,
+            commands::download_reviewed_tesmio_source,
+            commands::get_research_source_download_progress,
             commands::get_research_build_progress,
             commands::build_research_probe,
             commands::get_setup_state,

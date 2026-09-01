@@ -29,16 +29,21 @@ repository-owned build recipe, bounds and hashes the resulting DLL, and
 sanitises its build log. SQLite owns notice acceptance, checkout selection,
 artifact identity, build time, and cue dismissal state.
 
-The assistant does not download or install sources or tools, elevate, configure
-TesmioLoader, inject code, launch W&R, run the probe, or import telemetry. The
-normal save recorder remains independent.
+The assistant may download source only after the player accepts the current
+research notice and confirms the GitHub connection. The request is fixed to one
+reviewed commit, redirects are disabled, and the host retains only the exact
+reviewed headers, licence, and provenance. The assistant does not download a
+loader binary, install tools, elevate, configure TesmioLoader, inject code,
+launch W&R, run the probe, or import telemetry. The normal save recorder remains
+independent.
 
 ## Consequences
 
 - Guidance can be reused without copying animation or persistence logic.
 - Every build rejection ends in a visible failed progress state.
-- The reviewed checkout remains a user-supplied local prerequisite.
-- A packaged app without the repository-owned probe source reports that
-  prerequisite as unavailable instead of attempting a network repair.
+- The reviewed checkout can be supplied manually or created by the one
+  explicitly confirmed, allowlisted source download.
+- Offline and rejected downloads preserve the manual workflow and every
+  previously built artifact.
 - Building a DLL is not evidence that it was installed, run, or safe on an
   unreviewed game executable.

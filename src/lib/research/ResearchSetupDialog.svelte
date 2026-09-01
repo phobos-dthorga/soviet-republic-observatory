@@ -4,7 +4,7 @@
   import { replayAttentionCue } from "../attention/service";
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
-  import { notify } from "../notifications/service";
+  import { notify, openRecoveryProposal } from "../notifications/service";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { observeLatestTaskProgress } from "../tasks/progress";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
@@ -13,14 +13,21 @@
     buildResearchProbe,
     chooseResearchCheckout,
     configureResearchCheckout,
+    downloadReviewedTesmioSource,
     getResearchBuildProgress,
+    getResearchSourceDownloadProgress,
     getResearchSetup,
     listenForResearchBuildProgress,
+    listenForResearchSourceDownloadProgress,
     researchDesktopAvailable,
     setResearchNoticeAccepted,
   } from "./desktopClient";
   import { researchBuildProgressView } from "./progress";
-  import type { ResearchBuildProgress, ResearchSetupStatus } from "./types";
+  import type {
+    ResearchBuildProgress,
+    ResearchSetupStatus,
+    ResearchSourceDownloadProgress,
+  } from "./types";
 
   let {
     open,
@@ -40,10 +47,12 @@
 
   let status = $state<ResearchSetupStatus | null>(null);
   let progress = $state<ResearchBuildProgress | null>(null);
+  let downloadProgress = $state<ResearchSourceDownloadProgress | null>(null);
   let busy = $state(false);
   let errorMessage = $state("");
   let errorCode = $state("");
   let stopProgress: (() => void) | null = null;
+  let stopDownloadProgress: (() => void) | null = null;
   let researchContent = $state<HTMLDivElement>();
   let researchResults = $state<HTMLDivElement>();
   const progressView = $derived(
@@ -57,6 +66,8 @@
     if (!open) {
       stopProgress?.();
       stopProgress = null;
+      stopDownloadProgress?.();
+      stopDownloadProgress = null;
       return;
     }
     untrack(() => {
@@ -65,6 +76,8 @@
     return () => {
       stopProgress?.();
       stopProgress = null;
+      stopDownloadProgress?.();
+      stopDownloadProgress = null;
     };
   });
 
@@ -80,9 +93,13 @@
       (latest) => (progress = latest),
       (error) => (errorMessage = describeError(error)),
     );
+    stopDownloadProgress = await listenForResearchSourceDownloadProgress(
+      (latest) => (downloadProgress = latest),
+    );
     try {
       status = await getResearchSetup();
       progress = status.progress;
+      downloadProgress = await getResearchSourceDownloadProgress();
       await tick();
       researchContent?.scrollTo({ top: 0 });
     } catch (error) {
@@ -188,6 +205,50 @@
           operation: "research_checkout",
         },
       });
+    } finally {
+      busy = false;
+    }
+  }
+
+  function confirmDownload(): void {
+    openRecoveryProposal({
+      title: $translation("research-setup-download-confirm-title"),
+      message: $translation("research-setup-download-confirm-detail"),
+      consequence: $translation("research-setup-download-confirm-safety"),
+      actionLabel: $translation("research-setup-download-confirm-action"),
+      run: downloadSource,
+    });
+  }
+
+  async function downloadSource(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    errorCode = "";
+    try {
+      status = await downloadReviewedTesmioSource();
+      downloadProgress = status.download_progress;
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-setup-download-success"),
+        tone: "success",
+        dedupeKey: "research.source.download",
+      });
+    } catch (error) {
+      downloadProgress = await getResearchSourceDownloadProgress().catch(
+        () => downloadProgress,
+      );
+      errorMessage = describeError(error);
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-setup-download-failure"),
+        tone: "error",
+        dedupeKey: "research.source.download",
+        technicalDetails: {
+          code: errorCode,
+          operation: "research_source_download",
+        },
+      });
+      throw error;
     } finally {
       busy = false;
     }
@@ -373,7 +434,9 @@
               <p>{$translation("research-setup-checkout-detail")}</p>
               {#if status?.checkout_name}
                 <p class="safe-location">
-                  {$translation("research-setup-selected-folder")}
+                  {status.source_origin === "observatory_downloaded"
+                    ? $translation("research-setup-managed-source")
+                    : $translation("research-setup-selected-folder")}
                   <code>{status.checkout_name}</code>
                 </p>
               {/if}
@@ -384,7 +447,39 @@
                   onclick={() => void selectCheckout()}
                   >{$translation("research-setup-choose-checkout")}</button
                 >
+                <button
+                  type="button"
+                  class="primary"
+                  disabled={busy ||
+                    !status?.can_download ||
+                    !researchDesktopAvailable()}
+                  onclick={confirmDownload}
+                  >{status?.source_origin === "observatory_downloaded" &&
+                  status?.checkout_state !== "reviewed"
+                    ? $translation("research-setup-repair-download")
+                    : $translation("research-setup-download-action")}</button
+                >
               </div>
+              <p class="download-privacy">
+                {$translation("research-setup-download-privacy-short")}
+              </p>
+              {#if downloadProgress?.state === "running"}
+                <div class="source-download-progress" aria-live="polite">
+                  <strong
+                    >{$translation("research-setup-download-running")}</strong
+                  >
+                  <progress
+                    max="100"
+                    value={downloadProgress.progress_percent ?? undefined}
+                  ></progress>
+                  <span>
+                    {formatNumber(
+                      downloadProgress.transferred_bytes,
+                      $activeLocale,
+                    )} B
+                  </span>
+                </div>
+              {/if}
             </div>
             <strong
               >{status?.checkout_state === "reviewed"
@@ -719,6 +814,25 @@
     flex-wrap: wrap;
     gap: 6px;
     margin: 2px 0 8px;
+  }
+  .download-privacy {
+    margin-bottom: 0;
+  }
+  .source-download-progress {
+    display: grid;
+    grid-template-columns: max-content minmax(120px, 1fr) max-content;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    border: 1px solid var(--colour-line-faint);
+    padding: 8px;
+    color: var(--colour-text);
+    background: var(--colour-surface);
+    font-size: var(--type-caption);
+  }
+  .source-download-progress progress {
+    width: 100%;
+    accent-color: var(--colour-observed);
   }
   dl {
     display: grid;

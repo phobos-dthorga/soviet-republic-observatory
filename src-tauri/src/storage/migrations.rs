@@ -94,6 +94,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "versioned content-addressed market storage",
         include_str!("../../migrations/0018_market_storage_contract.sql"),
     ),
+    (
+        19,
+        "reviewed research source origin",
+        include_str!("../../migrations/0019_research_source_origin.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

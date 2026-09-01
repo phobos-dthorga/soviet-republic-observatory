@@ -173,7 +173,6 @@ test("completed build reveals a whole result region without a clipped step", asy
   await expect(
     dialog.getByRole("heading", { name: "Research probe build complete" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Dismiss notification" }).click();
 
   const alignment = await dialog.evaluate((node) => {
     const content = node.querySelector(".research-content");
@@ -196,6 +195,12 @@ test("completed build reveals a whole result region without a clipped step", asy
   expect(alignment).not.toBeNull();
   expect(alignment?.resultsVisible).toBe(true);
   expect(alignment?.clippedStepHeadings).toBe(0);
+  const completedDialogBox = await dialog.boundingBox();
+  expect(completedDialogBox).not.toBeNull();
+  expect((completedDialogBox?.y ?? -1) >= 0).toBe(true);
+  expect(
+    (completedDialogBox?.y ?? 0) + (completedDialogBox?.height ?? 0),
+  ).toBeLessThanOrEqual(1000);
   await expect(dialog).toHaveScreenshot("research-build-complete.png", {
     animations: "disabled",
     caret: "hide",
@@ -315,7 +320,7 @@ test("enabled workspaces use the shared guidance surface without disguising cont
   );
   await page.getByRole("button", { name: "Close" }).last().click();
 
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
   await page.getByRole("button", { name: /^Validated theme/ }).click();
   await expect(page.locator(".theme-boundary")).toHaveAttribute(
     "data-guidance-surface",
@@ -323,11 +328,12 @@ test("enabled workspaces use the shared guidance surface without disguising cont
   );
   await page.getByRole("button", { name: "Close" }).last().click();
 
-  await page.getByRole("button", { name: "Save observer status" }).click();
+  await page.getByRole("button", { name: "Open Save Observer" }).click();
   await expect(page.locator(".observer-browser-state")).toHaveAttribute(
     "data-guidance-surface",
     "instruction",
   );
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
 
   await page.locator(".diagnostics-button").evaluate((button) => {

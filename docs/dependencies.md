@@ -22,16 +22,19 @@ keeping the Observatory independent and small.
 | `duckdb`         | MIT        | Definition catalogue and analytical warehouse         | Pinned bundled engine; no extension autoload/install                  |
 | `sha2`           | MIT/Apache | Payload and shared-prefix content identity            | Deduplication/provenance, not security attestation                    |
 | `serde`          | MIT/Apache | Versioned command and storage models                  | Bounded application-owned structures                                  |
+| `reqwest`        | MIT/Apache | Optional reviewed-source HTTPS download               | One fixed GitHub host/path; no redirects or arbitrary URLs            |
 | WebdriverIO      | MIT        | Packaged Windows interface review                     | Development only; fixed scenarios and element/keyboard operations     |
 | Tauri service    | MIT        | Tauri capability contract for native review           | Development only; external driver, no in-app automation server        |
 | Axe WebDriverIO  | MPL-2.0    | Native WCAG audit                                     | Development only; local fixture/live-clone presentation               |
 | `tsx`            | MIT        | Execute the typed native review harness               | Development only                                                      |
 
 TesmioLoader is **not** an application dependency. The repository contains one
-optional GPL-3.0-only companion source experiment that compiles against a
-separately obtained TesmioLoader checkout. No TesmioLoader source, header,
-binary, installer, or plugin DLL is bundled in the desktop application. The
-main application remains MIT licensed and fully functional without it. See the
+optional GPL-3.0-only companion source experiment. A player may select a
+reviewed local checkout or explicitly ask Observatory to download the exact
+reviewed source revision from GitHub. The managed copy retains only the two
+reviewed headers, upstream licence, and a provenance record. No TesmioLoader
+binary, installer, or plugin DLL is bundled or downloaded. The main application
+remains MIT licensed and fully functional without it. See the
 [legal and third-party notice](legal-and-third-party-notices.md) and
 [ADR-0019](architecture/decisions/0019-optional-read-only-native-research-bridge.md).
 

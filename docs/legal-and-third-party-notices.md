@@ -18,9 +18,12 @@ assets, save archives, installed definitions, or proprietary binaries.
 Observed-save metadata, normalized facts, settings, catalogue generations,
 planning overlays, language packs, themes, and analytical databases remain
 local to the player's computer. The current application has no required
-network service and keeps no credentials. Its SQLite and DuckDB files are
-therefore intentionally unencrypted; future credentials, if any, require an
-operating-system credential vault and a new threat model.
+network service and keeps no credentials. Its only optional network action is
+an explicitly confirmed download of one reviewed TesmioLoader source revision
+from GitHub. GitHub receives normal connection details, including the player's
+IP address. Its SQLite and DuckDB files are therefore intentionally
+unencrypted; future credentials, if any, require an operating-system credential
+vault and a new threat model.
 
 ## Software licences
 
@@ -28,9 +31,9 @@ The main Republic Observatory application and its original source are licensed
 under the repository's MIT License.
 
 The optional source in `research/tesmioloader-probe/observatory_probe.cpp` is
-GPL-3.0-only. It is a separately built companion intended to compile against a
-separately obtained TesmioLoader checkout. TesmioLoader is separate GPL software
-owned by its upstream contributors and governed by its own repository, licence,
+GPL-3.0-only. It is a separately built companion intended to compile against
+reviewed TesmioLoader headers. TesmioLoader is separate GPL software owned by
+its upstream contributors and governed by its own repository, licence,
 installation instructions, and warranty terms. Republic Observatory does not
 vendor, bundle, silently install, or activate TesmioLoader.
 
@@ -39,11 +42,19 @@ including supplying the corresponding source and complete licence text. The
 complete GPL text is included as `research/tesmioloader-probe/COPYING`. The
 companion is not included in the Observatory desktop application binary.
 
-The in-application Experimental Research Setup assistant may compile the
-separately licensed probe from local reviewed sources. It does not obtain or
-install TesmioLoader, inject into the game, launch W&R, or run the probe. A
-successful build records only the bounded artifact identity and must not be
-interpreted as installation, activation, compatibility, or a sandbox claim.
+After the revised research notice and a separate confirmation, the
+in-application Experimental Research Setup assistant may download source for
+TesmioLoader commit `3baa141f9f08921aea9c95f0a400289cabd9960a` from GitHub.
+It validates the two reviewed header identities, retains only those headers,
+the upstream licence, and a provenance record, then discards the rest of the
+archive. Redirects, arbitrary URLs, loader binaries, installers, and automatic
+execution are not allowed. Manual local selection remains available offline.
+
+The assistant may compile the separately licensed probe from those reviewed
+headers. It does not install TesmioLoader, inject into the game, launch W&R, or
+run the probe. A successful build records only the bounded artifact identity
+and must not be interpreted as installation, activation, compatibility, or a
+sandbox claim.
 
 ## Read-only research contract
 

@@ -1,8 +1,8 @@
-//! Bounded native build service for the optional GPL research companion.
+//! Bounded native setup and build service for the optional GPL research companion.
 //!
-//! This service never downloads, installs, injects, launches W&R, or accepts an
-//! arbitrary command. It validates one reviewed TesmioLoader header pair and
-//! invokes the repository-owned probe build script with one canonical path.
+//! The only network operation retrieves source from one reviewed upstream commit.
+//! It never downloads binaries, installs, injects, launches W&R, or accepts an
+//! arbitrary command. The build still requires the exact reviewed header pair.
 
 use std::fs;
 use std::io::Read;
@@ -17,14 +17,15 @@ use tauri::{AppHandle, Emitter};
 
 use crate::diagnostics;
 use crate::error::ObservatoryError;
+use crate::research_source_download::{DownloadedResearchSource, download_reviewed_source};
 use crate::storage::{StoredResearchSetup, now_ms};
 
-pub const RESEARCH_NOTICE_REVISION: u32 = 1;
+pub const RESEARCH_NOTICE_REVISION: u32 = 2;
 pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a";
-const REVIEWED_PLUGIN_HEADER_HASH: &str =
-    "f31fa216c8cdf3a3cfe1122857dc9d2794f756adb8ae248a51905ca395de3c6a";
-const REVIEWED_API_HEADER_HASH: &str =
-    "5daaf51ec1f6a5f279868bb039f01719931dfba0be69312a75863073ceac04a6";
+pub(crate) const REVIEWED_PLUGIN_HEADER_HASH: &str =
+    "d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49";
+pub(crate) const REVIEWED_API_HEADER_HASH: &str =
+    "33c9fae4acb1041708c7b1b4675b0eb4740f0af737e7a1968c0acb0c325fff3c";
 const MAX_HEADER_BYTES: u64 = 256 * 1024;
 const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_LOG_LINES: usize = 80;
@@ -49,6 +50,54 @@ pub enum ResearchArtifactState {
     Missing,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSourceOrigin {
+    ManualCheckout,
+    ObservatoryDownloaded,
+}
+
+impl ResearchSourceOrigin {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ManualCheckout => "manual_checkout",
+            Self::ObservatoryDownloaded => "observatory_downloaded",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSourceDownloadState {
+    Idle,
+    Running,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ResearchSourceDownloadProgress {
+    pub state: ResearchSourceDownloadState,
+    pub progress_percent: Option<u8>,
+    pub transferred_bytes: u64,
+    pub expected_bytes: Option<u64>,
+    pub updated_at_ms: Option<i64>,
+    pub error_code: Option<String>,
+}
+
+impl Default for ResearchSourceDownloadProgress {
+    fn default() -> Self {
+        Self {
+            state: ResearchSourceDownloadState::Idle,
+            progress_percent: None,
+            transferred_bytes: 0,
+            expected_bytes: None,
+            updated_at_ms: None,
+            error_code: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ResearchSetupStatus {
     pub notice_revision: u32,
@@ -56,6 +105,7 @@ pub struct ResearchSetupStatus {
     pub source_available: bool,
     pub compiler_available: bool,
     pub checkout_state: ResearchCheckoutState,
+    pub source_origin: Option<ResearchSourceOrigin>,
     pub checkout_name: Option<String>,
     pub reviewed_tesmio_revision: String,
     pub probe_built: bool,
@@ -65,9 +115,11 @@ pub struct ResearchSetupStatus {
     pub output_display_path: Option<String>,
     pub last_built_at_ms: Option<i64>,
     pub can_build: bool,
+    pub can_download: bool,
     pub blockers: Vec<String>,
     pub warnings: Vec<String>,
     pub progress: ResearchBuildProgress,
+    pub download_progress: ResearchSourceDownloadProgress,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -131,21 +183,36 @@ impl Default for ResearchBuildProgress {
 #[derive(Debug)]
 pub struct ResearchSetupService {
     source_root: Option<PathBuf>,
+    managed_source_root: PathBuf,
     progress: Mutex<ResearchBuildProgress>,
+    download_progress: Mutex<ResearchSourceDownloadProgress>,
     building: AtomicBool,
+    downloading: AtomicBool,
 }
 
 impl ResearchSetupService {
-    pub fn discover() -> Self {
+    pub fn discover(data_directory: &Path) -> Self {
         Self {
             source_root: discover_source_root(),
+            managed_source_root: data_directory
+                .join("research")
+                .join("tesmioloader-reviewed"),
             progress: Mutex::new(ResearchBuildProgress::default()),
+            download_progress: Mutex::new(ResearchSourceDownloadProgress::default()),
             building: AtomicBool::new(false),
+            downloading: AtomicBool::new(false),
         }
     }
 
     pub fn progress(&self) -> ResearchBuildProgress {
         self.progress
+            .lock()
+            .map(|progress| progress.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn download_progress(&self) -> ResearchSourceDownloadProgress {
+        self.download_progress
             .lock()
             .map(|progress| progress.clone())
             .unwrap_or_default()
@@ -174,6 +241,14 @@ impl ResearchSetupService {
             Some(_) => ResearchCheckoutState::Unsupported,
         };
         let notice_accepted = stored.accepted_notice_revision == RESEARCH_NOTICE_REVISION;
+        let source_origin = match stored.tesmio_source_origin.as_deref() {
+            Some("observatory_downloaded") => Some(ResearchSourceOrigin::ObservatoryDownloaded),
+            Some("manual_checkout") => Some(ResearchSourceOrigin::ManualCheckout),
+            _ if stored.tesmio_checkout_path.is_some() => {
+                Some(ResearchSourceOrigin::ManualCheckout)
+            }
+            _ => None,
+        };
         let artifact = self.source_root.as_deref().and_then(inspect_artifact);
         let mut blockers = Vec::new();
         let mut warnings = Vec::new();
@@ -191,6 +266,11 @@ impl ResearchSetupService {
             ResearchCheckoutState::Missing => blockers.push("checkout_missing".to_owned()),
             ResearchCheckoutState::Unsupported => blockers.push("checkout_unsupported".to_owned()),
             ResearchCheckoutState::Reviewed => {}
+        }
+        if source_origin == Some(ResearchSourceOrigin::ObservatoryDownloaded)
+            && checkout_state != ResearchCheckoutState::Reviewed
+        {
+            warnings.push("downloaded_source_needs_repair".to_owned());
         }
         let is_building = self.building.load(Ordering::Acquire);
         if is_building {
@@ -223,6 +303,7 @@ impl ResearchSetupService {
             source_available,
             compiler_available,
             checkout_state,
+            source_origin,
             checkout_name: stored
                 .tesmio_checkout_path
                 .as_ref()
@@ -238,9 +319,96 @@ impl ResearchSetupService {
                 .map(|_| "research/tesmioloader-probe/build/observatory_probe.dll".to_owned()),
             last_built_at_ms: stored.last_built_at_ms,
             can_build: blockers.is_empty(),
+            can_download: notice_accepted && !self.downloading.load(Ordering::Acquire),
             blockers,
             warnings,
             progress: self.progress(),
+            download_progress: self.download_progress(),
+        }
+    }
+
+    pub fn download_source(
+        &self,
+        app: &AppHandle,
+        stored: &StoredResearchSetup,
+    ) -> Result<DownloadedResearchSource, ObservatoryError> {
+        if stored.accepted_notice_revision != RESEARCH_NOTICE_REVISION {
+            return Err(ObservatoryError::ResearchNoticeRequired);
+        }
+        if self
+            .downloading
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(ObservatoryError::CriticalTaskBusy);
+        }
+        self.update_download_progress(
+            app,
+            ResearchSourceDownloadProgress {
+                state: ResearchSourceDownloadState::Running,
+                progress_percent: Some(0),
+                transferred_bytes: 0,
+                expected_bytes: None,
+                updated_at_ms: Some(now_ms()),
+                error_code: None,
+            },
+        );
+        diagnostics::record(
+            "info",
+            "research_source_download_started",
+            "download_reviewed_tesmio_source",
+            "The reviewed TesmioLoader source download started.",
+        );
+        let result =
+            download_reviewed_source(&self.managed_source_root, |transferred, expected| {
+                let percent = expected
+                    .filter(|expected| *expected > 0)
+                    .map(|expected| ((transferred.saturating_mul(100) / expected).min(99)) as u8);
+                self.update_download_progress(
+                    app,
+                    ResearchSourceDownloadProgress {
+                        state: ResearchSourceDownloadState::Running,
+                        progress_percent: percent,
+                        transferred_bytes: transferred,
+                        expected_bytes: expected,
+                        updated_at_ms: Some(now_ms()),
+                        error_code: None,
+                    },
+                );
+            });
+        self.downloading.store(false, Ordering::Release);
+        match result {
+            Ok(source) => {
+                let mut progress = self.download_progress();
+                progress.state = ResearchSourceDownloadState::Complete;
+                progress.progress_percent = Some(100);
+                progress.updated_at_ms = Some(now_ms());
+                self.update_download_progress(app, progress);
+                diagnostics::record(
+                    "info",
+                    "research_source_download_complete",
+                    "download_reviewed_tesmio_source",
+                    &format!(
+                        "The reviewed source was validated and stored (archive {}, reused {}).",
+                        source.archive_hash, source.reused
+                    ),
+                );
+                Ok(source)
+            }
+            Err(error) => {
+                let mut progress = self.download_progress();
+                progress.state = ResearchSourceDownloadState::Failed;
+                progress.updated_at_ms = Some(now_ms());
+                progress.error_code = Some(error.code().to_owned());
+                self.update_download_progress(app, progress);
+                diagnostics::record(
+                    "warning",
+                    error.code(),
+                    "download_reviewed_tesmio_source",
+                    "The reviewed source download stopped safely. Existing source and probe files were unchanged.",
+                );
+                Err(error)
+            }
         }
     }
 
@@ -505,6 +673,13 @@ impl ResearchSetupService {
         }
         let _ = app.emit("research-setup-progress", progress);
     }
+
+    fn update_download_progress(&self, app: &AppHandle, progress: ResearchSourceDownloadProgress) {
+        if let Ok(mut current) = self.download_progress.lock() {
+            *current = progress.clone();
+        }
+        let _ = app.emit("research-source-download-progress", progress);
+    }
 }
 
 fn canonical_checkout_path(path: &Path) -> Result<PathBuf, ObservatoryError> {
@@ -574,20 +749,28 @@ fn checkout_state(path: Option<&Path>) -> ResearchCheckoutState {
     if !path.is_dir() {
         return ResearchCheckoutState::Missing;
     }
+    if checkout_matches_reviewed_headers(path) {
+        ResearchCheckoutState::Reviewed
+    } else {
+        ResearchCheckoutState::Unsupported
+    }
+}
+
+pub(crate) fn checkout_matches_reviewed_headers(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
     let plugin = path.join("src").join("tesmio_plugin.h");
     let api = path.join("src").join("tesmio_api.h");
-    match (
-        bounded_hash(&plugin, MAX_HEADER_BYTES),
-        bounded_hash(&api, MAX_HEADER_BYTES),
-    ) {
+    matches!(
+        (
+        bounded_reviewed_header_hash(&plugin, MAX_HEADER_BYTES),
+        bounded_reviewed_header_hash(&api, MAX_HEADER_BYTES),
+        ),
         (Some(plugin_hash), Some(api_hash))
             if plugin_hash == REVIEWED_PLUGIN_HEADER_HASH
-                && api_hash == REVIEWED_API_HEADER_HASH =>
-        {
-            ResearchCheckoutState::Reviewed
-        }
-        _ => ResearchCheckoutState::Unsupported,
-    }
+                && api_hash == REVIEWED_API_HEADER_HASH
+    )
 }
 
 fn compiler_ready() -> bool {
@@ -633,6 +816,16 @@ fn inspect_artifact(source_root: &Path) -> Option<BuildArtifact> {
 }
 
 fn bounded_hash(path: &Path, max_bytes: u64) -> Option<String> {
+    let bytes = bounded_read(path, max_bytes)?;
+    Some(sha256(&bytes))
+}
+
+fn bounded_reviewed_header_hash(path: &Path, max_bytes: u64) -> Option<String> {
+    let bytes = bounded_read(path, max_bytes)?;
+    Some(reviewed_header_hash(&bytes))
+}
+
+fn bounded_read(path: &Path, max_bytes: u64) -> Option<Vec<u8>> {
     let metadata = fs::symlink_metadata(path).ok()?;
     if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > max_bytes {
         return None;
@@ -646,12 +839,29 @@ fn bounded_hash(path: &Path, max_bytes: u64) -> Option<String> {
     if bytes.len() as u64 > max_bytes {
         return None;
     }
-    Some(
-        Sha256::digest(bytes)
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect(),
-    )
+    Some(bytes)
+}
+
+pub(crate) fn reviewed_header_hash(bytes: &[u8]) -> String {
+    let mut canonical = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'\r' && bytes.get(index + 1) == Some(&b'\n') {
+            canonical.push(b'\n');
+            index += 2;
+        } else {
+            canonical.push(bytes[index]);
+            index += 1;
+        }
+    }
+    sha256(&canonical)
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn sanitise_build_output(
@@ -687,7 +897,7 @@ mod tests {
     use super::{
         MAX_HEADER_BYTES, REVIEWED_API_HEADER_HASH, REVIEWED_PLUGIN_HEADER_HASH,
         ResearchCheckoutState, bounded_hash, canonical_checkout_path, checkout_state,
-        compiler_checkout_path, sanitise_build_output,
+        compiler_checkout_path, reviewed_header_hash, sanitise_build_output,
     };
 
     #[test]
@@ -716,6 +926,18 @@ mod tests {
         let oversized = directory.path().join("oversized");
         fs::write(&oversized, vec![0_u8; MAX_HEADER_BYTES as usize + 1]).expect("large fixture");
         assert!(bounded_hash(&oversized, MAX_HEADER_BYTES).is_none());
+    }
+
+    #[test]
+    fn reviewed_header_identity_is_stable_across_checkout_line_endings() {
+        assert_eq!(
+            reviewed_header_hash(b"first\nsecond\n"),
+            reviewed_header_hash(b"first\r\nsecond\r\n")
+        );
+        assert_ne!(
+            reviewed_header_hash(b"first\nsecond\n"),
+            reviewed_header_hash(b"first\nchanged\n")
+        );
     }
 
     #[cfg(windows)]
@@ -759,7 +981,8 @@ mod tests {
             .map(std::path::PathBuf::from)
             .expect("RO_REVIEWED_TESMIO_CHECKOUT");
         assert_eq!(checkout_state(Some(&path)), ResearchCheckoutState::Reviewed);
-        let service = super::ResearchSetupService::discover();
+        let data = tempfile::tempdir().expect("managed source root");
+        let service = super::ResearchSetupService::discover(data.path());
         service
             .validate_checkout(&path)
             .expect("status-approved checkout must pass build validation");

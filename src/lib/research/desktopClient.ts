@@ -1,7 +1,11 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { ResearchBuildProgress, ResearchSetupStatus } from "./types";
+import type {
+  ResearchBuildProgress,
+  ResearchSetupStatus,
+  ResearchSourceDownloadProgress,
+} from "./types";
 
 const browserProgress: ResearchBuildProgress = {
   task_id: "research_probe_build",
@@ -20,11 +24,12 @@ const browserProgress: ResearchBuildProgress = {
 };
 
 const browserStatus: ResearchSetupStatus = {
-  notice_revision: 1,
+  notice_revision: 2,
   notice_accepted: false,
   source_available: false,
   compiler_available: false,
   checkout_state: "not_selected",
+  source_origin: null,
   checkout_name: null,
   reviewed_tesmio_revision: "3baa141f9f08921aea9c95f0a400289cabd9960a",
   probe_built: false,
@@ -34,9 +39,18 @@ const browserStatus: ResearchSetupStatus = {
   output_display_path: null,
   last_built_at_ms: null,
   can_build: false,
+  can_download: false,
   blockers: ["desktop_required"],
   warnings: [],
   progress: browserProgress,
+  download_progress: {
+    state: "idle",
+    progress_percent: null,
+    transferred_bytes: 0,
+    expected_bytes: null,
+    updated_at_ms: null,
+    error_code: null,
+  },
 };
 
 export function researchDesktopAvailable(): boolean {
@@ -90,4 +104,26 @@ export function listenForResearchBuildProgress(
 
 export function buildResearchProbe(): Promise<ResearchSetupStatus> {
   return invoke<ResearchSetupStatus>("build_research_probe");
+}
+
+export function downloadReviewedTesmioSource(): Promise<ResearchSetupStatus> {
+  return invoke<ResearchSetupStatus>("download_reviewed_tesmio_source");
+}
+
+export function getResearchSourceDownloadProgress(): Promise<ResearchSourceDownloadProgress> {
+  return isTauri()
+    ? invoke<ResearchSourceDownloadProgress>(
+        "get_research_source_download_progress",
+      )
+    : Promise.resolve(structuredClone(browserStatus.download_progress));
+}
+
+export function listenForResearchSourceDownloadProgress(
+  accept: (progress: ResearchSourceDownloadProgress) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return Promise.resolve(() => undefined);
+  return listen<ResearchSourceDownloadProgress>(
+    "research-source-download-progress",
+    (event) => accept(event.payload),
+  );
 }

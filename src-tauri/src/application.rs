@@ -2026,8 +2026,13 @@ impl ObservatoryApplication {
         self.storage.set_research_notice_revision(revision)
     }
 
-    pub fn set_research_tesmio_checkout(&self, path: &Path) -> Result<(), ObservatoryError> {
-        self.storage.set_research_tesmio_checkout(path)
+    pub fn set_research_tesmio_checkout(
+        &self,
+        path: &Path,
+        source_origin: &str,
+    ) -> Result<(), ObservatoryError> {
+        self.storage
+            .set_research_tesmio_checkout(path, source_origin)
     }
 
     pub(crate) fn record_research_probe_build(

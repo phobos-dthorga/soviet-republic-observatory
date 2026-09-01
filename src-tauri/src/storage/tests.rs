@@ -1046,7 +1046,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        18
+        19
     );
     assert_eq!(
         migrated
@@ -1078,6 +1078,12 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
     connection
         .execute("DELETE FROM schema_migrations WHERE version >= 16", [])
         .expect("remove current migration markers");
+    connection
+        .execute(
+            "ALTER TABLE research_setup_state DROP COLUMN tesmio_source_origin",
+            [],
+        )
+        .expect("restore version fifteen research setup");
     connection
         .execute(
             "ALTER TABLE market_observation_coverage DROP COLUMN storage_contract_version",
@@ -1140,7 +1146,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        18
+        19
     );
     assert_eq!(
         connection
@@ -1273,7 +1279,7 @@ fn research_setup_state_persists_consent_checkout_and_build_identity() {
     let storage = ObservatoryStorage::initialise(database_path.clone()).expect("storage");
     storage.set_research_notice_revision(1).expect("notice");
     storage
-        .set_research_tesmio_checkout(&checkout)
+        .set_research_tesmio_checkout(&checkout, "manual_checkout")
         .expect("checkout");
     let hash = "a".repeat(64);
     storage
@@ -1284,6 +1290,10 @@ fn research_setup_state_persists_consent_checkout_and_build_identity() {
     let reopened = ObservatoryStorage::initialise(database_path).expect("reopened storage");
     let setup = reopened.research_setup().expect("setup");
     assert_eq!(setup.accepted_notice_revision, 1);
+    assert_eq!(
+        setup.tesmio_source_origin.as_deref(),
+        Some("manual_checkout")
+    );
     assert_eq!(
         setup.tesmio_checkout_path.as_deref(),
         Some(checkout.as_path())

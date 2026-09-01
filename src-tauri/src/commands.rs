@@ -22,6 +22,7 @@ use crate::model::{
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
+    ResearchSourceDownloadProgress, ResearchSourceOrigin,
 };
 use crate::setup_discovery::suggest_directory;
 use crate::theme::{ThemeInspection, ThemeStatus};
@@ -189,7 +190,9 @@ pub fn configure_research_tesmio_checkout(
             return Err(error.into());
         }
     };
-    state.application.set_research_tesmio_checkout(&canonical)?;
+    state
+        .application
+        .set_research_tesmio_checkout(&canonical, ResearchSourceOrigin::ManualCheckout.as_str())?;
     crate::diagnostics::record(
         "info",
         "research_checkout_reviewed",
@@ -203,6 +206,35 @@ pub fn configure_research_tesmio_checkout(
 #[tauri::command]
 pub fn get_research_build_progress(state: State<'_, AppState>) -> ResearchBuildProgress {
     state.research_setup.progress()
+}
+
+#[tauri::command]
+pub fn get_research_source_download_progress(
+    state: State<'_, AppState>,
+) -> ResearchSourceDownloadProgress {
+    state.research_setup.download_progress()
+}
+
+#[tauri::command]
+pub async fn download_reviewed_tesmio_source(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    let application = Arc::clone(&state.application);
+    let service = Arc::clone(&state.research_setup);
+    tauri::async_runtime::spawn_blocking(move || {
+        let stored = application.research_setup()?;
+        let source = service.download_source(&app, &stored)?;
+        application.set_research_tesmio_checkout(
+            &source.checkout_path,
+            ResearchSourceOrigin::ObservatoryDownloaded.as_str(),
+        )?;
+        let stored = application.research_setup()?;
+        Ok::<ResearchSetupStatus, ObservatoryError>(service.status(&stored))
+    })
+    .await
+    .map_err(|_| CommandError::from(ObservatoryError::ResearchSourceDownloadFailed))?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

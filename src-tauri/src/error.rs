@@ -101,6 +101,12 @@ pub enum ObservatoryError {
     ResearchNoticeRequired,
     #[error("The reviewed probe source is unavailable in this application checkout.")]
     ResearchSourceUnavailable,
+    #[error("The reviewed TesmioLoader source could not be downloaded.")]
+    ResearchSourceDownloadFailed,
+    #[error("The downloaded TesmioLoader source archive did not pass safety checks.")]
+    ResearchSourceArchiveInvalid,
+    #[error("The reviewed TesmioLoader source could not be stored safely.")]
+    ResearchSourceInstallFailed,
     #[error("The required Windows C++ build toolchain is unavailable.")]
     ResearchToolchainUnavailable,
     #[error("The bounded research-probe build failed.")]
@@ -215,6 +221,9 @@ impl ObservatoryError {
             Self::InvalidResearchCheckout => "invalid_research_checkout",
             Self::ResearchNoticeRequired => "research_notice_required",
             Self::ResearchSourceUnavailable => "research_source_unavailable",
+            Self::ResearchSourceDownloadFailed => "research_source_download_failed",
+            Self::ResearchSourceArchiveInvalid => "research_source_archive_invalid",
+            Self::ResearchSourceInstallFailed => "research_source_install_failed",
             Self::ResearchToolchainUnavailable => "research_toolchain_unavailable",
             Self::ResearchBuildFailed => "research_build_failed",
             Self::LanguageManifestTooLarge => "manifest_too_large",

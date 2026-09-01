@@ -131,16 +131,21 @@ for (const theme of themes) {
         .focus();
       await audit(page, testInfo, `${theme.name} / Language dialog`);
       await page.getByRole("button", { name: "Close" }).last().click();
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await expect(
+        page.getByRole("dialog", { name: "Settings" }),
+      ).toBeVisible();
       await page.getByRole("button", { name: /^Validated theme/ }).click();
       await page.getByRole("button", { name: "Data-only themes" }).click();
       await expect(page.getByRole("tooltip")).toBeVisible();
       await audit(page, testInfo, `${theme.name} / Theme dialog`);
       await page.getByRole("button", { name: "Close" }).click();
-      await page.getByRole("button", { name: "Save observer status" }).click();
+      await page.getByRole("button", { name: "Open Save Observer" }).click();
       await audit(page, testInfo, `${theme.name} / Observation dialog`);
       await page.keyboard.press("Escape");
-      await page.getByRole("button", { name: "Legal & notices" }).click();
+      await page
+        .getByRole("dialog", { name: "Settings" })
+        .getByRole("button", { name: "Legal & notices" })
+        .click();
       await page.getByRole("tab", { name: "Read-only research" }).click();
       await page.getByRole("button", { name: "Open research setup" }).click();
       await audit(page, testInfo, `${theme.name} / Research setup dialog`);

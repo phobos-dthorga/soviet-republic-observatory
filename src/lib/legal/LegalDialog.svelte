@@ -130,6 +130,10 @@
               <h3>{$translation("legal-build-gate-title")}</h3>
               <p>{$translation("legal-build-gate-detail")}</p>
             </article>
+            <article data-kind="observed">
+              <h3>{$translation("legal-source-download-title")}</h3>
+              <p>{$translation("legal-source-download-detail")}</p>
+            </article>
             <article>
               <h3>{$translation("legal-research-evidence-title")}</h3>
               <p>{$translation("legal-research-evidence-detail")}</p>

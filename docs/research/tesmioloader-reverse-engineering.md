@@ -25,20 +25,27 @@ usable without it.
 ## Experimental Research Setup assistant
 
 The Population workspace now opens a native setup assistant for the optional
-probe. It records explicit acceptance of the current research notice, validates
-an already present local TesmioLoader checkout against the two exact header
-hashes reviewed at commit `3baa141f9f08921aea9c95f0a400289cabd9960a`,
-checks the local Microsoft C++ toolchain, and invokes only the repository-owned
-`research/tesmioloader-probe/build.ps1` recipe. Progress is durable and shown
-through the shared critical-task interface; output is bounded, hashed, and the
-displayed build log redacts both local source roots.
+probe. It records explicit acceptance of the current research notice and
+validates the two exact header hashes reviewed at commit
+`3baa141f9f08921aea9c95f0a400289cabd9960a`. A player may select a local checkout
+or explicitly confirm a download of that exact source revision from GitHub.
+The managed download keeps only the reviewed headers, upstream licence, and a
+provenance record. It rejects redirects, arbitrary locations, excessive or
+malformed archives, path traversal, links, duplicate entries, and mismatched
+headers. Header identity is calculated after converting ordinary CRLF checkout
+line endings to the upstream LF form. This accepts the same reviewed text from
+GitHub and Windows Git without accepting changed source. An interrupted or
+rejected download does not replace an existing checkout or built probe.
 
-This is a build assistant, not a loader manager. It does not clone or download
-TesmioLoader, install the result, alter loader configuration, elevate, launch
-W&R, inject the probe, or collect telemetry. A source development checkout is
-currently required because the probe source is not embedded in packaged
-applications. Missing prerequisites fail closed and ordinary save analysis is
-unaffected.
+The assistant checks the local Microsoft C++ toolchain and invokes only the
+repository-owned `research/tesmioloader-probe/build.ps1` recipe. Download and
+build progress are separate. Build output is bounded, hashed, and the displayed
+log redacts both local source roots.
+
+This is a source-and-build assistant, not a loader manager. It never downloads
+a loader binary, installs the result, alters loader configuration, elevates,
+launches W&R, injects the probe, or collects telemetry. Missing prerequisites
+fail closed and ordinary save analysis is unaffected.
 
 ## What the loader provides
 

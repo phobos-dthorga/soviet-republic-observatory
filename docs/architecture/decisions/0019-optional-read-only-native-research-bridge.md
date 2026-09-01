@@ -40,6 +40,9 @@ research companion under these rules:
    family graphs, or causal claims.
 10. The interface provides a first-class legal and technical-risk screen. It
     explicitly says that same-process execution is not an OS sandbox.
+11. Source acquisition may retain the exact reviewed headers and upstream
+    licence after a separate player-confirmed GitHub download. It never obtains
+    a loader binary, accepts an arbitrary URL, installs, or activates anything.
 
 ## Consequences
 
