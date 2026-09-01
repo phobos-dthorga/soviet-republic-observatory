@@ -22,6 +22,7 @@ mod republic_brief;
 mod republic_plan;
 mod research_setup;
 mod save_archive;
+mod setup_discovery;
 mod stats_parser;
 mod storage;
 mod tesmio_probe;
@@ -122,7 +123,7 @@ pub fn run() {
             commands::rollback_republic_plan,
             commands::remove_republic_plan,
             commands::get_recorder_health,
-            commands::configure_directory,
+            commands::choose_and_configure_directory,
             commands::observe_latest_save,
             commands::set_automatic_observation,
             commands::select_timeline_branch,

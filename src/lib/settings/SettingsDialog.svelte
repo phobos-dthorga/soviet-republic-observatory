@@ -8,8 +8,7 @@
   import { activeTheme } from "../theme/runtime";
   import { notify, openRecoveryProposal } from "../notifications/service";
   import {
-    chooseDirectory,
-    configureDirectory,
+    chooseAndConfigureDirectory,
     rebuildWarehouse,
   } from "../observations/desktopClient";
   import type { DirectoryKind, SetupState } from "../observations/types";
@@ -202,9 +201,7 @@
             ? "observer-choose-game-folder"
             : "observer-choose-workshop-folder",
       );
-      const selected = await chooseDirectory(title);
-      if (!selected) return;
-      const nextSetup = await configureDirectory(kind, selected);
+      const nextSetup = await chooseAndConfigureDirectory(kind, title);
       onsetupchange(nextSetup);
       if (view) view = { ...view, setup: nextSetup };
       statusMessage = $translation("settings-source-updated");

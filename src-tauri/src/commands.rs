@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::analysis_pack::{AnalysisPackContribution, AnalysisPackInspection, AnalysisPackSummary};
 use crate::application::ObservatoryApplication;
@@ -22,6 +23,7 @@ use crate::model::{
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
 };
+use crate::setup_discovery::suggest_directory;
 use crate::theme::{ThemeInspection, ThemeStatus};
 use crate::ui_review::UiReviewContext;
 
@@ -418,15 +420,38 @@ pub fn get_recorder_health(state: State<'_, AppState>) -> Result<RecorderHealth,
 }
 
 #[tauri::command]
-pub fn configure_directory(
+pub async fn choose_and_configure_directory(
     kind: DirectoryKind,
-    path: String,
+    title: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<SetupState, CommandError> {
-    state
-        .application
-        .configure_directory(kind, path)
-        .map_err(Into::into)
+    if title.trim().is_empty() || title.chars().count() > 160 || title.chars().any(char::is_control)
+    {
+        return Err(ObservatoryError::InvalidDirectory.into());
+    }
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        let configured = application.configured_directory_path(kind)?;
+        let suggestion = suggest_directory(kind, configured.as_deref());
+        let mut picker = app.dialog().file().set_title(title);
+        if let Some(suggestion) = suggestion {
+            picker = picker.set_directory(suggestion.path);
+        }
+        let Some(selected) = picker.blocking_pick_folder() else {
+            return application.setup_state();
+        };
+        let path = selected
+            .into_path()
+            .map_err(|_| ObservatoryError::InvalidDirectory)?;
+        application.configure_directory(kind, path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "directory_picker_unavailable".to_owned(),
+        diagnostic: "The folder picker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
 }
 
 #[tauri::command]

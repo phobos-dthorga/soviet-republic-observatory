@@ -3387,6 +3387,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tempfile",
  "thiserror 2.0.20",
+ "winreg",
  "zip 8.6.0",
 ]
 

@@ -1,6 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AnalysisPackContribution,
   AnalysisPackInspection,
@@ -49,17 +48,11 @@ export function desktopHostAvailable(): boolean {
   return isTauri();
 }
 
-export async function chooseDirectory(title: string): Promise<string | null> {
-  if (!desktopHostAvailable()) return null;
-  const selected = await open({ directory: true, multiple: false, title });
-  return typeof selected === "string" ? selected : null;
-}
-
-export function configureDirectory(
+export function chooseAndConfigureDirectory(
   kind: DirectoryKind,
-  path: string,
+  title: string,
 ): Promise<SetupState> {
-  return invoke<SetupState>("configure_directory", { kind, path });
+  return invoke<SetupState>("choose_and_configure_directory", { kind, title });
 }
 
 export function getSetupState(): Promise<SetupState> {

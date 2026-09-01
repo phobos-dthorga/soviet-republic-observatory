@@ -1330,6 +1330,18 @@ impl ObservatoryApplication {
         self.setup_state()
     }
 
+    pub(crate) fn configured_directory_path(
+        &self,
+        kind: DirectoryKind,
+    ) -> Result<Option<PathBuf>, ObservatoryError> {
+        let key = match kind {
+            DirectoryKind::Save => SAVE_DIRECTORY_KEY,
+            DirectoryKind::Game => GAME_MEDIA_DIRECTORY_KEY,
+            DirectoryKind::Workshop => WORKSHOP_DIRECTORY_KEY,
+        };
+        self.storage.get_setting(key)
+    }
+
     pub fn observe_latest_save(&self) -> Result<ObservationImportResult, ObservatoryError> {
         let directory = self
             .storage
