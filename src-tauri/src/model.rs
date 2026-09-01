@@ -477,6 +477,15 @@ pub struct ReceiverHistoryPoint {
     pub television: u64,
     pub computer: u64,
     pub classified_total: u64,
+    pub exact_observation: Option<ExactObservationReference>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ExactObservationReference {
+    pub interpretation_id: String,
+    pub branch_id: String,
+    pub year: i32,
+    pub day: u16,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -835,6 +844,7 @@ pub struct PlanSeriesPoint {
     pub game_day: i64,
     pub observed_value: u64,
     pub scheduled_value: u64,
+    pub exact_observation: Option<ExactObservationReference>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -1223,6 +1233,7 @@ pub struct MarketTradePoint {
     pub import_value: f64,
     pub export_value: f64,
     pub trade_result: f64,
+    pub exact_observation: Option<ExactObservationReference>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1388,6 +1399,7 @@ pub struct MarketPriceSeriesPoint {
     pub purchase_price: Option<f64>,
     pub sell_price: Option<f64>,
     pub base_price: Option<f64>,
+    pub exact_observation: Option<ExactObservationReference>,
 }
 
 #[derive(Clone, Debug, Serialize)]

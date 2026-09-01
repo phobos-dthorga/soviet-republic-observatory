@@ -403,6 +403,7 @@ fn trade_history(
                 import_value: imports,
                 export_value: exports,
                 trade_result: exports - imports,
+                exact_observation: None,
             })
         })
         .collect::<Vec<_>>();

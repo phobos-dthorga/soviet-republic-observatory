@@ -8,6 +8,8 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import type { TranslationKey } from "../i18n/catalog";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import { exactObservationChartBindings } from "../navigation/chartBindings";
+  import type { RelatedDataDestination } from "../navigation/relatedData";
   import { notify } from "../notifications/service";
   import {
     activateRepublicPlan,
@@ -38,10 +40,15 @@
     workspace = null,
     desktopAvailable,
     onupdate,
+    onrelatednavigate,
   }: {
     workspace?: RepublicPlanWorkspace | null;
     desktopAvailable: boolean;
     onupdate: (workspace: RepublicPlanWorkspace) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
   } = $props();
 
   type EditableTarget = PlanTargetDraft & { guardrail_percent: number };
@@ -92,6 +99,18 @@
           $translation,
         )
       : null,
+  );
+  const targetNavigation = $derived(
+    targetChart && selectedTarget
+      ? exactObservationChartBindings(targetChart, selectedTarget.points, {
+          workspace: "plan",
+          section: "plan-trajectory",
+          filters: {
+            metricId: selectedTarget.target.metric_id,
+            planRevision: activePlan?.revision.revision,
+          },
+        })
+      : [],
   );
   const targetHelp = $derived(
     selectedTarget
@@ -552,6 +571,8 @@
             height="310px"
             eyebrow={$translation("plan-section-trajectory")}
             help={targetHelp}
+            navigation={targetNavigation}
+            {onrelatednavigate}
           />
           <GuidanceSurface kind="boundary" layout="compact">
             <strong>{$translation("plan-interpretation-boundary")}</strong>

@@ -39,6 +39,11 @@ export type PositionedChartValue = {
   value: [number, number | null];
 };
 
+export type ChartInteractionTarget = {
+  seriesId: string;
+  pointIndex: number;
+};
+
 export type GameDayDomain = {
   min: number;
   max: number;
@@ -110,6 +115,101 @@ export function expandedGameDayValues(
   });
 }
 
+export function sourcePointIndex(
+  points: ChartPoint[],
+  renderedPointIndex: number,
+): number | null {
+  let renderedIndex = 0;
+  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+    if (points[pointIndex].gap_before) renderedIndex += 1;
+    if (renderedIndex === renderedPointIndex) return pointIndex;
+    renderedIndex += 1;
+  }
+  return null;
+}
+
+function interactivePoint(
+  interactions: readonly ChartInteractionTarget[],
+  seriesId: string,
+  pointIndex: number,
+): boolean {
+  return interactions.some(
+    (interaction) =>
+      interaction.seriesId === seriesId &&
+      interaction.pointIndex === pointIndex,
+  );
+}
+
+function pointPresentation(
+  value: number | [number, number],
+  interactive: boolean,
+  theme: ChartTheme,
+):
+  | number
+  | [number, number]
+  | {
+      value: number | [number, number];
+      cursor: string;
+      symbolSize: number;
+      itemStyle: object;
+    } {
+  if (!interactive) return value;
+  return {
+    value,
+    cursor: "pointer",
+    symbolSize: 8,
+    itemStyle: {
+      borderColor: theme.text,
+      borderWidth: 2,
+    },
+  };
+}
+
+function interactiveSeriesData(
+  series: ChartSeries,
+  positionedGameDays: boolean,
+  noObservationLabel: string,
+  interactions: readonly ChartInteractionTarget[],
+  theme: ChartTheme,
+): Array<unknown> {
+  return series.points.flatMap((point, pointIndex) => {
+    const linked = interactivePoint(interactions, series.id, pointIndex);
+    const value = positionedGameDays
+      ? point.category_value === undefined
+        ? null
+        : {
+            name: point.category,
+            value: [point.category_value, point.value],
+            ...(linked
+              ? {
+                  cursor: "pointer",
+                  symbolSize: 8,
+                  itemStyle: {
+                    borderColor: theme.text,
+                    borderWidth: 2,
+                  },
+                }
+              : {}),
+          }
+      : pointPresentation(point.value, linked, theme);
+    if (!point.gap_before) return [value];
+    if (!positionedGameDays) return [null, value];
+    const previous = series.points[pointIndex - 1]?.category_value;
+    if (point.category_value === undefined) return [null, value];
+    const gapPosition =
+      previous === undefined
+        ? point.category_value - 0.5
+        : previous + (point.category_value - previous) / 2;
+    return [
+      {
+        name: `${point.category} · ${noObservationLabel}`,
+        value: [gapPosition, null],
+      },
+      value,
+    ];
+  });
+}
+
 export function formatGameDayValue(value: number): string {
   const wholeDay = Math.round(value);
   const year = Math.floor(wholeDay / 365);
@@ -165,6 +265,8 @@ export function optionForChart(
   locale = "en-AU",
   unavailableLabel = "Unavailable",
   noObservationLabel = "no observation",
+  interactions: readonly ChartInteractionTarget[] = [],
+  interactiveActionLabel = "Open related view",
 ): EChartsCoreOption {
   const categories = expandedCategories(
     spec.series[0]?.points ?? [],
@@ -257,6 +359,57 @@ export function optionForChart(
           ? `${formatNumber(value, locale, { maximumFractionDigits: 2 })}${spec.unit ? ` ${spec.unit}` : ""}`
           : String(value ?? unavailableLabel);
       },
+      formatter:
+        interactions.length === 0
+          ? undefined
+          : (rawParams: unknown) => {
+              const params = (
+                Array.isArray(rawParams) ? rawParams : [rawParams]
+              ) as Array<{
+                axisValueLabel?: string;
+                name?: string;
+                seriesId?: string;
+                seriesName?: string;
+                dataIndex?: number;
+                value?: unknown;
+                marker?: string;
+              }>;
+              const lines = params.map((item) => {
+                const rawValue = Array.isArray(item.value)
+                  ? item.value[1]
+                  : item.value;
+                const value =
+                  typeof rawValue === "number"
+                    ? `${formatNumber(rawValue, locale, { maximumFractionDigits: 2 })}${spec.unit ? ` ${spec.unit}` : ""}`
+                    : unavailableLabel;
+                return `${item.marker ?? ""}${escapeTooltipText(item.seriesName ?? "")} · ${escapeTooltipText(value)}`;
+              });
+              const linked = params.some((item) => {
+                const series = spec.series.find(
+                  (candidate) => candidate.id === item.seriesId,
+                );
+                const sourceIndex =
+                  series && typeof item.dataIndex === "number"
+                    ? sourcePointIndex(series.points, item.dataIndex)
+                    : null;
+                return (
+                  series !== undefined &&
+                  sourceIndex !== null &&
+                  interactivePoint(interactions, series.id, sourceIndex)
+                );
+              });
+              return [
+                escapeTooltipText(
+                  params[0]?.axisValueLabel ?? params[0]?.name ?? "",
+                ),
+                ...lines,
+                ...(linked
+                  ? [
+                      `<strong>${escapeTooltipText(interactiveActionLabel)}</strong>`,
+                    ]
+                  : []),
+              ].join("<br>");
+            },
     },
     xAxis: horizontal
       ? valueAxis
@@ -269,9 +422,13 @@ export function optionForChart(
       name: series.label,
       type: spec.kind === "bar" ? "bar" : "line",
       stack: series.stack_id,
-      data: positionedGameDays
-        ? expandedGameDayValues(series.points, noObservationLabel)
-        : expandedValues(series.points),
+      data: interactiveSeriesData(
+        series,
+        positionedGameDays,
+        noObservationLabel,
+        interactions,
+        theme,
+      ),
       connectNulls: false,
       smooth: false,
       symbol: spec.kind === "bar" ? undefined : "circle",
@@ -311,4 +468,13 @@ export function optionForChart(
           : undefined,
     })),
   };
+}
+
+function escapeTooltipText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

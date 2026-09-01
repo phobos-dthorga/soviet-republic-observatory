@@ -258,7 +258,7 @@
       if (destination.exactObservation && desktopAvailable) {
         await applyAnalysisContext(
           await inspectArchiveObservation(
-            destination.exactObservation.interpretationId,
+            destination.exactObservation.interpretation_id,
           ),
         );
       }
@@ -1207,6 +1207,7 @@
     <BroadcastWorkspace
       {receiverDataset}
       metricContexts={publishedMetricContexts}
+      onrelatednavigate={requestRelatedNavigation}
     />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace
@@ -1223,6 +1224,7 @@
         republicPlan = updated;
         void refreshRepublicBrief();
       }}
+      onrelatednavigate={requestRelatedNavigation}
     />
   {:else if activeWorkspace === "materials"}
     <MaterialsWorkspace
@@ -1248,6 +1250,7 @@
         marketIndexingProgress = progress;
         if (progress.phase === "complete") void refreshMarketWorkspace();
       }}
+      onrelatednavigate={requestRelatedNavigation}
     />
   {:else}
     <ArchiveWorkspace

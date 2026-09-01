@@ -863,6 +863,7 @@ mod tests {
                     television: 30,
                     computer: 40,
                     classified_total: 100,
+                    exact_observation: None,
                 },
                 ReceiverHistoryPoint {
                     record_id: 2,
@@ -874,6 +875,7 @@ mod tests {
                     television: 0,
                     computer: 0,
                     classified_total: 0,
+                    exact_observation: None,
                 },
                 ReceiverHistoryPoint {
                     record_id: 3,
@@ -885,6 +887,7 @@ mod tests {
                     television: 25,
                     computer: 25,
                     classified_total: 100,
+                    exact_observation: None,
                 },
             ],
         }
@@ -932,6 +935,7 @@ mod tests {
                 television: 30,
                 computer: 40,
                 classified_total: 100,
+                exact_observation: None,
             })
             .collect();
         observations.coverage.history_records = 10_001;

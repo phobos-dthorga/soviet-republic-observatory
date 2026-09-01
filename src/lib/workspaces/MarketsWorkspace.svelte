@@ -3,6 +3,8 @@
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import { exactObservationChartBindings } from "../navigation/chartBindings";
+  import type { RelatedDataDestination } from "../navigation/relatedData";
   import { notify, type RecoveryProposal } from "../notifications/service";
   import {
     clearMarketSelection,
@@ -41,12 +43,17 @@
     desktopAvailable,
     onupdate,
     onprogress,
+    onrelatednavigate,
   }: {
     workspace?: MarketWorkspace | null;
     indexingProgress?: MarketIndexingProgress | null;
     desktopAvailable: boolean;
     onupdate: (workspace: MarketWorkspace) => void;
     onprogress: (progress: MarketIndexingProgress) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
   } = $props();
 
   let busy = $state(false);
@@ -117,6 +124,30 @@
       priceSeries,
       $translation,
     ),
+  );
+  const tradeNavigation = $derived(
+    workspace
+      ? exactObservationChartBindings(tradeChart, workspace.trade_history, {
+          workspace: "markets",
+          section: "markets-trade",
+          filters: {
+            currency: selectedCurrency,
+            channel: selectedChannel,
+          },
+        })
+      : [],
+  );
+  const priceNavigation = $derived(
+    priceSeries
+      ? exactObservationChartBindings(priceChart, priceSeries.points, {
+          workspace: "markets",
+          section: "markets-prices",
+          filters: {
+            currency: selectedCurrency,
+            resourceToken: priceResource,
+          },
+        })
+      : [],
   );
   const pulseHelp = $derived(
     pulse ? marketMetricHelp(pulse.context, $translation) : null,
@@ -961,6 +992,8 @@
           height="300px"
           eyebrow={$translation("markets-section-trade")}
           help={pulseHelp}
+          navigation={tradeNavigation}
+          {onrelatednavigate}
         />
         <ObservatoryChart
           spec={exportChart}
@@ -1060,6 +1093,8 @@
             height="300px"
             eyebrow={$translation("markets-price-history-eyebrow")}
             help={priceHelp ? marketMetricHelp(priceHelp, $translation) : null}
+            navigation={priceNavigation}
+            {onrelatednavigate}
           />
         {:else}
           <GuidanceSurface kind="boundary" layout="compact">

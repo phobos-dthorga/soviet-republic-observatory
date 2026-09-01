@@ -8,6 +8,7 @@ import {
   gameDayDomain,
   optionForChart,
   provenanceForSeries,
+  sourcePointIndex,
 } from "./chartOptions";
 import type { ChartSpec } from "./types";
 
@@ -47,6 +48,50 @@ describe("chart options", () => {
     expect(
       expandedCategories(baseSpec.series[0].points, "aucune observation")[1],
     ).toBe("1979 Q2 · aucune observation");
+    expect(sourcePointIndex(baseSpec.series[0].points, 0)).toBe(0);
+    expect(sourcePointIndex(baseSpec.series[0].points, 1)).toBeNull();
+    expect(sourcePointIndex(baseSpec.series[0].points, 2)).toBe(1);
+  });
+
+  it("marks only approved points as interactive and labels their tooltip", () => {
+    const option = optionForChart(
+      baseSpec,
+      undefined,
+      false,
+      "en-AU",
+      "Unavailable",
+      "no observation",
+      [{ seriesId: "actual", pointIndex: 1 }],
+      "Open related view",
+    ) as {
+      series: Array<{
+        data: Array<
+          number | null | { value: number; cursor: string; symbolSize: number }
+        >;
+      }>;
+      tooltip: {
+        formatter: (params: unknown) => string;
+      };
+    };
+
+    expect(option.series[0].data[0]).toBe(80);
+    expect(option.series[0].data[1]).toBeNull();
+    expect(option.series[0].data[2]).toMatchObject({
+      value: 84,
+      cursor: "pointer",
+      symbolSize: 8,
+    });
+    expect(
+      option.tooltip.formatter([
+        {
+          axisValueLabel: "1979 Q2",
+          seriesId: "actual",
+          seriesName: "Actual",
+          dataIndex: 2,
+          value: 84,
+        },
+      ]),
+    ).toContain("Open related view");
   });
 
   it("uses actual game-day positions instead of equally spaced categories", () => {

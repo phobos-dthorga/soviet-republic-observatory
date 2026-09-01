@@ -1056,6 +1056,7 @@ impl AnalyticalWarehouse {
                         import_value,
                         export_value,
                         trade_result: export_value - import_value,
+                        exact_observation: None,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?
@@ -1154,6 +1155,7 @@ impl AnalyticalWarehouse {
                         purchase_price: row.get(4)?,
                         sell_price: row.get(5)?,
                         base_price: row.get(6)?,
+                        exact_observation: None,
                     })
                 },
             )?
@@ -3152,6 +3154,7 @@ mod tests {
                     television: u64::from(record_id) + 30,
                     computer: u64::from(record_id) + 40,
                     classified_total: u64::from(record_id) * 4 + 100,
+                    exact_observation: None,
                 })
                 .collect(),
         }

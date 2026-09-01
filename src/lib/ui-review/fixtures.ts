@@ -41,6 +41,7 @@ export function reviewMarketWorkspace(
       import_value: 1200,
       export_value: 900,
       trade_result: -300,
+      exact_observation: null,
     },
     {
       record_hash: "b".repeat(64),
@@ -50,6 +51,12 @@ export function reviewMarketWorkspace(
       import_value: 1100,
       export_value: 1450,
       trade_result: 350,
+      exact_observation: {
+        interpretation_id: "review-interpretation-2015-077",
+        branch_id: "main",
+        year: 2015,
+        day: 77,
+      },
     },
   ].map((row) => ({ ...row, currency: "rub", channel: "standard" }));
   return {
@@ -671,6 +678,7 @@ export function reviewRepublicPlanWorkspace(): RepublicPlanWorkspace {
               game_day: 4_083,
               observed_value: 55_000,
               scheduled_value: 55_000,
+              exact_observation: null,
             },
             {
               year: 2015,
@@ -678,6 +686,12 @@ export function reviewRepublicPlanWorkspace(): RepublicPlanWorkspace {
               game_day: 4_093,
               observed_value: 58_137,
               scheduled_value: 58_400,
+              exact_observation: {
+                interpretation_id: "review-interpretation-2015-077",
+                branch_id: "main",
+                year: 2015,
+                day: 77,
+              },
             },
           ],
         },

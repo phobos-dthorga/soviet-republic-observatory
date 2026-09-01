@@ -1,4 +1,5 @@
 import type { TranslationKey } from "../i18n/catalog";
+import type { ExactObservationReference } from "../observations/types";
 
 export const workspaceSections = {
   briefing: ["briefing", "assays", "capabilities", "dispatch"],
@@ -54,13 +55,6 @@ export type WorkspaceLocation = {
   section: WorkspaceSection;
   focusId?: string;
   filters: WorkspaceFilters;
-};
-
-export type ExactObservationReference = {
-  interpretationId: string;
-  branchId: string;
-  year: number;
-  day: number;
 };
 
 export type RelatedDataRelationship =

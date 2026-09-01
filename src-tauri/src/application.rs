@@ -376,10 +376,18 @@ impl ObservatoryApplication {
             evidence.projection = Some(warehouse_projection);
             warehouse_history_available = true;
         }
-        Ok(crate::market::build_workspace(
-            evidence,
-            warehouse_history_available,
-        ))
+        let mut workspace = crate::market::build_workspace(evidence, warehouse_history_available);
+        if let Some(interpretation_id) =
+            workspace.analysis_context.head_interpretation_id.as_deref()
+        {
+            let exact = self
+                .storage
+                .market_exact_observation_map(interpretation_id)?;
+            for point in &mut workspace.trade_history {
+                point.exact_observation = exact.get(&point.record_hash).cloned();
+            }
+        }
+        Ok(workspace)
     }
 
     pub fn market_price_series(
@@ -416,7 +424,7 @@ impl ObservatoryApplication {
                 limitation: Some("selected_head_unavailable".to_owned()),
             });
         };
-        let points =
+        let mut points =
             match self
                 .warehouse
                 .market_price_series(interpretation_id, currency, resource_token)
@@ -434,6 +442,12 @@ impl ObservatoryApplication {
                 }
                 Err(error) => return Err(error),
             };
+        let exact = self
+            .storage
+            .market_exact_observation_map(interpretation_id)?;
+        for point in &mut points {
+            point.exact_observation = exact.get(&point.record_hash).cloned();
+        }
         Ok(MarketPriceSeries {
             available: !points.is_empty(),
             currency: currency.to_owned(),

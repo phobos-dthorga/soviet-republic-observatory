@@ -1052,6 +1052,40 @@ h3 {
   border-bottom: 0;
 }
 
+.chart-data-ledger > p {
+  margin: 0 0 8px;
+  color: var(--colour-muted);
+  line-height: 1.5;
+}
+
+.chart-data-ledger .table-link {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--colour-observed);
+  text-align: start;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.chart-data-ledger .table-link:hover,
+.chart-data-ledger .table-link:focus-visible {
+  color: var(--colour-text);
+}
+
+.chart-data-pages {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chart-data-pages button {
+  min-height: 32px;
+}
+
 @media (max-width: 560px) {
   .chart-card[data-chart-kind="sankey"] > header {
     align-items: flex-start;

@@ -6,7 +6,7 @@
   "author": "Republic Observatory contributors",
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 49,
+  "source_catalog_revision": 50,
   "direction": "left_to_right",
   "messages": {
     "action-close": "Close",
@@ -2109,6 +2109,17 @@
     "related-nav-open": "Open related view",
     "related-nav-failed-title": "The related view could not be opened",
     "related-nav-failed-message": "Your current screen and selected save were left unchanged.",
-    "related-nav-arrived": "Related view opened"
+    "related-nav-arrived": "Related view opened",
+    "chart-data-open": "Explore chart data",
+    "chart-data-description": "Review every plotted value. Exact linked saves and related views have an action in the last column.",
+    "chart-data-point": "Recorded point",
+    "chart-data-series": "Series",
+    "chart-data-value": "Value",
+    "chart-related-view": "Related information",
+    "chart-no-related-view": "No direct link",
+    "chart-data-pages": "Chart data pages",
+    "chart-data-previous": "Previous",
+    "chart-data-next": "Next",
+    "chart-data-page": "Page { $page } of { $pages }"
   }
 }

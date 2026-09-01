@@ -184,6 +184,12 @@ fn evaluate_target(
                 game_day: observation.sampled_game_day,
                 observed_value,
                 scheduled_value: scheduled_value(revision, target, observation.sampled_game_day),
+                exact_observation: Some(crate::model::ExactObservationReference {
+                    interpretation_id: observation.interpretation_id.clone(),
+                    branch_id: dataset.analysis_context.selected_branch_id.clone(),
+                    year: observation.sampled_year,
+                    day: observation.sampled_day,
+                }),
             })
         })
         .collect::<Vec<_>>();

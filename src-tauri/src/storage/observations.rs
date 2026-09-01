@@ -322,6 +322,8 @@ impl ObservatoryStorage {
             warnings,
         };
 
+        let exact_observations =
+            super::related_navigation::receiver_exact_observations(connection, interpretation_id)?;
         let points = load_history(connection, &source.0)?
             .into_iter()
             .map(|record| ReceiverHistoryPoint {
@@ -334,6 +336,7 @@ impl ObservatoryStorage {
                 radio: record.radio,
                 television: record.television,
                 computer: record.computer,
+                exact_observation: exact_observations.get(&record.record_id).cloned(),
             })
             .collect::<Vec<_>>();
 

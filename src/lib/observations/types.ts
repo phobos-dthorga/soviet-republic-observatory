@@ -19,6 +19,13 @@ export type MetricEvidence = {
   latest_source_line: number;
 };
 
+export type ExactObservationReference = {
+  interpretation_id: string;
+  branch_id: string;
+  year: number;
+  day: number;
+};
+
 export type ReceiverHistoryPoint = {
   record_id: number;
   year: number;
@@ -29,6 +36,7 @@ export type ReceiverHistoryPoint = {
   television: number;
   computer: number;
   classified_total: number;
+  exact_observation: ExactObservationReference | null;
 };
 
 export type ReceiverDataset = {
@@ -290,6 +298,7 @@ export type PlanSeriesPoint = {
   game_day: number;
   observed_value: number;
   scheduled_value: number;
+  exact_observation: ExactObservationReference | null;
 };
 
 export type PlanTargetEvaluation = {
@@ -1166,6 +1175,7 @@ export type MarketTradePoint = {
   import_value: number;
   export_value: number;
   trade_result: number;
+  exact_observation: ExactObservationReference | null;
 };
 
 export type MarketResourceLedgerRow = {
@@ -1313,6 +1323,7 @@ export type MarketPriceSeriesPoint = {
   purchase_price: number | null;
   sell_price: number | null;
   base_price: number | null;
+  exact_observation: ExactObservationReference | null;
 };
 
 export type MarketPriceSeries = {

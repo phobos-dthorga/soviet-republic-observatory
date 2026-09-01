@@ -48,6 +48,7 @@ const dataset: ReceiverDataset = {
       television: 8,
       computer: 2,
       classified_total: 100,
+      exact_observation: null,
     },
     {
       record_id: 1,
@@ -59,6 +60,7 @@ const dataset: ReceiverDataset = {
       television: 10,
       computer: 5,
       classified_total: 100,
+      exact_observation: null,
     },
     {
       record_id: 2,
@@ -70,6 +72,7 @@ const dataset: ReceiverDataset = {
       television: 12,
       computer: 8,
       classified_total: 100,
+      exact_observation: null,
     },
   ],
 };

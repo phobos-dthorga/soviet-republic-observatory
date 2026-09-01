@@ -124,6 +124,7 @@ describe("Markets presentation", () => {
             purchase_price: 110,
             sell_price: null,
             base_price: 100,
+            exact_observation: null,
           },
           {
             record_hash: "b".repeat(64),
@@ -133,6 +134,7 @@ describe("Markets presentation", () => {
             purchase_price: 112,
             sell_price: 97,
             base_price: 100,
+            exact_observation: null,
           },
         ],
       },

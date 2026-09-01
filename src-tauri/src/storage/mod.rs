@@ -13,6 +13,7 @@ mod observations;
 mod planning_overlays;
 mod population;
 mod recorder;
+mod related_navigation;
 mod republic_plans;
 mod research_setup;
 mod settings;

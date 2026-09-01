@@ -4,6 +4,11 @@
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import { exactObservationChartBindings } from "../navigation/chartBindings";
+  import {
+    defaultWorkspaceLocation,
+    type RelatedDataDestination,
+  } from "../navigation/relatedData";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
   import type {
     PublishedMetricContext,
@@ -20,9 +25,14 @@
   let {
     receiverDataset = null,
     metricContexts = [],
+    onrelatednavigate,
   }: {
     receiverDataset?: ReceiverDataset | null;
     metricContexts?: PublishedMetricContext[];
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
   } = $props();
 
   const sections: Array<{
@@ -50,6 +60,15 @@
       : null,
   );
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1) ?? null);
+  const receiverNavigation = $derived(
+    receiverDataset && receiverLadder
+      ? exactObservationChartBindings(
+          receiverLadder,
+          receiverDataset.points,
+          defaultWorkspaceLocation("broadcast"),
+        )
+      : [],
+  );
   const receiverHelp = $derived.by(() => {
     const context = publishedMetricContext(
       metricContexts,
@@ -158,6 +177,8 @@
           height="285px"
           eyebrow={$translation("broadcast-section-receivers")}
           help={receiverHelp}
+          navigation={receiverNavigation}
+          {onrelatednavigate}
         />
         <ReceiverEvidence dataset={receiverDataset} />
       {:else}
