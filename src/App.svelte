@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import BriefingWorkspace from "./lib/workspaces/BriefingWorkspace.svelte";
   import BroadcastWorkspace from "./lib/workspaces/BroadcastWorkspace.svelte";
   import ExtensionsWorkspace from "./lib/workspaces/ExtensionsWorkspace.svelte";
@@ -38,6 +38,18 @@
     topDialogRoute,
     type DialogRoute,
   } from "./lib/navigation/dialogStack";
+  import RelatedDataBreadcrumb from "./lib/navigation/RelatedDataBreadcrumb.svelte";
+  import RelatedViewChooser from "./lib/navigation/RelatedViewChooser.svelte";
+  import {
+    defaultWorkspaceLocation,
+    pushNavigationTrail,
+    workspaceDestination,
+    type AnalysisContextReference,
+    type NavigationTrailEntry,
+    type RelatedDataDestination,
+    type WorkspaceLocation,
+    type WorkspaceName,
+  } from "./lib/navigation/relatedData";
   import { replayAttentionCue } from "./lib/attention/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
@@ -115,16 +127,6 @@
     WarehouseWriteActivity,
   } from "./lib/observations/types";
 
-  type WorkspaceName =
-    | "briefing"
-    | "monitor"
-    | "broadcast"
-    | "extensions"
-    | "plan"
-    | "materials"
-    | "population"
-    | "markets"
-    | "archive";
   const workspaces: Array<{
     id:
       | WorkspaceName
@@ -147,7 +149,14 @@
     { id: "archive", label: "nav-archive", enabled: true },
   ];
 
-  let activeWorkspace = $state<WorkspaceName>("briefing");
+  let activeLocation = $state<WorkspaceLocation>(
+    defaultWorkspaceLocation("briefing"),
+  );
+  const activeWorkspace = $derived(activeLocation.workspace);
+  let navigationTrail = $state<NavigationTrailEntry[]>([]);
+  let navigationBusy = $state(false);
+  let relatedChoices = $state<RelatedDataDestination[]>([]);
+  let relatedChoiceOrigin = $state<HTMLElement | null>(null);
   let dialogStack = $state<DialogRoute[]>([]);
   const activeDialog = $derived(topDialogRoute(dialogStack));
   let diagnosticsBusy = $state(false);
@@ -174,6 +183,146 @@
 
   function openDialog(route: DialogRoute): void {
     dialogStack = pushDialogRoute(dialogStack, route);
+  }
+
+  function currentAnalysisContext(): AnalysisContextReference | null {
+    const context = archiveOverview?.analysis_context;
+    if (!context) return null;
+    return {
+      branchId: context.selected_branch_id,
+      headInterpretationId: context.head_interpretation_id,
+      isTip: context.is_tip,
+    };
+  }
+
+  function openWorkspace(workspace: WorkspaceName): void {
+    navigationTrail = [];
+    relatedChoices = [];
+    activeLocation = defaultWorkspaceLocation(workspace);
+  }
+
+  function requestRelatedNavigation(
+    destinations: RelatedDataDestination[],
+    origin: HTMLElement | null = null,
+  ): void {
+    const unique = destinations.filter(
+      (destination, index) =>
+        destinations.findIndex((item) => item.id === destination.id) === index,
+    );
+    if (unique.length === 0) return;
+    if (unique.length === 1) {
+      void navigateRelated(unique[0]);
+      return;
+    }
+    relatedChoiceOrigin =
+      origin ?? (document.activeElement as HTMLElement | null);
+    relatedChoices = unique;
+  }
+
+  function closeRelatedChoices(): void {
+    relatedChoices = [];
+    void tick().then(() => relatedChoiceOrigin?.focus());
+  }
+
+  async function restoreAnalysisContext(
+    context: AnalysisContextReference | null,
+  ): Promise<void> {
+    if (!context || !desktopAvailable) return;
+    const current = currentAnalysisContext();
+    if (
+      current?.branchId === context.branchId &&
+      current.headInterpretationId === context.headInterpretationId &&
+      current.isTip === context.isTip
+    ) {
+      return;
+    }
+    if (context.isTip) {
+      await applyAnalysisContext(await selectTimelineBranch(context.branchId));
+    } else if (context.headInterpretationId) {
+      await applyAnalysisContext(
+        await inspectArchiveObservation(context.headInterpretationId),
+      );
+    }
+  }
+
+  async function navigateRelated(
+    destination: RelatedDataDestination,
+  ): Promise<void> {
+    if (navigationBusy) return;
+    navigationBusy = true;
+    const previous: NavigationTrailEntry = {
+      location: structuredClone(activeLocation),
+      context: currentAnalysisContext(),
+    };
+    try {
+      if (destination.exactObservation && desktopAvailable) {
+        await applyAnalysisContext(
+          await inspectArchiveObservation(
+            destination.exactObservation.interpretationId,
+          ),
+        );
+      }
+      activeLocation = structuredClone(destination.location);
+      navigationTrail = pushNavigationTrail(navigationTrail, previous);
+      relatedChoices = [];
+      await focusRelatedLocation(activeLocation);
+    } catch {
+      notify({
+        title: $translation("related-nav-failed-title"),
+        message: $translation("related-nav-failed-message"),
+        tone: "error",
+      });
+    } finally {
+      navigationBusy = false;
+    }
+  }
+
+  async function returnThroughRelatedTrail(index?: number): Promise<void> {
+    if (navigationBusy || navigationTrail.length === 0) return;
+    const targetIndex = index ?? navigationTrail.length - 1;
+    const target = navigationTrail[targetIndex];
+    if (!target) return;
+    navigationBusy = true;
+    try {
+      await restoreAnalysisContext(target.context);
+      activeLocation = structuredClone(target.location);
+      navigationTrail = navigationTrail.slice(0, targetIndex);
+      await focusRelatedLocation(activeLocation);
+    } catch {
+      notify({
+        title: $translation("related-nav-failed-title"),
+        message: $translation("related-nav-failed-message"),
+        tone: "error",
+      });
+    } finally {
+      navigationBusy = false;
+    }
+  }
+
+  async function focusRelatedLocation(
+    location: WorkspaceLocation,
+  ): Promise<void> {
+    await tick();
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => resolve()),
+    );
+    const target = document.getElementById(
+      location.focusId ?? location.section,
+    );
+    const canvas = target?.closest<HTMLElement>(".workspace > .canvas");
+    if (!target || !canvas) return;
+    if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    const targetBox = target.getBoundingClientRect();
+    const canvasBox = canvas.getBoundingClientRect();
+    canvas.scrollTo({
+      top: Math.max(0, canvas.scrollTop + targetBox.top - canvasBox.top - 8),
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+    target.dataset.relatedArrival = "true";
+    window.setTimeout(() => delete target.dataset.relatedArrival, 1800);
   }
 
   function closeDialog(route: DialogRoute): void {
@@ -206,14 +355,18 @@
       !event.ctrlKey &&
       !event.metaKey &&
       event.key === "ArrowLeft" &&
-      activeDialog
+      (activeDialog || navigationTrail.length > 0)
     ) {
       event.preventDefault();
-      document
-        .querySelector<HTMLElement>('[data-dialog-active="true"] dialog')
-        ?.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-        );
+      if (activeDialog) {
+        document
+          .querySelector<HTMLElement>('[data-dialog-active="true"] dialog')
+          ?.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+          );
+      } else {
+        void returnThroughRelatedTrail();
+      }
     }
   }
 
@@ -286,19 +439,21 @@
 
   async function selectBranch(branchId: string): Promise<void> {
     const result = await selectTimelineBranch(branchId);
-    applyAnalysisContext(result);
+    await applyAnalysisContext(result);
   }
 
-  function applyAnalysisContext(result: {
+  async function applyAnalysisContext(result: {
     archive: ArchiveOverview;
     dataset: ReceiverDataset | null;
-  }): void {
+  }): Promise<void> {
     archiveOverview = result.archive;
     receiverDataset = result.dataset;
-    void refreshPopulationDataset();
-    void refreshRepublicBrief();
-    void refreshRepublicPlan();
-    void refreshMarketWorkspace();
+    await Promise.all([
+      refreshPopulationDataset(),
+      refreshRepublicBrief(),
+      refreshRepublicPlan(),
+      refreshMarketWorkspace(),
+    ]);
   }
 
   async function refreshPopulationDataset(): Promise<void> {
@@ -338,18 +493,20 @@
   }
 
   async function inspectObservation(interpretationId: string): Promise<void> {
-    applyAnalysisContext(await inspectArchiveObservation(interpretationId));
+    await applyAnalysisContext(
+      await inspectArchiveObservation(interpretationId),
+    );
   }
 
   async function returnLatest(): Promise<void> {
-    applyAnalysisContext(await returnToBranchTip());
+    await applyAnalysisContext(await returnToBranchTip());
   }
 
   async function continueFromObservation(
     interpretationId: string,
     label: string,
   ): Promise<void> {
-    applyAnalysisContext(
+    await applyAnalysisContext(
       await createTimelineContinuation(interpretationId, label),
     );
   }
@@ -358,7 +515,7 @@
     branchId: string,
     label: string | null,
   ): Promise<void> {
-    applyAnalysisContext(await setTimelineBranchLabel(branchId, label));
+    await applyAnalysisContext(await setTimelineBranchLabel(branchId, label));
   }
 
   function acceptObservation(dataset: ReceiverDataset): void {
@@ -451,50 +608,50 @@
 
     switch (request.scenario) {
       case "workspace-briefing":
-        activeWorkspace = "briefing";
+        openWorkspace("briefing");
         republicBrief = reviewRepublicBrief();
         break;
       case "workspace-monitor":
-        activeWorkspace = "monitor";
+        openWorkspace("monitor");
         break;
       case "workspace-broadcast":
-        activeWorkspace = "broadcast";
+        openWorkspace("broadcast");
         break;
       case "workspace-extensions":
-        activeWorkspace = "extensions";
+        openWorkspace("extensions");
         break;
       case "workspace-plan":
-        activeWorkspace = "plan";
+        openWorkspace("plan");
         republicPlan = reviewRepublicPlanWorkspace();
         break;
       case "workspace-materials":
-        activeWorkspace = "materials";
+        openWorkspace("materials");
         break;
       case "materials-warehouse-attention":
-        activeWorkspace = "materials";
+        openWorkspace("materials");
         warehouseStatus = reviewWarehouseAttention();
         break;
       case "production-pathway":
-        activeWorkspace = "materials";
+        openWorkspace("materials");
         reviewRouteFixture = reviewProductionRoute();
         reviewPathwayFixture = reviewProductionPathway();
         break;
       case "workspace-population":
       case "population-probe-missing":
-        activeWorkspace = "population";
+        openWorkspace("population");
         populationDataset = reviewPopulationDataset();
         break;
       case "workspace-markets":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("ready");
         break;
       case "markets-indexing":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("ready");
         marketIndexingProgress = reviewMarketIndexingProgress(false);
         break;
       case "markets-paused":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("ready");
         marketIndexingProgress = {
           ...reviewMarketIndexingProgress(false),
@@ -503,36 +660,36 @@
         };
         break;
       case "markets-partial":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("partial");
         break;
       case "markets-empty":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("empty");
         break;
       case "markets-lagging":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("lagging");
         break;
       case "markets-failed":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("partial");
         marketIndexingProgress = reviewMarketIndexingProgress(true);
         break;
       case "archive-latest":
-        activeWorkspace = "archive";
+        openWorkspace("archive");
         archiveOverview = reviewArchiveOverview(false);
         break;
       case "archive-historical":
-        activeWorkspace = "archive";
+        openWorkspace("archive");
         archiveOverview = reviewArchiveOverview(true);
         break;
       case "critical-task-loading":
-        activeWorkspace = "materials";
+        openWorkspace("materials");
         catalogueProgress = reviewCatalogueProgress(false);
         break;
       case "critical-task-failed":
-        activeWorkspace = "materials";
+        openWorkspace("materials");
         catalogueProgress = reviewCatalogueProgress(true);
         break;
       case "dialog-language":
@@ -557,7 +714,7 @@
         openDialog("research");
         break;
       case "dialog-recovery":
-        activeWorkspace = "markets";
+        openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("partial");
         openRecoveryProposal({
           title: $translation("markets-recovery-title"),
@@ -568,7 +725,7 @@
         });
         break;
       case "notification-error":
-        activeWorkspace = "briefing";
+        openWorkspace("briefing");
         republicBrief = reviewRepublicBrief();
         notify({
           title: $translation("diagnostics-title"),
@@ -577,20 +734,20 @@
         });
         break;
       case "tooltip-contextual":
-        activeWorkspace = "briefing";
+        openWorkspace("briefing");
         republicBrief = reviewRepublicBrief();
         break;
       case "attention-cue":
-        activeWorkspace = "population";
+        openWorkspace("population");
         populationDataset = reviewPopulationDataset();
         await replayAttentionCue("research.setup.entry", 1);
         break;
       case "keyboard-focus":
-        activeWorkspace = "briefing";
+        openWorkspace("briefing");
         republicBrief = reviewRepublicBrief();
         break;
       case "native-dropdown":
-        activeWorkspace = "population";
+        openWorkspace("population");
         populationDataset = reviewPopulationDataset();
         break;
     }
@@ -853,8 +1010,7 @@
           disabled={!workspace.enabled}
           aria-current={workspace.id === activeWorkspace ? "page" : undefined}
           onclick={() => {
-            if (workspace.enabled)
-              activeWorkspace = workspace.id as WorkspaceName;
+            if (workspace.enabled) openWorkspace(workspace.id as WorkspaceName);
           }}
         >
           {$translation(workspace.label)}
@@ -875,7 +1031,7 @@
           currentItem={warehouseStatus.warehouse.active_write
             ? warehouseActivityLabel(warehouseStatus.warehouse.active_write)
             : $translation("catalogue-recorder-independent")}
-          onclick={() => (activeWorkspace = "materials")}
+          onclick={() => openWorkspace("materials")}
         />
       {/if}
       {#if catalogueProgress && ["discovering", "scanning", "publishing", "finalising", "failed"].includes(catalogueProgress.phase)}
@@ -886,7 +1042,7 @@
           failed={catalogueProgress.phase === "failed"}
           currentItem={catalogueProgress.current_file ??
             catalogueProgress.current_source}
-          onclick={() => (activeWorkspace = "materials")}
+          onclick={() => openWorkspace("materials")}
         />
       {/if}
       {#if reinterpretationProgress && ["reading", "parsing", "persisting", "queueing_warehouse", "failed"].includes(reinterpretationProgress.phase)}
@@ -928,7 +1084,7 @@
           percent={view.progressPercent}
           failed={view.state === "failed"}
           currentItem={view.currentItem}
-          onclick={() => (activeWorkspace = "markets")}
+          onclick={() => openWorkspace("markets")}
         />
       {/if}
       <button
@@ -1024,10 +1180,19 @@
     </div>
   </section>
 
+  <RelatedDataBreadcrumb
+    trail={navigationTrail}
+    current={activeLocation}
+    busy={navigationBusy}
+    onback={() => void returnThroughRelatedTrail()}
+    onjump={(index) => void returnThroughRelatedTrail(index)}
+  />
+
   {#if activeWorkspace === "briefing"}
     <BriefingWorkspace
       brief={republicBrief}
-      onopenworkspace={(workspace) => (activeWorkspace = workspace)}
+      onopenworkspace={(workspace) =>
+        requestRelatedNavigation([workspaceDestination(workspace)])}
     />
   {:else if activeWorkspace === "monitor"}
     <MonitorWorkspace
@@ -1103,6 +1268,14 @@
     <span>{$translation("legal-independent-community-project")}</span>
   </footer>
 </main>
+
+{#if relatedChoices.length > 0}
+  <RelatedViewChooser
+    destinations={relatedChoices}
+    onchoose={(destination) => void navigateRelated(destination)}
+    onclose={closeRelatedChoices}
+  />
+{/if}
 
 <NotificationCenter
   recoveryActive={activeDialog === "recovery"}

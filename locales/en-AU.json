@@ -6,7 +6,7 @@
   "author": "Republic Observatory contributors",
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 48,
+  "source_catalog_revision": 49,
   "direction": "left_to_right",
   "messages": {
     "action-close": "Close",
@@ -2094,6 +2094,21 @@
     "research-setup-failure-exit-code": "Compiler exit code",
     "research-setup-open-diagnostics": "Open Diagnostics",
     "research-setup-error": "The research setup action could not be completed ({ $code }).",
-    "research-setup-error-summary": "The research setup action could not be completed. Nothing was installed or run."
+    "research-setup-error-summary": "The research setup action could not be completed. Nothing was installed or run.",
+    "related-nav-label": "Related-view path",
+    "related-nav-back": "Back",
+    "related-nav-eyebrow": "Related information",
+    "related-nav-chooser-title": "Choose what to open",
+    "related-nav-chooser-description": "These views use the same recorded subject. Choose the question you want to explore.",
+    "related-nav-close": "Close related-view choices",
+    "related-nav-details": "Open more detail",
+    "related-nav-composition": "See what makes up this value",
+    "related-nav-history": "Open its recorded history",
+    "related-nav-source": "Inspect its source details",
+    "related-nav-planning": "Compare it with your plan",
+    "related-nav-open": "Open related view",
+    "related-nav-failed-title": "The related view could not be opened",
+    "related-nav-failed-message": "Your current screen and selected save were left unchanged.",
+    "related-nav-arrived": "Related view opened"
   }
 }

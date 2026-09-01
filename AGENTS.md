@@ -96,6 +96,15 @@
   primitive. Cues require stable IDs and content revisions, bounded motion,
   reduced-motion and forced-colour behaviour, persistent dismissal, and replay;
   they never decide whether a domain action is valid.
+- Related-data navigation is admitted only when stable semantic identities prove
+  a source, detail, composition, history, or planning relationship. Preserve
+  scope, units, currency, timeline, profile, and selected-save context unless
+  the action labels an exact context change. Never link by display text, colour,
+  date proximity, or apparent correlation. Every chart drill-down needs the same
+  action through a keyboard-accessible data view.
+- Related navigation uses the typed application registry and contained workspace
+  scrolling. Components and extensions cannot submit arbitrary workspace names,
+  selectors, URLs, callbacks, or renderer actions.
 
 ## Localisation
 

@@ -112,6 +112,11 @@ an engineering requirement.
 - [ADR-0026: recorder-first resumable maintenance](architecture/decisions/0026-recorder-first-resumable-maintenance.md)
   — bounded background leases, durable checkpoints, content-addressed market
   evidence, and ordinary single-instance ownership
+- [ADR-0027: player-first language with optional technical wording](architecture/decisions/0027-player-first-language.md)
+  — plain default copy, optional technical English, and automated readability
+  enforcement
+- [ADR-0028: first-class related-data navigation](architecture/decisions/0028-first-class-related-data-navigation.md)
+  — allowlisted drill-downs, exact-save history, and accessible reversible paths
 
 ## Evidence status vocabulary
 
