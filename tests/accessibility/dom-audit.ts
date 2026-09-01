@@ -181,6 +181,60 @@ export function auditInterfaceDom(): InterfaceAuditFailure[] {
     }
   }
 
+  for (const group of document.querySelectorAll(
+    "[data-aligned-action-group]",
+  )) {
+    if (!visible(group)) continue;
+    const selector = identity(group);
+    const entries = [
+      ...group.querySelectorAll(":scope > [data-aligned-action-item]"),
+    ]
+      .filter(visible)
+      .map((item) => ({
+        item,
+        itemBox: item.getBoundingClientRect(),
+        actions: [...item.querySelectorAll("[data-aligned-action]")].filter(
+          visible,
+        ),
+      }));
+    if (entries.length < 2) continue;
+    for (const entry of entries) {
+      if (entry.actions.length !== 1) {
+        result.push({
+          kind: "aligned-action-contract",
+          selector: identity(entry.item),
+          detail: `expected one visible aligned action; found ${entry.actions.length}`,
+        });
+      }
+    }
+    const completeEntries = entries.filter(
+      (entry) => entry.actions.length === 1,
+    );
+    const rows: (typeof completeEntries)[] = [];
+    for (const entry of completeEntries) {
+      const row = rows.find(
+        (candidate) =>
+          Math.abs(candidate[0].itemBox.top - entry.itemBox.top) <= tolerance,
+      );
+      if (row) row.push(entry);
+      else rows.push([entry]);
+    }
+    for (const row of rows.filter((candidate) => candidate.length > 1)) {
+      const actionBottoms = row.map(
+        (entry) => entry.actions[0].getBoundingClientRect().bottom,
+      );
+      const minimum = Math.min(...actionBottoms);
+      const maximum = Math.max(...actionBottoms);
+      if (maximum - minimum > tolerance) {
+        result.push({
+          kind: "aligned-action-edge",
+          selector,
+          detail: `peer action lower edges differ by ${(maximum - minimum).toFixed(1)}px`,
+        });
+      }
+    }
+  }
+
   const guidanceLayouts = new Set(["block", "compact", "inline"]);
   for (const surface of document.querySelectorAll("[data-guidance-surface]")) {
     if (!visible(surface)) continue;

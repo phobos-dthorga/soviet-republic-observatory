@@ -43,7 +43,47 @@ for (const layout of layoutCases) {
       await assertLayout(page, testInfo, `${layout.label} / ${workspace}`);
     }
   });
+
+  test(`settings peer actions align at ${layout.label}`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(30_000);
+    await page.setViewportSize({ width: layout.width, height: layout.height });
+    await page.goto("/");
+    await page.evaluate((scale) => {
+      document.documentElement.style.fontSize = `${16 * scale}px`;
+    }, layout.textScale);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+    await assertLayout(page, testInfo, `${layout.label} / Settings`);
+  });
 }
+
+test("geometry audit rejects a drifting peer-card action", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    const group = document.createElement("div");
+    group.dataset.alignedActionGroup = "deliberate-regression";
+    group.style.cssText =
+      "position:fixed;inset:20px auto auto 20px;display:flex;gap:8px";
+    for (const offset of [0, 18]) {
+      const card = document.createElement("article");
+      card.dataset.alignedActionItem = "";
+      card.style.cssText = "width:160px;height:100px";
+      const action = document.createElement("button");
+      action.dataset.alignedAction = "";
+      action.style.marginTop = `${offset}px`;
+      action.textContent = "Fixture action";
+      card.append(action);
+      group.append(card);
+    }
+    document.body.append(group);
+  });
+  const failures = await page.evaluate(auditInterfaceDom);
+  expect(
+    failures.some((failure) => failure.kind === "aligned-action-edge"),
+  ).toBe(true);
+});
 
 async function assertLayout(
   page: Page,

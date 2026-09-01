@@ -316,8 +316,8 @@
             </button>
           </div>
 
-          <div class="source-grid">
-            <article>
+          <div class="source-grid" data-aligned-action-group="source-folders">
+            <article data-aligned-action-item>
               <span>{$translation("observer-save-folder")}</span>
               <strong
                 >{currentSetup?.save_directory?.name ??
@@ -325,13 +325,14 @@
               >
               <small>{$translation("observer-save-folder-detail")}</small>
               <button
+                data-aligned-action
                 type="button"
                 disabled={busy || !desktopAvailable}
                 onclick={() => selectDirectory("save")}
                 >{$translation("observer-choose-save-folder")}</button
               >
             </article>
-            <article>
+            <article data-aligned-action-item>
               <span>{$translation("observer-game-folder")}</span>
               <strong
                 >{currentSetup?.game_directory?.name ??
@@ -339,13 +340,14 @@
               >
               <small>{$translation("observer-game-folder-detail")}</small>
               <button
+                data-aligned-action
                 type="button"
                 disabled={busy || !desktopAvailable}
                 onclick={() => selectDirectory("game")}
                 >{$translation("observer-choose-game-folder")}</button
               >
             </article>
-            <article>
+            <article data-aligned-action-item>
               <span>{$translation("observer-workshop-folder")}</span>
               <strong
                 >{currentSetup?.workshop_directory?.name ??
@@ -353,6 +355,7 @@
               >
               <small>{$translation("observer-workshop-private")}</small>
               <button
+                data-aligned-action
                 type="button"
                 disabled={busy || !desktopAvailable}
                 onclick={() => selectDirectory("workshop")}
@@ -758,6 +761,7 @@
 
   .source-grid article {
     display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
     align-content: start;
     gap: 7px;
   }

@@ -46,6 +46,15 @@ including text/UI scales from 100% to 200%. The geometry assay rejects global
 horizontal overflow, landmarks or dialogs escaping the viewport, overlapping
 dialog regions, and enabled controls below a 24 CSS-pixel target floor.
 
+Repeated peer cards with equivalent actions use the aligned-action geometry
+contract. Cards in the same visual row reserve flexible space for differing
+descriptions and translations so their action controls share one lower edge;
+stacked responsive rows remain independent. New peer-card action groups must
+declare the contract rather than relying on equal English copy. The shared DOM
+auditor verifies it in both browser and native review at every supported
+viewport and text scale, and a deliberately drifting fixture proves that the
+gate fails when alignment regresses.
+
 Transient native-only states must remain testable through a real host-owned
 component state, a bounded native-command mock, or an application-owned assay;
 tests must not draw a separate visual imitation. Critical running/failed task
