@@ -671,6 +671,8 @@ export type ObserverErrorCode =
   | "malformed_snapshot"
   | "receiver_history_unavailable"
   | "storage_unavailable"
+  | "storage_busy"
+  | "storage_contract_violation"
   | "unknown_branch"
   | "incompatible_comparison"
   | "same_observation_comparison"

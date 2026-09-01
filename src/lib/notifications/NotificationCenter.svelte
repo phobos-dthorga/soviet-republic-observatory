@@ -1,6 +1,7 @@
 <script lang="ts">
   import { translation } from "../i18n/runtime";
   import NotificationToast from "./NotificationToast.svelte";
+  import RecoveryDialog from "./RecoveryDialog.svelte";
   import { notifications } from "./service";
 </script>
 
@@ -14,3 +15,5 @@
     {/each}
   </section>
 {/if}
+
+<RecoveryDialog />

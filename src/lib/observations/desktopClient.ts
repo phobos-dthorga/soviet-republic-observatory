@@ -110,6 +110,10 @@ export function getMarketIndexingProgress(): Promise<MarketIndexingProgress> {
   return invoke<MarketIndexingProgress>("get_market_indexing_progress");
 }
 
+export function recoverMarketIndexing(): Promise<void> {
+  return invoke<void>("recover_market_indexing");
+}
+
 export function indexAvailableSavesForMarkets(): Promise<MarketIndexingProgress> {
   return invoke<MarketIndexingProgress>("index_available_saves_for_markets");
 }

@@ -644,6 +644,18 @@ impl ObservatoryApplication {
             .map_err(|_| ObservatoryError::StorageUnavailable)
     }
 
+    pub fn recover_market_indexing(&self) -> Result<(), ObservatoryError> {
+        self.storage.verify_and_repair_known_contracts()?;
+        self.storage.enqueue_warehouse_rebuild()?;
+        diagnostics::record(
+            "info",
+            "markets.recovery_queued",
+            "market_indexing_recovery",
+            "Known storage contracts were verified and retained analytical evidence was queued for reprojection.",
+        );
+        Ok(())
+    }
+
     pub fn index_available_saves_for_markets(
         &self,
         mut notify: impl FnMut(MarketIndexingProgress),

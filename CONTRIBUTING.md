@@ -40,6 +40,17 @@ only in a tooltip. New ordinary captions and controls must use the readable
 type tokens rather than introduce microtext below the 12-pixel-equivalent
 default floor.
 
+Actionable recovery is the default whenever the native host knows one bounded,
+deterministic, non-destructive remedy. Attach that typed proposal to the shared
+notification and explain its exact side effects in the shared recovery dialog;
+do not create workspace-specific repair modals or generic execution commands.
+Destructive or ambiguous repair, external updates, permission and credential
+changes, low-disk conditions, and choices between competing histories remain
+guidance-only until a narrower safe contract is proven. Every new failure state
+must record whether it has a safe retry, fallback, rebuild, reload, or
+prerequisite-recheck path. See
+[ADR-0024](docs/architecture/decisions/0024-actionable-recovery-by-default.md).
+
 Use the first-class AttentionCue for important new or newly available actions;
 do not reproduce pulse or glow CSS in a workspace. A cue needs a stable ID and
 content revision, must respect reduced motion, and can explain an already-valid

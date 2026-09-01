@@ -122,6 +122,7 @@ pub fn run() {
             commands::get_reinterpretation_progress,
             commands::reinterpret_latest_save,
             commands::get_market_indexing_progress,
+            commands::recover_market_indexing,
             commands::index_available_saves_for_markets,
             commands::get_catalogue_status,
             commands::refresh_definitions,

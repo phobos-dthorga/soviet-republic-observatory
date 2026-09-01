@@ -25,6 +25,7 @@ export const UI_REVIEW_SCENARIOS = [
   "dialog-diagnostics",
   "dialog-legal",
   "dialog-research",
+  "dialog-recovery",
   "notification-error",
   "tooltip-contextual",
   "attention-cue",

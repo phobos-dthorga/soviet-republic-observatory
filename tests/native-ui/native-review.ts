@@ -43,6 +43,7 @@ const smokeScenarios: UiReviewScenarioId[] = [
   "critical-task-failed",
   "dialog-theme",
   "dialog-research",
+  "dialog-recovery",
   "notification-error",
   "tooltip-contextual",
   "attention-cue",
@@ -158,6 +159,8 @@ async function prepareInteractiveScenario(
     await client.keys(["ArrowDown", "Enter"]);
   } else if (scenario === "attention-cue") {
     await (await client.$(".attention-cue.active")).waitForDisplayed();
+  } else if (scenario === "dialog-recovery") {
+    await (await client.$(".recovery-dialog")).waitForDisplayed();
   } else if (scenario === "notification-error") {
     await (await client.$(".notification-toast")).waitForDisplayed();
   } else if (scenario === "production-pathway") {

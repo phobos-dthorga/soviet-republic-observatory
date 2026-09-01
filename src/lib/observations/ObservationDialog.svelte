@@ -68,6 +68,8 @@
     malformed_snapshot: "error-observer-malformed-snapshot",
     receiver_history_unavailable: "error-observer-receiver-unavailable",
     storage_unavailable: "error-observer-storage-unavailable",
+    storage_busy: "error-observer-storage-busy",
+    storage_contract_violation: "error-observer-storage-contract",
     unknown_branch: "error-observer-unknown-branch",
     incompatible_comparison: "error-observer-incompatible-comparison",
     same_observation_comparison: "error-observer-same-comparison",

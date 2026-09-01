@@ -2185,7 +2185,7 @@ h3 {
   color: var(--colour-muted);
 }
 
-.notification-toast > button {
+.notification-toast > .notification-dismiss {
   width: 28px;
   height: 28px;
   border: 1px solid transparent;
@@ -2196,9 +2196,26 @@ h3 {
   font-size: 18px;
 }
 
-.notification-toast > button:hover {
+.notification-toast > .notification-dismiss:hover {
   border-color: var(--colour-line);
   color: var(--colour-text);
+}
+
+.notification-toast .notification-recovery {
+  min-height: 36px;
+  margin-top: 10px;
+  border: 1px solid var(--colour-observed);
+  padding: 7px 11px;
+  color: var(--colour-text);
+  background: var(--colour-surface-soft);
+  cursor: pointer;
+  font: inherit;
+}
+
+.notification-toast .notification-recovery:hover,
+.notification-toast .notification-recovery:focus-visible {
+  border-color: var(--colour-accent);
+  color: var(--colour-accent);
 }
 
 .language-backdrop {

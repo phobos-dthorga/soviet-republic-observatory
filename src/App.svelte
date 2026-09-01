@@ -21,7 +21,11 @@
   import ResearchSetupDialog from "./lib/research/ResearchSetupDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
-  import { clearNotifications, notify } from "./lib/notifications/service";
+  import {
+    clearNotifications,
+    notify,
+    openRecoveryProposal,
+  } from "./lib/notifications/service";
   import { replayAttentionCue } from "./lib/attention/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
@@ -483,6 +487,17 @@
         break;
       case "dialog-research":
         researchSetupDialogOpen = true;
+        break;
+      case "dialog-recovery":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("partial");
+        openRecoveryProposal({
+          title: $translation("markets-recovery-title"),
+          message: $translation("markets-recovery-contract-message"),
+          consequence: $translation("recovery-retained-evidence-safety"),
+          actionLabel: $translation("markets-recovery-repair-action"),
+          run: () => undefined,
+        });
         break;
       case "notification-error":
         activeWorkspace = "briefing";

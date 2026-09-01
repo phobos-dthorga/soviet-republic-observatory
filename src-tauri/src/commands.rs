@@ -562,6 +562,14 @@ pub fn get_market_indexing_progress(
 }
 
 #[tauri::command]
+pub fn recover_market_indexing(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state
+        .application
+        .recover_market_indexing()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn index_available_saves_for_markets(
     app: AppHandle,
     state: State<'_, AppState>,

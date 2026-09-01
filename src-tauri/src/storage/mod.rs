@@ -51,6 +51,13 @@ impl ObservatoryStorage {
         warehouse_jobs::recover_interrupted_projection_jobs(&connection)?;
         Ok(storage)
     }
+
+    pub fn verify_and_repair_known_contracts(&self) -> Result<(), ObservatoryError> {
+        let mut connection = self.connect()?;
+        migrations::apply(&mut connection)?;
+        warehouse_jobs::recover_interrupted_projection_jobs(&connection)?;
+        Ok(())
+    }
 }
 
 pub(crate) fn now_ms() -> i64 {

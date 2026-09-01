@@ -103,6 +103,9 @@ an engineering requirement.
 - [ADR-0023: branch-bound player plans and one metric-context contract](architecture/decisions/0023-branch-bound-player-plans-and-metric-context.md)
   — SQLite-owned intent, deterministic schedules, exact-head integrity, and
   standard metric explanations
+- [ADR-0024: bounded actionable recovery by default](architecture/decisions/0024-actionable-recovery-by-default.md)
+  — explicit, non-destructive in-app remedies when one host-owned safe action
+  is known
 
 ## Evidence status vocabulary
 

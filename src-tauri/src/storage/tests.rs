@@ -405,7 +405,7 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
         .expect("request rebuild");
     let retry = storage.projection_queue_status().expect("retry health");
     assert_eq!(retry.failed_jobs, 0);
-    assert_eq!(retry.pending_jobs, 3);
+    assert_eq!(retry.pending_jobs, 4);
     assert!(retry.oldest_unresolved_at_ms.is_some());
 }
 
@@ -831,7 +831,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        15
+        17
     );
     assert_eq!(
         migrated
@@ -843,6 +843,169 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
             )
             .expect("compatibility rebuild"),
         1
+    );
+}
+
+#[test]
+fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("version-fifteen.sqlite3");
+    let storage = ObservatoryStorage::initialise(path.clone()).expect("current storage");
+    let connection = storage.connect().expect("current connection");
+    connection
+        .execute(
+            "INSERT INTO warehouse_projection_jobs(\
+                 projection_id, projection_kind, source_identity, status, requested_at_ms\
+             ) VALUES('observation:preserved', 'observation', 'preserved', 'pending', 1)",
+            [],
+        )
+        .expect("preserved projection");
+    connection
+        .execute("DELETE FROM schema_migrations WHERE version >= 16", [])
+        .expect("remove current migration markers");
+    connection
+        .execute_batch(
+            "DROP INDEX warehouse_projection_jobs_queue;
+             ALTER TABLE warehouse_projection_jobs RENAME TO warehouse_projection_jobs_v16;
+             CREATE TABLE warehouse_projection_jobs (
+                 projection_id TEXT PRIMARY KEY
+                     CHECK (length(projection_id) BETWEEN 3 AND 160),
+                 projection_kind TEXT NOT NULL CHECK (
+                     projection_kind IN (
+                         'observation', 'overlay_state', 'branch_membership', 'rebuild'
+                     )
+                 ),
+                 source_identity TEXT NOT NULL
+                     CHECK (length(source_identity) BETWEEN 1 AND 256),
+                 status TEXT NOT NULL CHECK (
+                     status IN ('pending', 'running', 'applied', 'failed')
+                 ),
+                 requested_at_ms INTEGER NOT NULL,
+                 started_at_ms INTEGER,
+                 applied_at_ms INTEGER,
+                 attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                 error_code TEXT,
+                 CHECK (
+                     (status = 'applied' AND applied_at_ms IS NOT NULL) OR
+                     status <> 'applied'
+                 )
+             ) STRICT;
+             INSERT INTO warehouse_projection_jobs
+             SELECT * FROM warehouse_projection_jobs_v16;
+             DROP TABLE warehouse_projection_jobs_v16;
+             CREATE INDEX warehouse_projection_jobs_queue
+                 ON warehouse_projection_jobs(status, requested_at_ms, projection_id);",
+        )
+        .expect("version fifteen projection queue");
+    assert!(
+        connection
+            .execute(
+                "INSERT INTO warehouse_projection_jobs(\
+                     projection_id, projection_kind, source_identity, status, requested_at_ms\
+                 ) VALUES('market:blocked', 'market_observation', 'blocked', 'pending', 2)",
+                [],
+            )
+            .is_err(),
+        "the version fifteen queue must reproduce the missing market kind"
+    );
+    drop(connection);
+    drop(storage);
+
+    let migrated = ObservatoryStorage::initialise(path).expect("migrated storage");
+    let connection = migrated.connect().expect("migrated connection");
+    assert_eq!(
+        connection
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| {
+                row.get::<_, u32>(0)
+            })
+            .expect("latest migration"),
+        17
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT projection_kind FROM warehouse_projection_jobs \
+                 WHERE projection_id = 'observation:preserved'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .expect("preserved projection kind"),
+        "observation"
+    );
+    connection
+        .execute(
+            "INSERT INTO warehouse_projection_jobs(\
+                 projection_id, projection_kind, source_identity, status, requested_at_ms\
+             ) VALUES('market:accepted', 'market_observation', 'accepted', 'pending', 3)",
+            [],
+        )
+        .expect("market projection after migration");
+}
+
+#[test]
+fn parser_engine_upgrade_can_add_an_immutable_interpretation_for_the_same_raw_save() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("parser-engine-upgrade.sqlite3");
+    let storage = ObservatoryStorage::initialise(path.clone()).expect("current storage");
+
+    let mut first = inspection("engine-v1", "same-save.zip", &[1, 2, 3]);
+    first.payload_hash = "same-raw-save".to_owned();
+    first.compatibility.parser_engine_version = "compatibility-profile-engine.v1".to_owned();
+    storage
+        .save_inspection(&first)
+        .expect("first interpretation");
+
+    let connection = storage.connect().expect("current connection");
+    connection
+        .execute_batch(
+            "DELETE FROM schema_migrations WHERE version = 17;
+             DROP INDEX observation_sources_raw_engine_profile;
+             CREATE UNIQUE INDEX observation_sources_raw_profile
+                 ON observation_sources(raw_payload_hash, resolved_profile_hash);",
+        )
+        .expect("legacy interpretation uniqueness");
+
+    let mut second = inspection("engine-v2", "same-save.zip", &[1, 2, 3]);
+    second.payload_hash = "same-raw-save".to_owned();
+    second.compatibility.parser_engine_version = "compatibility-profile-engine.v2".to_owned();
+    let blocked = storage
+        .save_reinterpretation(&second)
+        .expect_err("legacy uniqueness must reproduce the storage contract failure");
+    assert_eq!(blocked.code(), "storage_contract_violation");
+    drop(connection);
+    drop(storage);
+
+    let repaired = ObservatoryStorage::initialise(path).expect("repaired storage");
+    repaired
+        .save_reinterpretation(&second)
+        .expect("new parser interpretation");
+    let connection = repaired.connect().expect("repaired connection");
+    let interpretations = connection
+        .query_row(
+            "SELECT COUNT(*) FROM observation_sources
+             WHERE raw_payload_hash = 'same-raw-save'",
+            [],
+            |row| row.get::<_, u32>(0),
+        )
+        .expect("interpretation count");
+    assert_eq!(interpretations, 2);
+    let engines = connection
+        .prepare(
+            "SELECT parser_engine_version FROM observation_sources
+             WHERE raw_payload_hash = 'same-raw-save'
+             ORDER BY parser_engine_version",
+        )
+        .expect("engine query")
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("engine rows")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("engine values");
+    assert_eq!(
+        engines,
+        vec![
+            "compatibility-profile-engine.v1".to_owned(),
+            "compatibility-profile-engine.v2".to_owned(),
+        ]
     );
 }
 

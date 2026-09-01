@@ -4,6 +4,7 @@
   import { translation } from "../i18n/runtime";
   import {
     dismissNotification,
+    openRecoveryProposal,
     type AppNotification,
     type NotificationTone,
   } from "./service";
@@ -44,14 +45,26 @@
   <span class="notification-glyph" aria-hidden="true"
     >{toneGlyphs[notification.tone]}</span
   >
-  <div>
+  <div class="notification-copy">
     <strong
       >{notification.title ??
         $translation(toneLabels[notification.tone])}</strong
     >
     <p>{notification.message}</p>
+    {#if notification.recovery}
+      <button
+        class="notification-recovery"
+        type="button"
+        onclick={() => {
+          if (!notification.recovery) return;
+          openRecoveryProposal(notification.recovery);
+          dismissNotification(notification.id);
+        }}>{$translation("notification-review-recovery")}</button
+      >
+    {/if}
   </div>
   <button
+    class="notification-dismiss"
     type="button"
     aria-label={$translation("notification-dismiss")}
     title={$translation("notification-dismiss")}

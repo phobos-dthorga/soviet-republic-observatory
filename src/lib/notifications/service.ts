@@ -2,6 +2,14 @@ import { writable } from "svelte/store";
 
 export type NotificationTone = "info" | "success" | "warning" | "error";
 
+export type RecoveryProposal = {
+  title: string;
+  message: string;
+  consequence?: string;
+  actionLabel: string;
+  run: () => void | Promise<void>;
+};
+
 export type AppNotification = {
   id: string;
   title?: string;
@@ -10,6 +18,7 @@ export type AppNotification = {
   createdAt: number;
   timeoutMs: number;
   dedupeKey?: string;
+  recovery?: RecoveryProposal;
 };
 
 export type NotificationRequest = {
@@ -18,6 +27,7 @@ export type NotificationRequest = {
   tone?: NotificationTone;
   timeoutMs?: number;
   dedupeKey?: string;
+  recovery?: RecoveryProposal;
 };
 
 const MAX_VISIBLE_NOTIFICATIONS = 5;
@@ -30,9 +40,14 @@ const DEFAULT_TIMEOUTS: Record<NotificationTone, number> = {
 
 let sequence = 0;
 const notificationStore = writable<AppNotification[]>([]);
+const recoveryProposalStore = writable<RecoveryProposal | null>(null);
 
 export const notifications = {
   subscribe: notificationStore.subscribe,
+};
+
+export const recoveryProposal = {
+  subscribe: recoveryProposalStore.subscribe,
 };
 
 export function notify(request: NotificationRequest): string {
@@ -53,6 +68,7 @@ export function notify(request: NotificationRequest): string {
       createdAt: Date.now(),
       timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUTS[tone],
       dedupeKey: request.dedupeKey,
+      recovery: request.recovery,
     };
     const withoutDuplicate = existing
       ? current.filter((item) => item.id !== existing.id)
@@ -64,6 +80,14 @@ export function notify(request: NotificationRequest): string {
   return notificationId;
 }
 
+export function openRecoveryProposal(proposal: RecoveryProposal): void {
+  recoveryProposalStore.set(proposal);
+}
+
+export function dismissRecoveryProposal(): void {
+  recoveryProposalStore.set(null);
+}
+
 export function dismissNotification(id: string): void {
   notificationStore.update((current) =>
     current.filter((notification) => notification.id !== id),
@@ -72,4 +96,5 @@ export function dismissNotification(id: string): void {
 
 export function clearNotifications(): void {
   notificationStore.set([]);
+  recoveryProposalStore.set(null);
 }

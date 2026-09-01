@@ -37,6 +37,10 @@ pub enum ObservatoryError {
     ReceiverHistoryUnavailable,
     #[error("Local observation storage is unavailable.")]
     StorageUnavailable,
+    #[error("Local observation storage is temporarily busy.")]
+    StorageBusy,
+    #[error("An internal Observatory storage contract was rejected.")]
+    StorageContractViolation,
     #[error("The selected timeline branch does not exist.")]
     UnknownBranch,
     #[error("The selected observations cannot be compared on one resolved branch.")]
@@ -167,6 +171,8 @@ impl ObservatoryError {
             Self::MalformedSnapshot(_) => "malformed_snapshot",
             Self::ReceiverHistoryUnavailable => "receiver_history_unavailable",
             Self::StorageUnavailable => "storage_unavailable",
+            Self::StorageBusy => "storage_busy",
+            Self::StorageContractViolation => "storage_contract_violation",
             Self::UnknownBranch => "unknown_branch",
             Self::IncompatibleComparison => "incompatible_comparison",
             Self::SameObservationComparison => "same_observation_comparison",
@@ -258,10 +264,16 @@ impl From<ObservatoryError> for CommandError {
 }
 
 impl From<rusqlite::Error> for ObservatoryError {
-    fn from(_error: rusqlite::Error) -> Self {
+    fn from(error: rusqlite::Error) -> Self {
         #[cfg(debug_assertions)]
-        eprintln!("SQLite diagnostic: {_error}");
-        Self::StorageUnavailable
+        eprintln!("SQLite diagnostic: {error}");
+        match error.sqlite_error_code() {
+            Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked) => {
+                Self::StorageBusy
+            }
+            Some(rusqlite::ErrorCode::ConstraintViolation) => Self::StorageContractViolation,
+            _ => Self::StorageUnavailable,
+        }
     }
 }
 
@@ -282,5 +294,26 @@ impl From<std::io::Error> for ObservatoryError {
 impl From<zip::result::ZipError> for ObservatoryError {
     fn from(_: zip::result::ZipError) -> Self {
         Self::InvalidArchive
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use super::ObservatoryError;
+
+    #[test]
+    fn sqlite_constraints_are_reported_as_contract_violations() {
+        let connection = Connection::open_in_memory().expect("connection");
+        connection
+            .execute_batch("CREATE TABLE contract(value INTEGER CHECK(value > 0)) STRICT;")
+            .expect("contract");
+        let sqlite_error = connection
+            .execute("INSERT INTO contract(value) VALUES(0)", [])
+            .expect_err("constraint violation");
+        let error = ObservatoryError::from(sqlite_error);
+
+        assert_eq!(error.code(), "storage_contract_violation");
     }
 }

@@ -2,11 +2,12 @@
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
-  import { notify } from "../notifications/service";
+  import { notify, type RecoveryProposal } from "../notifications/service";
   import {
     clearMarketSelection,
     getMarketPriceSeries,
     indexAvailableSavesForMarkets,
+    recoverMarketIndexing,
     removeMarketDefinition,
     rollbackMarketDefinition,
     saveMarketBasket,
@@ -346,7 +347,49 @@
     return "market_action_failed";
   }
 
-  async function runIndexing(): Promise<void> {
+  function actionFailureMessage(error: unknown): string {
+    const code = errorCode(error);
+    if (code === "storage_busy")
+      return $translation("markets-action-storage-busy");
+    if (code === "storage_contract_violation")
+      return $translation("markets-action-storage-contract");
+    if (code === "warehouse_unavailable")
+      return $translation("markets-action-warehouse-unavailable");
+    if (code === "storage_unavailable")
+      return $translation("markets-action-storage-unavailable");
+    return $translation("markets-action-failed", { code });
+  }
+
+  function indexingRecovery(error: unknown): RecoveryProposal | undefined {
+    const code = errorCode(error);
+    if (code === "storage_busy") {
+      return {
+        title: $translation("markets-recovery-title"),
+        message: $translation("markets-recovery-busy-message"),
+        consequence: $translation("recovery-retained-evidence-safety"),
+        actionLabel: $translation("markets-recovery-retry-action"),
+        run: () => runIndexing(true),
+      };
+    }
+    if (
+      code === "storage_contract_violation" ||
+      code === "warehouse_unavailable"
+    ) {
+      return {
+        title: $translation("markets-recovery-title"),
+        message: $translation("markets-recovery-contract-message"),
+        consequence: $translation("recovery-retained-evidence-safety"),
+        actionLabel: $translation("markets-recovery-repair-action"),
+        run: async () => {
+          await recoverMarketIndexing();
+          await runIndexing(true);
+        },
+      };
+    }
+    return undefined;
+  }
+
+  async function runIndexing(propagateFailure = false): Promise<void> {
     if (busy || !desktopAvailable) return;
     busy = true;
     try {
@@ -363,12 +406,12 @@
         tone: progress.failed_archives ? "warning" : "success",
       });
     } catch (error) {
+      if (propagateFailure) throw error;
       notify({
         title: $translation("markets-index-notification-title"),
-        message: $translation("markets-action-failed", {
-          code: errorCode(error),
-        }),
+        message: actionFailureMessage(error),
         tone: "error",
+        recovery: indexingRecovery(error),
       });
     } finally {
       busy = false;
@@ -414,9 +457,7 @@
     } catch (error) {
       notify({
         title: $translation("markets-baskets-title"),
-        message: $translation("markets-action-failed", {
-          code: errorCode(error),
-        }),
+        message: actionFailureMessage(error),
         tone: "error",
       });
     } finally {
@@ -460,9 +501,7 @@
     } catch (error) {
       notify({
         title: $translation("markets-scenarios-title"),
-        message: $translation("markets-action-failed", {
-          code: errorCode(error),
-        }),
+        message: actionFailureMessage(error),
         tone: "error",
       });
     } finally {
@@ -496,9 +535,7 @@
     } catch (error) {
       notify({
         title: $translation("nav-markets"),
-        message: $translation("markets-action-failed", {
-          code: errorCode(error),
-        }),
+        message: actionFailureMessage(error),
         tone: "error",
       });
     } finally {
@@ -639,7 +676,7 @@
       <button
         type="button"
         disabled={!desktopAvailable || busy}
-        onclick={runIndexing}
+        onclick={() => runIndexing()}
       >
         {$translation("markets-index-action")}
       </button>
@@ -737,7 +774,7 @@
         <span class="eyebrow">{$translation("markets-no-evidence")}</span>
         <h3>{$translation("markets-empty-title")}</h3>
         <p>{$translation("markets-empty-detail")}</p>
-        <button type="button" disabled={busy} onclick={runIndexing}>
+        <button type="button" disabled={busy} onclick={() => runIndexing()}>
           {$translation("markets-index-action")}
         </button>
       </section>

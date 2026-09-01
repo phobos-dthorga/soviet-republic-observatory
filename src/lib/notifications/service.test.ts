@@ -5,6 +5,8 @@ import {
   dismissNotification,
   notifications,
   notify,
+  openRecoveryProposal,
+  recoveryProposal,
 } from "./service";
 
 describe("application notifications", () => {
@@ -65,5 +67,29 @@ describe("application notifications", () => {
     expect(second).toBe(first);
     expect(get(notifications)).toHaveLength(1);
     expect(get(notifications)[0]?.message).toBe("Compile stopped");
+  });
+
+  it("keeps a bounded recovery proposal behind an explicit review action", () => {
+    const run = vi.fn();
+    notify({
+      message: "Storage contract stopped safely",
+      tone: "error",
+      recovery: {
+        title: "Recover indexing",
+        message: "Verify known contracts and retry.",
+        actionLabel: "Repair and retry",
+        run,
+      },
+    });
+
+    const proposal = get(notifications)[0]?.recovery;
+    expect(proposal?.actionLabel).toBe("Repair and retry");
+    expect(get(recoveryProposal)).toBeNull();
+    if (!proposal) throw new Error("expected recovery proposal");
+    openRecoveryProposal(proposal);
+    expect(get(recoveryProposal)?.run).toBe(run);
+
+    clearNotifications();
+    expect(get(recoveryProposal)).toBeNull();
   });
 });
