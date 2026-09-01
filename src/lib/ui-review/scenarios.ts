@@ -21,6 +21,7 @@ export const UI_REVIEW_SCENARIOS = [
   "critical-task-failed",
   "dialog-language",
   "dialog-theme",
+  "dialog-settings",
   "dialog-observation",
   "dialog-diagnostics",
   "dialog-legal",

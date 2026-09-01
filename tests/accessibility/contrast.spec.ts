@@ -124,16 +124,15 @@ for (const theme of themes) {
       test.setTimeout(60_000);
       await page.goto("/");
       await applyTheme(page, theme);
-      await page.getByRole("button", { name: /^Language/ }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: /^Interface language/ }).click();
       await page
         .getByRole("button", { name: "Community language packs" })
         .focus();
       await audit(page, testInfo, `${theme.name} / Language dialog`);
       await page.getByRole("button", { name: "Close" }).last().click();
-      await page.locator(".theme-button").evaluate((button) => {
-        (button as HTMLButtonElement).disabled = false;
-      });
-      await page.getByRole("button", { name: "Theme" }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: /^Validated theme/ }).click();
       await page.getByRole("button", { name: "Data-only themes" }).click();
       await expect(page.getByRole("tooltip")).toBeVisible();
       await audit(page, testInfo, `${theme.name} / Theme dialog`);

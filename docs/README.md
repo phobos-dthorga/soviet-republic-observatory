@@ -106,6 +106,9 @@ an engineering requirement.
 - [ADR-0024: bounded actionable recovery by default](architecture/decisions/0024-actionable-recovery-by-default.md)
   — explicit, non-destructive in-app remedies when one host-owned safe action
   is known
+- [ADR-0025: bounded application settings](architecture/decisions/0025-bounded-application-settings.md)
+  — one typed preference authority without exposing evidence, security, or
+  storage-integrity policy as presentation choices
 
 ## Evidence status vocabulary
 

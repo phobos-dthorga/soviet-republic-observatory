@@ -42,6 +42,7 @@ const smokeScenarios: UiReviewScenarioId[] = [
   "workspace-markets",
   "critical-task-failed",
   "dialog-theme",
+  "dialog-settings",
   "dialog-research",
   "dialog-recovery",
   "notification-error",
@@ -161,6 +162,8 @@ async function prepareInteractiveScenario(
     await (await client.$(".attention-cue.active")).waitForDisplayed();
   } else if (scenario === "dialog-recovery") {
     await (await client.$(".recovery-dialog")).waitForDisplayed();
+  } else if (scenario === "dialog-settings") {
+    await (await client.$(".settings-dialog")).waitForDisplayed();
   } else if (scenario === "notification-error") {
     await (await client.$(".notification-toast")).waitForDisplayed();
   } else if (scenario === "production-pathway") {

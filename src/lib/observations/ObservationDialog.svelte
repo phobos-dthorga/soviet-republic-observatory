@@ -6,19 +6,15 @@
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { reinterpretationProgressView } from "../tasks/reinterpretationProgress";
   import {
-    chooseDirectory,
-    configureDirectory,
     createLocalCompatibilityOverride,
     getSetupState,
     observeLatestSave,
     observerErrorCode,
     reinterpretLatestSave,
     reloadLocalCompatibilityOverride,
-    setAutomaticObservation,
   } from "./desktopClient";
   import type {
     CompatibilityCatalogueScopeStatus,
-    DirectoryKind,
     ObserverErrorCode,
     ReceiverDataset,
     ReinterpretationProgress,
@@ -34,6 +30,7 @@
     onclose,
     onsetupchange,
     onobservation,
+    onopensettings,
   }: {
     open: boolean;
     desktopAvailable: boolean;
@@ -43,6 +40,7 @@
     onclose: () => void;
     onsetupchange: (setup: SetupState) => void;
     onobservation: (dataset: ReceiverDataset) => void;
+    onopensettings: () => void;
   } = $props();
 
   let busy = $state(false);
@@ -86,28 +84,6 @@
     statusMessage = "";
   }
 
-  async function selectDirectory(kind: DirectoryKind): Promise<void> {
-    busy = true;
-    errorMessage = "";
-    statusMessage = "";
-    try {
-      const title = $translation(
-        kind === "save"
-          ? "observer-choose-save-folder"
-          : kind === "game"
-            ? "observer-choose-game-folder"
-            : "observer-choose-workshop-folder",
-      );
-      const selected = await chooseDirectory(title);
-      if (!selected) return;
-      onsetupchange(await configureDirectory(kind, selected));
-    } catch (error) {
-      reportError(error);
-    } finally {
-      busy = false;
-    }
-  }
-
   async function observe(): Promise<void> {
     busy = true;
     errorMessage = "";
@@ -120,22 +96,6 @@
         result.outcome === "duplicate"
           ? "observer-duplicate"
           : "observer-imported",
-      );
-    } catch (error) {
-      reportError(error);
-    } finally {
-      busy = false;
-    }
-  }
-
-  async function toggleAutomaticObservation(enabled: boolean): Promise<void> {
-    busy = true;
-    errorMessage = "";
-    statusMessage = "";
-    try {
-      onsetupchange(await setAutomaticObservation(enabled));
-      statusMessage = $translation(
-        enabled ? "observer-automatic-enabled" : "observer-automatic-disabled",
       );
     } catch (error) {
       reportError(error);
@@ -318,141 +278,23 @@
           <p>{$translation("observer-browser-detail")}</p>
         </GuidanceSurface>
       {:else}
-        <div class="observer-source-grid">
-          <article class:configured={Boolean(setup?.save_directory)}>
-            <header>
-              <div>
-                <span class="eyebrow">01</span>
-                <h3>{$translation("observer-save-folder")}</h3>
-              </div>
-              <span
-                class="status-chip"
-                data-status={setup?.save_directory ? "stable" : "watch"}
-              >
-                {setup?.save_directory
-                  ? $translation("coverage-complete")
-                  : $translation("observer-not-configured")}
-              </span>
-            </header>
-            <p>{$translation("observer-save-folder-detail")}</p>
-            <div class="observer-source-state">
-              <strong>
-                {setup?.save_directory
-                  ? $translation("observer-folder-selected", {
-                      name: setup.save_directory.name,
-                    })
-                  : $translation("observer-not-configured")}
-              </strong>
-              <span>
-                {$translation("observer-save-candidates", {
-                  count: setup?.save_candidates ?? 0,
-                })}
-              </span>
+        <GuidanceSurface kind="instruction" layout="compact">
+          <div class="observer-settings-summary">
+            <div>
+              <strong>{$translation("observer-settings-owned-title")}</strong>
+              <p>{$translation("observer-settings-owned-detail")}</p>
+              <small role="status">{automaticStatusText()}</small>
             </div>
             <button
               type="button"
               disabled={busy}
-              onclick={() => void selectDirectory("save")}
+              onclick={() => {
+                onclose();
+                onopensettings();
+              }}>{$translation("observer-open-settings")}</button
             >
-              {$translation("observer-choose-save-folder")}
-            </button>
-          </article>
-
-          <article class:configured={Boolean(setup?.game_directory)}>
-            <header>
-              <div>
-                <span class="eyebrow">02</span>
-                <h3>{$translation("observer-game-folder")}</h3>
-              </div>
-              <span
-                class="status-chip"
-                data-status={setup?.game_directory ? "stable" : "watch"}
-              >
-                {setup?.game_directory
-                  ? $translation("coverage-complete")
-                  : $translation("observer-not-configured")}
-              </span>
-            </header>
-            <p>{$translation("observer-game-folder-detail")}</p>
-            <div class="observer-source-state">
-              <strong>
-                {setup?.game_directory
-                  ? $translation("observer-folder-selected", {
-                      name: setup.game_directory.name,
-                    })
-                  : $translation("observer-not-configured")}
-              </strong>
-              <span>
-                {$translation("observer-game-vocabularies", {
-                  count: setup?.game_vocabularies.length ?? 0,
-                })}
-              </span>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onclick={() => void selectDirectory("game")}
-            >
-              {$translation("observer-choose-game-folder")}
-            </button>
-          </article>
-
-          <article class:configured={Boolean(setup?.workshop_directory)}>
-            <header>
-              <div>
-                <span class="eyebrow">03</span>
-                <h3>{$translation("observer-workshop-folder")}</h3>
-              </div>
-              <span
-                class="status-chip"
-                data-status={setup?.workshop_directory ? "stable" : "watch"}
-              >
-                {setup?.workshop_directory
-                  ? $translation("coverage-complete")
-                  : $translation("observer-optional")}
-              </span>
-            </header>
-            <p>{$translation("observer-workshop-folder-detail")}</p>
-            <div class="observer-source-state">
-              <strong>
-                {setup?.workshop_directory
-                  ? $translation("observer-folder-selected", {
-                      name: setup.workshop_directory.name,
-                    })
-                  : $translation("observer-automatic-discovery")}
-              </strong>
-              <span>{$translation("observer-workshop-private")}</span>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onclick={() => void selectDirectory("workshop")}
-            >
-              {$translation("observer-choose-workshop-folder")}
-            </button>
-          </article>
-        </div>
-
-        <section class="observer-automatic-card">
-          <div>
-            <span class="eyebrow"
-              >{$translation("observer-automatic-eyebrow")}</span
-            >
-            <strong>{$translation("observer-automatic-title")}</strong>
-            <p>{$translation("observer-automatic-detail")}</p>
-            <small role="status">{automaticStatusText()}</small>
           </div>
-          <label class="observer-switch">
-            <input
-              type="checkbox"
-              checked={setup?.automatic_observer.enabled ?? false}
-              disabled={busy || !setup?.save_directory}
-              onchange={(event) =>
-                void toggleAutomaticObservation(event.currentTarget.checked)}
-            />
-            <span>{$translation("observer-automatic-toggle")}</span>
-          </label>
-        </section>
+        </GuidanceSurface>
 
         {#if setup?.compatibility}
           <section

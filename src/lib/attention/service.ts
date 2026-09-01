@@ -59,3 +59,8 @@ export async function replayAttentionCue(
   attentionRevision.update((revision) => revision + 1);
   return status;
 }
+
+export function noteAllAttentionCuesReplayed(): void {
+  fallbackDismissed.clear();
+  attentionRevision.update((revision) => revision + 1);
+}

@@ -143,8 +143,8 @@
   }
 
   .primary-action {
-    border-color: var(--colour-accent);
-    color: var(--colour-accent);
+    border-color: var(--colour-gold);
+    color: var(--colour-gold);
   }
 
   .recovery-failure {

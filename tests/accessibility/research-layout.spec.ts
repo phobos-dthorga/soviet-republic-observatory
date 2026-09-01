@@ -207,10 +207,8 @@ test("theme assay renders readable non-interactive critical-task states", async 
   page,
 }) => {
   await page.goto("/");
-  await page.locator(".theme-button").evaluate((button) => {
-    (button as HTMLButtonElement).disabled = false;
-  });
-  await page.getByRole("button", { name: "Theme" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: /^Validated theme/ }).click();
   const preview = page.locator(".semantic-state-preview");
   const failed = preview.locator(".task-indicator.failed");
   await expect(preview.getByRole("button")).toHaveCount(0);
@@ -309,17 +307,16 @@ test("enabled workspaces use the shared guidance surface without disguising cont
     page.locator(".sidebar-note:not(.guidance-surface)"),
   ).toHaveCount(1);
 
-  await page.getByRole("button", { name: /^Language/ }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: /^Interface language/ }).click();
   await expect(page.locator(".language-boundary")).toHaveAttribute(
     "data-guidance-surface",
     "boundary",
   );
   await page.getByRole("button", { name: "Close" }).last().click();
 
-  await page.locator(".theme-button").evaluate((button) => {
-    (button as HTMLButtonElement).disabled = false;
-  });
-  await page.getByRole("button", { name: "Theme" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: /^Validated theme/ }).click();
   await expect(page.locator(".theme-boundary")).toHaveAttribute(
     "data-guidance-surface",
     "boundary",

@@ -11,6 +11,9 @@
   import MarketsWorkspace from "./lib/workspaces/MarketsWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
+  import SettingsDialog from "./lib/settings/SettingsDialog.svelte";
+  import { getApplicationSettings } from "./lib/settings/desktopClient";
+  import { applyApplicationPreferences } from "./lib/settings/runtime";
   import { initialiseThemes } from "./lib/theme/service";
   import { activeLocale, translation } from "./lib/i18n/runtime";
   import type { TranslationKey } from "./lib/i18n/catalog";
@@ -138,6 +141,7 @@
   let activeWorkspace = $state<WorkspaceName>("briefing");
   let languageDialogOpen = $state(false);
   let themeDialogOpen = $state(false);
+  let settingsDialogOpen = $state(false);
   let observationDialogOpen = $state(false);
   let diagnosticsDialogOpen = $state(false);
   let legalDialogOpen = $state(false);
@@ -380,6 +384,7 @@
     clearNotifications();
     languageDialogOpen = false;
     themeDialogOpen = false;
+    settingsDialogOpen = false;
     observationDialogOpen = false;
     diagnosticsDialogOpen = false;
     legalDialogOpen = false;
@@ -475,6 +480,9 @@
         break;
       case "dialog-theme":
         themeDialogOpen = true;
+        break;
+      case "dialog-settings":
+        settingsDialogOpen = true;
         break;
       case "dialog-observation":
         observationDialogOpen = true;
@@ -575,7 +583,7 @@
     let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
     const initialDataReady = Promise.all([
-      getSetupState(),
+      getApplicationSettings(),
       getLatestReceiverDataset(),
       getArchiveOverview(),
       getRecorderHealth(),
@@ -586,7 +594,7 @@
       getPublishedMetricContexts().catch(() => []),
     ]).then(
       ([
-        setup,
+        settings,
         dataset,
         archive,
         health,
@@ -597,7 +605,8 @@
         metricContexts,
       ]) => {
         if (disposed) return;
-        setupState = setup;
+        setupState = settings.setup;
+        applyApplicationPreferences(settings.preferences);
         receiverDataset = dataset;
         archiveOverview = archive;
         recorderHealth = health;
@@ -867,18 +876,10 @@
       </button>
       <button
         type="button"
-        class="language-button"
-        onclick={() => (languageDialogOpen = true)}
+        class="settings-button"
+        onclick={() => (settingsDialogOpen = true)}
       >
-        {$translation("language-open", { locale: $activeLocale })}
-      </button>
-      <button
-        type="button"
-        class="theme-button"
-        disabled={!desktopAvailable}
-        onclick={() => (themeDialogOpen = true)}
-      >
-        {$translation("theme-open")}
+        {$translation("settings-open")}
       </button>
       <button
         type="button"
@@ -1040,6 +1041,18 @@
 
 <ThemeDialog open={themeDialogOpen} onclose={() => (themeDialogOpen = false)} />
 
+<SettingsDialog
+  open={settingsDialogOpen}
+  setup={setupState}
+  onclose={() => (settingsDialogOpen = false)}
+  onsetupchange={acceptSetupChange}
+  onopenlanguage={() => (languageDialogOpen = true)}
+  onopentheme={() => (themeDialogOpen = true)}
+  onopenobserver={() => (observationDialogOpen = true)}
+  onopenlegal={() => (legalDialogOpen = true)}
+  onopendiagnostics={openDiagnostics}
+/>
+
 <ObservationDialog
   open={observationDialogOpen}
   {desktopAvailable}
@@ -1049,6 +1062,7 @@
   onclose={() => (observationDialogOpen = false)}
   onsetupchange={acceptSetupChange}
   onobservation={acceptObservation}
+  onopensettings={() => (settingsDialogOpen = true)}
 />
 
 <DiagnosticsDialog

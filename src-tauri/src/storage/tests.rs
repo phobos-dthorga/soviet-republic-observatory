@@ -4,10 +4,99 @@ use tempfile::tempdir;
 use super::ObservatoryStorage;
 use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
-    AnalysisContextMode, AnalysisContextOrigin, CoverageReport, CoverageStatus, ReceiverRecord,
+    AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
+    BackgroundWorkPriority, CoverageReport, CoverageStatus, MotionPreference, ReceiverRecord,
     RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot,
-    SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset,
 };
+
+#[test]
+fn application_preferences_are_bounded_atomic_and_restart_safe() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("settings.sqlite3");
+    let storage = ObservatoryStorage::initialise(path.clone()).expect("storage");
+    let defaults = storage
+        .load_application_preferences()
+        .expect("default preferences");
+    assert_eq!(defaults.effective_storage_patience_seconds, 60);
+    assert_eq!(defaults.text_scale_percent, 100);
+
+    let saved = storage
+        .save_application_preferences(&ApplicationPreferencesDraft {
+            storage_patience_preset: StoragePatiencePreset::Custom,
+            custom_storage_patience_seconds: Some(240),
+            background_work_priority: BackgroundWorkPriority::Balanced,
+            text_scale_percent: 150,
+            motion_preference: MotionPreference::Reduced,
+            automatic_observation_enabled: true,
+        })
+        .expect("saved preferences");
+    assert_eq!(saved.effective_storage_patience_seconds, 240);
+    drop(storage);
+
+    let reopened = ObservatoryStorage::initialise(path).expect("reopened storage");
+    assert_eq!(
+        reopened
+            .load_application_preferences()
+            .expect("restored preferences"),
+        saved
+    );
+
+    let invalid = reopened
+        .save_application_preferences(&ApplicationPreferencesDraft {
+            storage_patience_preset: StoragePatiencePreset::Custom,
+            custom_storage_patience_seconds: Some(301),
+            background_work_priority: BackgroundWorkPriority::Gentle,
+            text_scale_percent: 125,
+            motion_preference: MotionPreference::System,
+            automatic_observation_enabled: false,
+        })
+        .expect_err("out-of-range patience must fail");
+    assert_eq!(invalid.code(), "invalid_application_preferences");
+    assert_eq!(
+        reopened
+            .load_application_preferences()
+            .expect("unchanged preferences"),
+        saved
+    );
+}
+
+#[test]
+fn corrupt_application_preference_fields_fall_back_individually() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("settings.sqlite3")).expect("storage");
+    let connection = storage.connect().expect("connection");
+    for (key, value) in [
+        ("storage_patience_preset", "forever"),
+        ("custom_storage_patience_seconds", "9999"),
+        ("background_work_priority", "dangerous"),
+        ("interface_text_scale_percent", "73"),
+        ("motion_preference", "spin"),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO private_settings(setting_key, setting_value) VALUES(?1, ?2)",
+                params![key, value],
+            )
+            .expect("corrupt preference fixture");
+    }
+    drop(connection);
+
+    let preferences = storage
+        .load_application_preferences()
+        .expect("safe fallback");
+    assert_eq!(
+        preferences.storage_patience_preset,
+        StoragePatiencePreset::Balanced
+    );
+    assert_eq!(
+        preferences.background_work_priority,
+        BackgroundWorkPriority::Gentle
+    );
+    assert_eq!(preferences.text_scale_percent, 100);
+    assert_eq!(preferences.motion_preference, MotionPreference::System);
+}
 
 #[test]
 fn exact_historical_preview_excludes_later_states_and_returns_to_the_proven_tip() {

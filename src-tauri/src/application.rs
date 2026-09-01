@@ -20,7 +20,8 @@ use crate::language_pack::{
     LanguagePackInspection, LanguageStatus, LegacyLanguageHandover, inspect_community_manifest,
 };
 use crate::model::{
-    AnalysisContextResult, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
+    AnalysisContextResult, ApplicationPreferences, ApplicationPreferencesDraft,
+    ApplicationSettingsView, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
     CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome, MarketBasketDraft,
@@ -200,6 +201,66 @@ impl ObservatoryApplication {
             automatic_observer: self.observer_status()?,
             compatibility: self.compatibility_status()?,
         })
+    }
+
+    pub fn application_settings(&self) -> Result<ApplicationSettingsView, ObservatoryError> {
+        Ok(ApplicationSettingsView {
+            preferences: self.storage.load_application_preferences()?,
+            setup: self.setup_state()?,
+        })
+    }
+
+    pub fn update_application_preferences(
+        &self,
+        draft: &ApplicationPreferencesDraft,
+    ) -> Result<ApplicationSettingsView, ObservatoryError> {
+        let preferences = self.storage.save_application_preferences(draft)?;
+        self.apply_observation_preference(&preferences)?;
+        diagnostics::record(
+            "info",
+            "settings.updated",
+            "application_settings",
+            "Application preferences were validated and saved locally.",
+        );
+        Ok(ApplicationSettingsView {
+            preferences,
+            setup: self.setup_state()?,
+        })
+    }
+
+    pub fn reset_application_preferences(
+        &self,
+    ) -> Result<ApplicationSettingsView, ObservatoryError> {
+        let preferences = self.storage.reset_application_preferences()?;
+        self.apply_observation_preference(&preferences)?;
+        diagnostics::record(
+            "info",
+            "settings.defaults_restored",
+            "application_settings",
+            "Interface and background-work preferences were restored to safe defaults.",
+        );
+        Ok(ApplicationSettingsView {
+            preferences,
+            setup: self.setup_state()?,
+        })
+    }
+
+    fn apply_observation_preference(
+        &self,
+        preferences: &ApplicationPreferences,
+    ) -> Result<(), ObservatoryError> {
+        let directory_configured = self
+            .storage
+            .get_setting(SAVE_DIRECTORY_KEY)?
+            .is_some_and(|path| path.is_dir());
+        self.automatic_observer
+            .lock()
+            .map_err(|_| ObservatoryError::StorageUnavailable)?
+            .set_enabled(
+                preferences.automatic_observation_enabled,
+                directory_configured,
+            );
+        Ok(())
     }
 
     pub fn latest_receiver_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
@@ -1637,6 +1698,17 @@ impl ObservatoryApplication {
         content_revision: u32,
     ) -> Result<(), ObservatoryError> {
         self.storage.replay_attention_cue(cue_id, content_revision)
+    }
+
+    pub fn replay_all_attention_cues(&self) -> Result<u32, ObservatoryError> {
+        let replayed = self.storage.replay_all_attention_cues()?;
+        diagnostics::record(
+            "info",
+            "guidance.replayed",
+            "application_settings",
+            "Dismissed introductions and guidance cues were made available for replay.",
+        );
+        Ok(replayed)
     }
 
     pub(crate) fn research_setup(

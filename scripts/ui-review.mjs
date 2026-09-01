@@ -38,6 +38,7 @@ const scenarios = [
   "critical-task-failed",
   "dialog-language",
   "dialog-theme",
+  "dialog-settings",
   "dialog-observation",
   "dialog-diagnostics",
   "dialog-legal",

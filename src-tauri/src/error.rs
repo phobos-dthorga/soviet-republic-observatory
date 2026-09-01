@@ -41,6 +41,8 @@ pub enum ObservatoryError {
     StorageBusy,
     #[error("An internal Observatory storage contract was rejected.")]
     StorageContractViolation,
+    #[error("The application preferences are invalid.")]
+    InvalidApplicationPreferences,
     #[error("The selected timeline branch does not exist.")]
     UnknownBranch,
     #[error("The selected observations cannot be compared on one resolved branch.")]
@@ -173,6 +175,7 @@ impl ObservatoryError {
             Self::StorageUnavailable => "storage_unavailable",
             Self::StorageBusy => "storage_busy",
             Self::StorageContractViolation => "storage_contract_violation",
+            Self::InvalidApplicationPreferences => "invalid_application_preferences",
             Self::UnknownBranch => "unknown_branch",
             Self::IncompatibleComparison => "incompatible_comparison",
             Self::SameObservationComparison => "same_observation_comparison",

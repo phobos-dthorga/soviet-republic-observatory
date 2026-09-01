@@ -9,15 +9,15 @@ use crate::application::ObservatoryApplication;
 use crate::error::{CommandError, ObservatoryError};
 use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
-    AnalysisContextResult, ArchiveComparison, ArchiveOverview, CataloguePage,
-    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
-    DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketBasketDraft, MarketIndexingProgress,
-    MarketPriceSeries, MarketScenarioDraft, MarketWorkspace, ObservationImportResult,
-    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
-    ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
-    ProductionRouteRequest, PublishedMetricContext, ReceiverDataset, RecorderHealth,
-    ReinterpretationProgress, RepublicBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState,
-    WarehouseSnapshot,
+    AnalysisContextResult, ApplicationPreferencesDraft, ApplicationSettingsView, ArchiveComparison,
+    ArchiveOverview, CataloguePage, CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus,
+    CompatibilityUpdate, DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketBasketDraft,
+    MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft, MarketWorkspace,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
+    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
+    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -107,6 +107,42 @@ pub fn replay_attention_cue(
         content_revision,
         dismissed: false,
     })
+}
+
+#[tauri::command]
+pub fn replay_all_attention_cues(state: State<'_, AppState>) -> Result<u32, CommandError> {
+    state
+        .application
+        .replay_all_attention_cues()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_application_settings(
+    state: State<'_, AppState>,
+) -> Result<ApplicationSettingsView, CommandError> {
+    state.application.application_settings().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn update_application_preferences(
+    preferences: ApplicationPreferencesDraft,
+    state: State<'_, AppState>,
+) -> Result<ApplicationSettingsView, CommandError> {
+    state
+        .application
+        .update_application_preferences(&preferences)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn reset_application_preferences(
+    state: State<'_, AppState>,
+) -> Result<ApplicationSettingsView, CommandError> {
+    state
+        .application
+        .reset_application_preferences()
+        .map_err(Into::into)
 }
 
 #[tauri::command]

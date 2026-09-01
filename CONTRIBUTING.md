@@ -51,6 +51,13 @@ must record whether it has a safe retry, fallback, rebuild, reload, or
 prerequisite-recheck path. See
 [ADR-0024](docs/architecture/decisions/0024-actionable-recovery-by-default.md).
 
+Admit a new application setting only for a genuine player preference or a
+bounded operational trade-off. It needs one Rust-owned type, default, range or
+enumeration, effect boundary, reset behaviour, localisation, and tests. Never
+make evidence interpretation, provenance, schema or parser identity, save
+stability, storage limits, recorder priority, or security policy configurable.
+See [ADR-0025](docs/architecture/decisions/0025-bounded-application-settings.md).
+
 Use the first-class AttentionCue for important new or newly available actions;
 do not reproduce pulse or glow CSS in a workspace. A cue needs a stable ID and
 content revision, must respect reduced motion, and can explain an already-valid

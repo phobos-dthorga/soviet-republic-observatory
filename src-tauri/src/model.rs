@@ -1640,6 +1640,65 @@ pub struct SetupState {
     pub compatibility: CompatibilityStatus,
 }
 
+pub const APPLICATION_PREFERENCES_SCHEMA_VERSION: u32 = 1;
+pub const MIN_STORAGE_PATIENCE_SECONDS: u16 = 5;
+pub const MAX_STORAGE_PATIENCE_SECONDS: u16 = 300;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StoragePatiencePreset {
+    Short,
+    #[default]
+    Balanced,
+    Patient,
+    Custom,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundWorkPriority {
+    #[default]
+    Gentle,
+    Balanced,
+    FinishSooner,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MotionPreference {
+    #[default]
+    System,
+    Reduced,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct ApplicationPreferencesDraft {
+    pub storage_patience_preset: StoragePatiencePreset,
+    pub custom_storage_patience_seconds: Option<u16>,
+    pub background_work_priority: BackgroundWorkPriority,
+    pub text_scale_percent: u16,
+    pub motion_preference: MotionPreference,
+    pub automatic_observation_enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ApplicationPreferences {
+    pub schema_version: u32,
+    pub storage_patience_preset: StoragePatiencePreset,
+    pub custom_storage_patience_seconds: Option<u16>,
+    pub effective_storage_patience_seconds: u16,
+    pub background_work_priority: BackgroundWorkPriority,
+    pub text_scale_percent: u16,
+    pub motion_preference: MotionPreference,
+    pub automatic_observation_enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ApplicationSettingsView {
+    pub preferences: ApplicationPreferences,
+    pub setup: SetupState,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DirectoryKind {

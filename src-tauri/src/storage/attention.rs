@@ -51,6 +51,12 @@ impl ObservatoryStorage {
         )?;
         Ok(())
     }
+
+    pub fn replay_all_attention_cues(&self) -> Result<u32, ObservatoryError> {
+        let connection = self.connect()?;
+        let removed = connection.execute("DELETE FROM attention_cue_dismissals", [])?;
+        Ok(removed.min(u32::MAX as usize) as u32)
+    }
 }
 
 fn validate_cue_identity(cue_id: &str, content_revision: u32) -> Result<(), ObservatoryError> {
