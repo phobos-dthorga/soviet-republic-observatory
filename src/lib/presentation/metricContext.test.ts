@@ -39,7 +39,7 @@ describe("metric context presentation", () => {
     const details = metricContextDetails(metric!.context, translate, label);
 
     expect(details).toContainEqual({
-      label: "Denominator",
+      label: "Total used for division",
       value: "Classified receiver population",
     });
     expect(details).toContainEqual({
