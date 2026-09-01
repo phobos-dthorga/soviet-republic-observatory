@@ -435,6 +435,8 @@
         return $translation("archive-branches");
       case "market_projection":
         return $translation("nav-markets");
+      case "broadcast_projection":
+        return $translation("nav-broadcast");
       case "observation_rebuild":
         return $translation("catalogue-rebuild");
     }

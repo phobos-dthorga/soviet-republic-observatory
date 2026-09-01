@@ -158,6 +158,13 @@ impl ObservatoryStorage {
                 &inspection.interpretation_id,
                 now_ms(),
             )?;
+            super::warehouse_jobs::enqueue_projection_job(
+                &transaction,
+                &format!("broadcast:{}", inspection.interpretation_id),
+                "broadcast_observation",
+                &inspection.interpretation_id,
+                now_ms(),
+            )?;
         } else {
             let snapshots_exist = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM snapshot_scopes WHERE payload_hash = ?1)",
@@ -203,6 +210,13 @@ impl ObservatoryStorage {
             )?;
             if !citizen_status_exists {
                 persist_citizen_status_data(&transaction, &storage_key, inspection)?;
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("broadcast:{}", inspection.interpretation_id),
+                    "broadcast_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
+                )?;
             }
         }
 

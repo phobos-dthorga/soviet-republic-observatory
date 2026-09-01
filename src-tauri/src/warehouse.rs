@@ -10,7 +10,8 @@ use crate::definition_catalogue::{
 };
 use crate::error::ObservatoryError;
 use crate::model::{
-    BranchMembershipProjection, CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
+    BranchMembershipProjection, BroadcastStationRequirement, BroadcastWarehouseProjection,
+    CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
     DefinitionValue, MarketPriceSeriesPoint, MarketPriceVolatility, MarketTradePoint,
@@ -29,8 +30,8 @@ use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 7;
-pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v2";
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 8;
+pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v3";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
 const MAX_PRODUCTION_PATHWAY_SELECTIONS: usize = 32;
@@ -201,6 +202,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         7,
         include_str!("../warehouse_migrations/0007_normalised_market_records.sql"),
+    ),
+    (
+        8,
+        include_str!("../warehouse_migrations/0008_broadcast_status.sql"),
     ),
 ];
 
@@ -885,6 +890,204 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    pub fn project_broadcast_observation(
+        &self,
+        projection_id: &str,
+        projection: &BroadcastWarehouseProjection,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
+            return Ok(());
+        }
+        let rows_total = projection.row_count();
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::BroadcastProjection, rows_total)?;
+        let transaction = connection.transaction()?;
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_broadcast_status_records AS \
+                 SELECT * FROM broadcast_status_records WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_broadcast_status_facts AS \
+                 SELECT * FROM broadcast_status_facts WHERE FALSE;",
+        )?;
+        let mut rows_written = 0_u64;
+        {
+            let mut membership = transaction.appender("broadcast_status_observation_records")?;
+            let mut records = transaction.appender("incoming_broadcast_status_records")?;
+            for record in &projection.records {
+                membership.append_row(params![
+                    projection.interpretation_id,
+                    projection.raw_payload_hash,
+                    projection.branch_id,
+                    record.record_hash,
+                    record.ordinal,
+                    projection.profile_id,
+                    projection.profile_version,
+                    projection.resolved_profile_hash,
+                    projection.mapping_classification,
+                ])?;
+                records.append_row(params![
+                    record.record_hash,
+                    record.record_id,
+                    record.year,
+                    record.day,
+                    record.game_day,
+                ])?;
+                rows_written = rows_written.saturating_add(1);
+            }
+        }
+        {
+            let mut facts = transaction.appender("incoming_broadcast_status_facts")?;
+            for fact in &projection.facts {
+                facts.append_row(params![
+                    fact.record_hash,
+                    fact.source_index,
+                    fact.metric_id,
+                    fact.value,
+                    fact.source_field,
+                    fact.source_line,
+                    fact.mapping_id,
+                ])?;
+                rows_written = rows_written.saturating_add(1);
+                if rows_written == rows_total || rows_written.is_multiple_of(512) {
+                    permit.progress(WarehouseWriteStage::Staging, rows_written);
+                }
+            }
+        }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE new_broadcast_status_records AS \
+                 SELECT DISTINCT incoming.* FROM incoming_broadcast_status_records incoming \
+                 WHERE NOT EXISTS (SELECT 1 FROM broadcast_status_records stored \
+                                   WHERE stored.record_hash = incoming.record_hash); \
+             INSERT INTO broadcast_status_records \
+                 SELECT * FROM new_broadcast_status_records; \
+             INSERT INTO broadcast_status_facts \
+                 SELECT DISTINCT fact.* FROM incoming_broadcast_status_facts fact \
+                 JOIN new_broadcast_status_records record USING(record_hash);",
+        )?;
+        record_receipt(
+            &transaction,
+            projection_id,
+            "broadcast_observation",
+            &projection.interpretation_id,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1, observation_watermark = ?2 \
+             WHERE singleton_id = 1",
+            params![applied_at_ms, projection.interpretation_id],
+        )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
+        transaction.commit()?;
+        permit.complete();
+        Ok(())
+    }
+
+    pub(crate) fn broadcast_projection_available(
+        &self,
+        interpretation_id: &str,
+    ) -> Result<bool, ObservatoryError> {
+        if !self.available {
+            return Ok(false);
+        }
+        let connection = self
+            .connection
+            .try_lock()
+            .map_err(|_| ObservatoryError::WarehouseUnavailable)?;
+        connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM projection_receipts \
+                 WHERE projection_kind = 'broadcast_observation' AND source_identity = ?1)",
+                [interpretation_id],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn broadcast_station_requirements(
+        &self,
+    ) -> Result<Vec<BroadcastStationRequirement>, ObservatoryError> {
+        if !self.available {
+            return Ok(Vec::new());
+        }
+        let connection = self
+            .connection
+            .try_lock()
+            .map_err(|_| ObservatoryError::WarehouseUnavailable)?;
+        let mut statement = connection.prepare(
+            "SELECT membership.entity_id, type.value_text, workers.value_number, \
+                    professors.value_number \
+             FROM catalogue_generation_entities membership \
+             JOIN warehouse_metadata metadata \
+               ON membership.generation_id = metadata.current_catalogue_generation_id \
+             JOIN definition_properties type \
+               ON type.revision_hash = membership.revision_hash \
+              AND type.field_id = 'building.type' AND type.occurrence = 0 \
+             JOIN definition_properties workers \
+               ON workers.revision_hash = membership.revision_hash \
+              AND workers.field_id = 'building.workers.required' AND workers.occurrence = 0 \
+             JOIN definition_properties professors \
+               ON professors.revision_hash = membership.revision_hash \
+              AND professors.field_id = 'building.professors.required' \
+              AND professors.occurrence = 0 \
+             WHERE metadata.singleton_id = 1 \
+               AND type.value_text IN ('TYPE_RADIO_STATION', 'TYPE_TV_STATION', \
+                                       'TYPE_TELEVISION_STATION') \
+             ORDER BY type.value_text, membership.entity_id",
+        )?;
+        let candidates = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                    row.get::<_, f64>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut by_kind = BTreeMap::<String, Vec<(String, u32, u32)>>::new();
+        for (entity_id, source_type, workers, professors) in candidates {
+            if !workers.is_finite()
+                || !professors.is_finite()
+                || workers < 0.0
+                || professors < 0.0
+                || workers.fract() != 0.0
+                || professors.fract() != 0.0
+                || workers > f64::from(u32::MAX)
+                || professors > f64::from(u32::MAX)
+            {
+                continue;
+            }
+            let station_kind = if source_type == "TYPE_RADIO_STATION" {
+                "radio"
+            } else {
+                "television"
+            };
+            by_kind.entry(station_kind.to_owned()).or_default().push((
+                entity_id,
+                workers as u32,
+                professors as u32,
+            ));
+        }
+        Ok(by_kind
+            .into_iter()
+            .filter_map(|(station_kind, candidates)| {
+                let [(catalogue_entity_id, workers, professors)] = candidates.as_slice() else {
+                    return None;
+                };
+                Some(BroadcastStationRequirement {
+                    station_kind,
+                    catalogue_entity_id: catalogue_entity_id.clone(),
+                    workers: *workers,
+                    professors: *professors,
+                })
+            })
+            .collect())
+    }
+
     pub(crate) fn market_projection(
         &self,
         metadata: &MarketWarehouseProjection,
@@ -1403,11 +1606,15 @@ impl AnalyticalWarehouse {
         transaction.execute("DELETE FROM market_scalar_facts", [])?;
         transaction.execute("DELETE FROM market_observation_records", [])?;
         transaction.execute("DELETE FROM market_records", [])?;
+        transaction.execute("DELETE FROM broadcast_status_facts", [])?;
+        transaction.execute("DELETE FROM broadcast_status_observation_records", [])?;
+        transaction.execute("DELETE FROM broadcast_status_records", [])?;
         transaction.execute("DELETE FROM branch_observation_memberships", [])?;
         transaction.execute("DELETE FROM branch_membership_generations", [])?;
         transaction.execute(
             "DELETE FROM projection_receipts \
-             WHERE projection_kind IN ('observation', 'market_observation', 'branch_membership')",
+             WHERE projection_kind IN ('observation', 'market_observation', \
+                 'broadcast_observation', 'branch_membership')",
             [],
         )?;
         record_receipt(
@@ -3174,6 +3381,97 @@ mod tests {
         );
         drop(warehouse);
         AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn broadcast_projection_is_idempotent_and_reuses_content_addressed_records() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("broadcast.duckdb"))
+            .expect("warehouse");
+        let projection = broadcast_projection_fixture("broadcast-one");
+        warehouse
+            .project_broadcast_observation("broadcast:one", &projection, 1)
+            .expect("first projection");
+        warehouse
+            .project_broadcast_observation("broadcast:one", &projection, 2)
+            .expect("duplicate delivery");
+
+        let second = broadcast_projection_fixture("broadcast-two");
+        warehouse
+            .project_broadcast_observation("broadcast:two", &second, 3)
+            .expect("second interpretation");
+        assert!(
+            warehouse
+                .broadcast_projection_available("broadcast-one")
+                .expect("availability")
+        );
+        let connection = warehouse.lock().expect("connection");
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM broadcast_status_records", [], |row| {
+                    row.get::<_, u32>(0)
+                })
+                .expect("record count"),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT COUNT(*) FROM broadcast_status_facts", [], |row| {
+                    row.get::<_, u32>(0)
+                })
+                .expect("fact count"),
+            18
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM broadcast_status_observation_records",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("membership count"),
+            4
+        );
+    }
+
+    fn broadcast_projection_fixture(interpretation_id: &str) -> BroadcastWarehouseProjection {
+        let records = (0..2)
+            .map(|ordinal| crate::model::BroadcastWarehouseRecord {
+                record_hash: format!("{:064x}", ordinal + 1),
+                ordinal,
+                record_id: ordinal,
+                year: 2017,
+                day: ordinal as u16,
+                game_day: i64::from(ordinal),
+            })
+            .collect::<Vec<_>>();
+        let facts = records
+            .iter()
+            .flat_map(|record| {
+                crate::model::CITIZEN_STATUS_METRICS
+                    .iter()
+                    .map(move |metric| crate::model::BroadcastWarehouseFact {
+                        record_hash: record.record_hash.clone(),
+                        source_index: metric.source_index,
+                        metric_id: metric.id.to_owned(),
+                        value: f64::from(metric.source_index) / 10.0,
+                        source_field: "$Citizens_Status".to_owned(),
+                        source_line: u64::from(metric.source_index) + 1,
+                        mapping_id: metric.id.to_owned(),
+                    })
+            })
+            .collect();
+        BroadcastWarehouseProjection {
+            interpretation_id: interpretation_id.to_owned(),
+            raw_payload_hash: "a".repeat(64),
+            branch_id: "main".to_owned(),
+            profile_id: "profile".to_owned(),
+            profile_version: "1.2.0".to_owned(),
+            resolved_profile_hash: "b".repeat(64),
+            mapping_classification: "reviewed_mapping".to_owned(),
+            records,
+            facts,
+        }
     }
 
     #[test]

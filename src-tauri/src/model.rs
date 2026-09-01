@@ -564,6 +564,169 @@ pub struct ReceiverDataset {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct BroadcastMetricDefinition {
+    pub metric_id: String,
+    pub source_index: u8,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CitizenStatusPoint {
+    pub ordinal: u32,
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub values: [f64; 9],
+    pub source_fields: [String; 9],
+    pub source_lines: [u64; 9],
+    pub exact_observation: Option<ExactObservationReference>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastReceiverClassPulse {
+    pub metric_id: String,
+    pub count: u64,
+    pub share_percent: f64,
+    pub change_from_previous: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastPulse {
+    pub year: i32,
+    pub day: u16,
+    pub classified_population: u64,
+    pub classes: Vec<BroadcastReceiverClassPulse>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastStationRequirement {
+    pub station_kind: String,
+    pub catalogue_entity_id: String,
+    pub workers: u32,
+    pub professors: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastAvailability {
+    pub potential_audience: bool,
+    pub current_audience: bool,
+    pub programme_settings: bool,
+    pub demographic_receiver_join: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastWorkspaceModel {
+    pub analysis_context: AnalysisContext,
+    pub receiver: Option<ReceiverDataset>,
+    pub pulse: Option<BroadcastPulse>,
+    pub status_metrics: Vec<BroadcastMetricDefinition>,
+    pub status_coverage: Option<CoverageReport>,
+    pub citizen_status_points: Vec<CitizenStatusPoint>,
+    pub station_requirements: Vec<BroadcastStationRequirement>,
+    pub availability: BroadcastAvailability,
+    pub warehouse_projection_available: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BroadcastEvidenceDataset {
+    pub analysis_context: AnalysisContext,
+    pub receiver: Option<ReceiverDataset>,
+    pub status_coverage: Option<CoverageReport>,
+    pub citizen_status_points: Vec<CitizenStatusPoint>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct BroadcastOutcomeRequest {
+    pub receiver_metric_id: String,
+    pub status_metric_id: String,
+    pub lag_confirmed_records: u8,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BroadcastOutcomeAvailability {
+    Available,
+    ReceiverUnavailable,
+    StatusUnavailable,
+    InsufficientPairs,
+    ConstantReceiverChanges,
+    ConstantStatusChanges,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastOutcomePair {
+    pub receiver_year: i32,
+    pub receiver_day: u16,
+    pub status_year: i32,
+    pub status_day: u16,
+    pub elapsed_game_days: i64,
+    pub receiver_share_change: f64,
+    pub status_change: f64,
+    pub exact_observation: Option<ExactObservationReference>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BroadcastOutcomeModel {
+    pub availability: BroadcastOutcomeAvailability,
+    pub receiver_metric_id: String,
+    pub status_metric_id: String,
+    pub lag_confirmed_records: u8,
+    pub coefficient: Option<f64>,
+    pub pair_count: u32,
+    pub start_year: Option<i32>,
+    pub start_day: Option<u16>,
+    pub end_year: Option<i32>,
+    pub end_day: Option<u16>,
+    pub elapsed_days_median: Option<f64>,
+    pub elapsed_days_min: Option<i64>,
+    pub elapsed_days_max: Option<i64>,
+    pub pairs: Vec<BroadcastOutcomePair>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BroadcastWarehouseRecord {
+    pub record_hash: String,
+    pub ordinal: u32,
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BroadcastWarehouseFact {
+    pub record_hash: String,
+    pub source_index: u8,
+    pub metric_id: String,
+    pub value: f64,
+    pub source_field: String,
+    pub source_line: u64,
+    pub mapping_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BroadcastWarehouseProjection {
+    pub interpretation_id: String,
+    pub raw_payload_hash: String,
+    pub branch_id: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
+    pub mapping_classification: String,
+    pub records: Vec<BroadcastWarehouseRecord>,
+    pub facts: Vec<BroadcastWarehouseFact>,
+}
+
+impl BroadcastWarehouseProjection {
+    pub fn row_count(&self) -> u64 {
+        self.records
+            .len()
+            .saturating_add(self.facts.len())
+            .min(u64::MAX as usize) as u64
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct TimelineBranch {
     pub branch_id: String,
     pub branch_kind: String,
@@ -730,6 +893,7 @@ pub enum MetricPopulationBasis {
     SourceDefinedSmallChildren,
     SourceDefinedUnemployed,
     SourceDefinedMovementCounter,
+    SourceDefinedCitizenStatus,
     ClassifiedReceiverPopulation,
 }
 
@@ -1824,6 +1988,7 @@ pub enum WarehouseWriteKind {
     CataloguePublication,
     ObservationProjection,
     MarketProjection,
+    BroadcastProjection,
     OverlayProjection,
     BranchMembershipProjection,
     ObservationRebuild,

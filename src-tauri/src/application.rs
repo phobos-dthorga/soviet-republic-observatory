@@ -24,7 +24,8 @@ use crate::language_pack::{
 use crate::model::{
     AnalysisContextResult, ApplicationPreferences, ApplicationPreferencesDraft,
     ApplicationSettingsView, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
-    BackgroundWorkPriority, CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress,
+    BackgroundWorkPriority, BroadcastOutcomeModel, BroadcastOutcomeRequest,
+    BroadcastWorkspaceModel, CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress,
     CatalogueRefreshTrigger, CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus,
     CompatibilityUpdate, ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind,
     ImportOutcome, MaintenanceDiagnostics, MarketBasketDraft, MarketIndexingPhase,
@@ -363,6 +364,39 @@ impl ObservatoryApplication {
     pub fn republic_plan_workspace(&self) -> Result<RepublicPlanWorkspace, ObservatoryError> {
         let population = self.population_dataset()?;
         self.storage.republic_plan_workspace(&population)
+    }
+
+    pub fn broadcast_workspace(&self) -> Result<BroadcastWorkspaceModel, ObservatoryError> {
+        let evidence = self.storage.load_broadcast_evidence()?;
+        let warehouse_projection_available = evidence
+            .analysis_context
+            .head_interpretation_id
+            .as_deref()
+            .and_then(|interpretation_id| {
+                self.warehouse
+                    .broadcast_projection_available(interpretation_id)
+                    .ok()
+            })
+            .unwrap_or(false);
+        let station_requirements = self
+            .warehouse
+            .broadcast_station_requirements()
+            .unwrap_or_default();
+        Ok(crate::broadcast::build_workspace(
+            evidence.analysis_context,
+            evidence.receiver,
+            evidence.status_coverage,
+            evidence.citizen_status_points,
+            station_requirements,
+            warehouse_projection_available,
+        ))
+    }
+
+    pub fn broadcast_outcome(
+        &self,
+        request: &BroadcastOutcomeRequest,
+    ) -> Result<BroadcastOutcomeModel, ObservatoryError> {
+        crate::broadcast::calculate_outcome(&self.broadcast_workspace()?, request)
     }
 
     pub fn market_workspace(&self) -> Result<MarketWorkspace, ObservatoryError> {
@@ -1936,6 +1970,19 @@ impl ObservatoryApplication {
                 })
                 .and_then(|projection| {
                     self.warehouse.project_market_observation(
+                        &job.projection_id,
+                        &projection,
+                        now_ms(),
+                    )
+                }),
+            "broadcast_observation" => self
+                .run_coordinated_background_storage(|| {
+                    self.storage.broadcast_projection(&job.source_identity)
+                })
+                .and_then(|projection| {
+                    let projection =
+                        projection.ok_or(ObservatoryError::StorageContractViolation)?;
+                    self.warehouse.project_broadcast_observation(
                         &job.projection_id,
                         &projection,
                         now_ms(),

@@ -1039,6 +1039,7 @@
     "metric-context-population-small-children": "W&R's source-defined small-child class",
     "metric-context-population-unemployed": "W&R's source-defined unemployment counter",
     "metric-context-population-movement": "W&R's source-defined movement counter",
+    "metric-context-population-citizen-status": "W&R's recorded whole-republic citizen status",
     "metric-context-population-receivers": "Citizens classified into one of four receiver classes",
     "metric-context-time-exact": "Selected recorded save",
     "metric-context-time-history": "Confirmed saves on the selected timeline through the selected save",

@@ -11,13 +11,14 @@ use crate::error::{CommandError, ObservatoryError};
 use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
     AnalysisContextResult, ApplicationPreferencesDraft, ApplicationSettingsView, ArchiveComparison,
-    ArchiveOverview, BroadcastIndexingProgress, CataloguePage, CatalogueSearchFilter,
-    CatalogueStatus, CompatibilityStatus, CompatibilityUpdate, DefinitionDossier,
-    DiagnosticLogView, DirectoryKind, MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries,
-    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
-    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
-    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
-    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    ArchiveOverview, BroadcastIndexingProgress, BroadcastOutcomeModel, BroadcastOutcomeRequest,
+    BroadcastWorkspaceModel, CataloguePage, CatalogueSearchFilter, CatalogueStatus,
+    CompatibilityStatus, CompatibilityUpdate, DefinitionDossier, DiagnosticLogView, DirectoryKind,
+    MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
+    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
+    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
+    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
@@ -287,6 +288,35 @@ pub fn get_population_dataset(
 #[tauri::command]
 pub fn get_republic_brief(state: State<'_, AppState>) -> Result<RepublicBrief, CommandError> {
     state.application.republic_brief().map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_broadcast_workspace(
+    state: State<'_, AppState>,
+) -> Result<BroadcastWorkspaceModel, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || application.broadcast_workspace())
+        .await
+        .map_err(|_| CommandError {
+            code: "broadcast_workspace_worker_unavailable".to_owned(),
+            diagnostic: "The Broadcast workspace worker stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_broadcast_outcome(
+    request: BroadcastOutcomeRequest,
+    state: State<'_, AppState>,
+) -> Result<BroadcastOutcomeModel, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || application.broadcast_outcome(&request))
+        .await
+        .map_err(|_| CommandError {
+            code: "broadcast_outcome_worker_unavailable".to_owned(),
+            diagnostic: "The Broadcast comparison worker stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
 }
 
 #[tauri::command]

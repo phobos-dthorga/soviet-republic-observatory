@@ -556,6 +556,63 @@ fn citizen_status_records_are_content_addressed_across_interpretations() {
 }
 
 #[test]
+fn broadcast_evidence_is_truncated_at_the_exact_selected_save() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("broadcast-head.sqlite3"))
+        .expect("storage");
+    let earlier = inspection_with_status("broadcast-earlier", "earlier.zip", &[1, 2, 3]);
+    let later = inspection_with_status("broadcast-later", "later.zip", &[1, 2, 3, 4, 5]);
+    storage.save_inspection(&earlier).expect("earlier save");
+    storage.save_inspection(&later).expect("later save");
+
+    storage
+        .inspect_observation(&earlier.interpretation_id)
+        .expect("historical selection");
+    let evidence = storage
+        .load_broadcast_evidence()
+        .expect("Broadcast evidence");
+
+    assert_eq!(
+        evidence.analysis_context.mode,
+        AnalysisContextMode::HistoricalPreview
+    );
+    assert_eq!(evidence.receiver.expect("receiver").points.len(), 3);
+    assert_eq!(evidence.citizen_status_points.len(), 3);
+    assert_eq!(
+        evidence
+            .status_coverage
+            .expect("status coverage")
+            .chartable_records,
+        3
+    );
+}
+
+#[test]
+fn broadcast_projection_preserves_source_identity_and_all_nine_facts() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("broadcast-projection.sqlite3"))
+            .expect("storage");
+    let inspection = inspection_with_status("broadcast-projection", "broadcast.zip", &[3, 4]);
+    storage.save_inspection(&inspection).expect("save");
+
+    let projection = storage
+        .broadcast_projection(&inspection.interpretation_id)
+        .expect("projection")
+        .expect("available projection");
+
+    assert_eq!(projection.records.len(), 2);
+    assert_eq!(projection.facts.len(), 18);
+    assert_eq!(projection.interpretation_id, inspection.interpretation_id);
+    assert_eq!(projection.raw_payload_hash, inspection.payload_hash);
+    assert_eq!(
+        projection.facts[0].metric_id,
+        "core.citizens.status.happiness"
+    );
+    assert_eq!(projection.facts[0].source_field, "$Citizens_Status");
+}
+
+#[test]
 fn market_index_resume_preserves_completed_archive_checkpoints() {
     let directory = tempdir().expect("temporary directory");
     let storage = ObservatoryStorage::initialise(directory.path().join("market-resume.sqlite3"))
@@ -1414,6 +1471,31 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         market: crate::model::ParsedMarketData::default(),
         binary_facts: Vec::new(),
     }
+}
+
+fn inspection_with_status(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
+    let mut result = inspection(hash, file_name, values);
+    result.citizen_status = ParsedCitizenStatusData {
+        records: values
+            .iter()
+            .enumerate()
+            .map(|(ordinal, value)| CitizenStatusRecord {
+                record_id: ordinal as u32,
+                year: 2000,
+                day: ordinal as u16,
+                game_day: ordinal as i64,
+                values: std::array::from_fn(|index| {
+                    ((*value + index as u64).min(100) as f64) / 100.0
+                }),
+                source_lines: std::array::from_fn(|index| 1 + ordinal as u64 * 9 + index as u64),
+                source_fields: std::array::from_fn(|_| "$Citizens_Status".to_owned()),
+            })
+            .collect(),
+        history_records: values.len() as u32,
+        dropped_records: 0,
+        warnings: Vec::new(),
+    };
+    result
 }
 
 fn snapshot_fact(fact_id: &'static str, source_field: &'static str, value: u64) -> SnapshotFact {

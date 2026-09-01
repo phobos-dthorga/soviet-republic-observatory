@@ -43,6 +43,9 @@ import type {
   MarketPriceSeries,
   MarketScenarioDraft,
   MarketWorkspace,
+  BroadcastOutcomeModel,
+  BroadcastOutcomeRequest,
+  BroadcastWorkspaceModel,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -74,6 +77,16 @@ export function getPopulationDataset(): Promise<PopulationDataset> {
 
 export function getRepublicBrief(): Promise<RepublicBrief> {
   return invoke<RepublicBrief>("get_republic_brief");
+}
+
+export function getBroadcastWorkspace(): Promise<BroadcastWorkspaceModel> {
+  return invoke<BroadcastWorkspaceModel>("get_broadcast_workspace");
+}
+
+export function getBroadcastOutcome(
+  request: BroadcastOutcomeRequest,
+): Promise<BroadcastOutcomeModel> {
+  return invoke<BroadcastOutcomeModel>("get_broadcast_outcome", { request });
 }
 
 export function getPublishedMetricContexts(): Promise<

@@ -15,6 +15,7 @@ const populationKeys: Record<MetricPopulationBasis, TranslationKey> = {
   source_defined_small_children: "metric-context-population-small-children",
   source_defined_unemployed: "metric-context-population-unemployed",
   source_defined_movement_counter: "metric-context-population-movement",
+  source_defined_citizen_status: "metric-context-population-citizen-status",
   classified_receiver_population: "metric-context-population-receivers",
 };
 

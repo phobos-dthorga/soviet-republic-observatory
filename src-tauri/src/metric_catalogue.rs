@@ -19,6 +19,15 @@ pub const DEAD: &str = "source.stats.citizens.dead";
 pub const ESCAPED: &str = "source.stats.citizens.escaped";
 pub const IMMIGRANT_SOVIET: &str = "source.stats.citizens.immigrant_soviet";
 pub const IMMIGRANT_AFRICA: &str = "source.stats.citizens.immigrant_africa";
+pub const STATUS_HAPPINESS: &str = "core.citizens.status.happiness";
+pub const STATUS_FOOD_SATISFACTION: &str = "core.citizens.status.food_satisfaction";
+pub const STATUS_HEALTH: &str = "core.citizens.status.health";
+pub const STATUS_GOVERNMENT_LOYALTY: &str = "core.citizens.status.government_loyalty";
+pub const STATUS_ALCOHOL_ADDICTION: &str = "core.citizens.status.alcohol_addiction";
+pub const STATUS_CULTURE_ENJOYMENT: &str = "core.citizens.status.culture_enjoyment";
+pub const STATUS_SPORTS_ENJOYMENT: &str = "core.citizens.status.sports_enjoyment";
+pub const STATUS_RELIGION_SYMPATHY: &str = "core.citizens.status.religion_sympathy";
+pub const STATUS_CLOTHING_QUALITY: &str = "core.citizens.status.clothing_quality";
 
 pub const PLAN_METRIC_IDS: [&str; 11] = [
     ADULTS,
@@ -34,7 +43,7 @@ pub const PLAN_METRIC_IDS: [&str; 11] = [
     RECEIVER_TOTAL,
 ];
 
-const PUBLISHED_METRIC_IDS: [&str; 16] = [
+const PUBLISHED_METRIC_IDS: [&str; 25] = [
     ADULTS,
     SMALL_CHILDREN,
     UNEMPLOYED,
@@ -51,6 +60,15 @@ const PUBLISHED_METRIC_IDS: [&str; 16] = [
     ESCAPED,
     IMMIGRANT_SOVIET,
     IMMIGRANT_AFRICA,
+    STATUS_HAPPINESS,
+    STATUS_FOOD_SATISFACTION,
+    STATUS_HEALTH,
+    STATUS_GOVERNMENT_LOYALTY,
+    STATUS_ALCOHOL_ADDICTION,
+    STATUS_CULTURE_ENJOYMENT,
+    STATUS_SPORTS_ENJOYMENT,
+    STATUS_RELIGION_SYMPATHY,
+    STATUS_CLOTHING_QUALITY,
 ];
 
 pub fn published_metric_contexts() -> Vec<PublishedMetricContext> {
@@ -137,6 +155,19 @@ fn context(
                 MetricContextLimitation::SourceWindowUnverified,
                 MetricContextLimitation::NotIntervalFlow,
             ],
+        ),
+        STATUS_HAPPINESS
+        | STATUS_FOOD_SATISFACTION
+        | STATUS_HEALTH
+        | STATUS_GOVERNMENT_LOYALTY
+        | STATUS_ALCOHOL_ADDICTION
+        | STATUS_CULTURE_ENJOYMENT
+        | STATUS_SPORTS_ENJOYMENT
+        | STATUS_RELIGION_SYMPATHY
+        | STATUS_CLOTHING_QUALITY => (
+            MetricPopulationBasis::SourceDefinedCitizenStatus,
+            None,
+            Vec::new(),
         ),
         _ => return None,
     };

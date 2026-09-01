@@ -141,9 +141,13 @@
         ? $translation("catalogue-global-progress")
         : activity.kind === "observation_projection"
           ? $translation("nav-monitor")
-          : activity.kind === "overlay_projection"
-            ? $translation("catalogue-overlays")
-            : $translation("catalogue-rebuild");
+          : activity.kind === "market_projection"
+            ? $translation("nav-markets")
+            : activity.kind === "broadcast_projection"
+              ? $translation("nav-broadcast")
+              : activity.kind === "overlay_projection"
+                ? $translation("catalogue-overlays")
+                : $translation("catalogue-rebuild");
     const stage =
       activity.stage === "staging"
         ? $translation("catalogue-progress-stage-publish")

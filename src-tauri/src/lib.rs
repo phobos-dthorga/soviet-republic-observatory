@@ -1,6 +1,7 @@
 mod analysis_pack;
 mod application;
 mod automatic_observer;
+mod broadcast;
 mod bulk_work;
 mod catalogue_service;
 mod commands;
@@ -111,6 +112,8 @@ pub fn run() {
             commands::get_archive_overview,
             commands::get_population_dataset,
             commands::get_republic_brief,
+            commands::get_broadcast_workspace,
+            commands::get_broadcast_outcome,
             commands::get_published_metric_contexts,
             commands::get_republic_plan_workspace,
             commands::get_market_workspace,

@@ -58,6 +58,103 @@ export type ReceiverDataset = {
   points: ReceiverHistoryPoint[];
 };
 
+export type BroadcastMetricDefinition = {
+  metric_id: string;
+  source_index: number;
+};
+
+export type CitizenStatusPoint = {
+  ordinal: number;
+  record_id: number;
+  year: number;
+  day: number;
+  game_day: number;
+  values: number[];
+  source_fields: string[];
+  source_lines: number[];
+  exact_observation: ExactObservationReference | null;
+};
+
+export type BroadcastReceiverClassPulse = {
+  metric_id: string;
+  count: number;
+  share_percent: number;
+  change_from_previous: number | null;
+};
+
+export type BroadcastPulse = {
+  year: number;
+  day: number;
+  classified_population: number;
+  classes: BroadcastReceiverClassPulse[];
+};
+
+export type BroadcastStationRequirement = {
+  station_kind: string;
+  catalogue_entity_id: string;
+  workers: number;
+  professors: number;
+};
+
+export type BroadcastWorkspaceModel = {
+  analysis_context: AnalysisContext;
+  receiver: ReceiverDataset | null;
+  pulse: BroadcastPulse | null;
+  status_metrics: BroadcastMetricDefinition[];
+  status_coverage: CoverageReport | null;
+  citizen_status_points: CitizenStatusPoint[];
+  station_requirements: BroadcastStationRequirement[];
+  availability: {
+    potential_audience: boolean;
+    current_audience: boolean;
+    programme_settings: boolean;
+    demographic_receiver_join: boolean;
+  };
+  warehouse_projection_available: boolean;
+};
+
+export type BroadcastOutcomeRequest = {
+  receiver_metric_id: string;
+  status_metric_id: string;
+  lag_confirmed_records: 0 | 1 | 2 | 4 | 8;
+};
+
+export type BroadcastOutcomeAvailability =
+  | "available"
+  | "receiver_unavailable"
+  | "status_unavailable"
+  | "insufficient_pairs"
+  | "constant_receiver_changes"
+  | "constant_status_changes";
+
+export type BroadcastOutcomePair = {
+  receiver_year: number;
+  receiver_day: number;
+  status_year: number;
+  status_day: number;
+  elapsed_game_days: number;
+  receiver_share_change: number;
+  status_change: number;
+  exact_observation: ExactObservationReference | null;
+};
+
+export type BroadcastOutcomeModel = {
+  availability: BroadcastOutcomeAvailability;
+  receiver_metric_id: string;
+  status_metric_id: string;
+  lag_confirmed_records: number;
+  coefficient: number | null;
+  pair_count: number;
+  start_year: number | null;
+  start_day: number | null;
+  end_year: number | null;
+  end_day: number | null;
+  elapsed_days_median: number | null;
+  elapsed_days_min: number | null;
+  elapsed_days_max: number | null;
+  pairs: BroadcastOutcomePair[];
+};
+
 export type TimelineBranch = {
   branch_id: string;
   branch_kind: "main" | "fork" | "unassigned";
@@ -195,6 +292,7 @@ export type MetricPopulationBasis =
   | "source_defined_small_children"
   | "source_defined_unemployed"
   | "source_defined_movement_counter"
+  | "source_defined_citizen_status"
   | "classified_receiver_population";
 
 export type MetricTimeBasis =
@@ -702,6 +800,7 @@ export type WarehouseWriteActivity = {
     | "overlay_projection"
     | "branch_membership_projection"
     | "market_projection"
+    | "broadcast_projection"
     | "observation_rebuild";
   stage: "staging" | "merging" | "committing" | "rebuilding";
   started_at_ms: number;

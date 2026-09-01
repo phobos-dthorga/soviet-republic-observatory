@@ -77,6 +77,8 @@ pub enum ObservatoryError {
     RepublicPlanBranchMismatch,
     #[error("The market basket or scenario is invalid: {0}")]
     InvalidMarketDefinition(&'static str),
+    #[error("The Broadcast comparison request is invalid: {0}")]
+    InvalidBroadcastOutcome(&'static str),
     #[error("The selected market basket or scenario does not exist.")]
     UnknownMarketDefinition,
     #[error("The active market basket or scenario cannot be removed.")]
@@ -209,6 +211,7 @@ impl ObservatoryError {
             Self::UnknownRepublicPlan => "unknown_republic_plan",
             Self::RepublicPlanBranchMismatch => "republic_plan_branch_mismatch",
             Self::InvalidMarketDefinition(_) => "invalid_market_definition",
+            Self::InvalidBroadcastOutcome(_) => "invalid_broadcast_outcome",
             Self::UnknownMarketDefinition => "unknown_market_definition",
             Self::ActiveMarketDefinitionRemove => "active_market_definition_remove",
             Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",
