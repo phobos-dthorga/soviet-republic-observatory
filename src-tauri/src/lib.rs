@@ -139,6 +139,7 @@ pub fn run() {
             commands::get_market_indexing_progress,
             commands::recover_market_indexing,
             commands::index_available_saves_for_markets,
+            commands::refresh_changed_market_data,
             commands::get_catalogue_status,
             commands::refresh_definitions,
             commands::diagnostic_log,

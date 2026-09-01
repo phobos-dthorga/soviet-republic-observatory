@@ -33,6 +33,12 @@ branch memberships reuse them. File size and modification time are discovery
 hints only. The bounded raw payload hash remains authoritative, and access time
 is ignored.
 
+The ordinary maintenance action revalidates changed data and uses an exact
+raw-payload cache hit to avoid parsing and insertion. A full warehouse rebuild
+is separate, explicit, confirmed, and rebuilds only derived DuckDB state.
+DuckDB stores shared historical market records once and joins them to bounded
+interpretation memberships; exact save snapshots remain interpretation-owned.
+
 Ordinary desktop launches use Tauri's single-instance boundary so a second
 process cannot become a competing owner of the same app-local stores. Marked,
 isolated UI-review roots remain exempt and never use ordinary application data.

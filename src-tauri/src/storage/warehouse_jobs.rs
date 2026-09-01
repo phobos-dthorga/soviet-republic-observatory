@@ -152,11 +152,21 @@ impl ObservatoryStorage {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
         let requested_at = now_ms();
+        let rebuild_active = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM warehouse_projection_jobs \
+             WHERE projection_kind = 'rebuild' AND status IN ('pending', 'running'))",
+            [],
+            |row| row.get::<_, bool>(0),
+        )?;
+        if rebuild_active {
+            transaction.commit()?;
+            return Ok(());
+        }
         transaction.execute(
             "UPDATE warehouse_projection_jobs SET status = 'pending', error_code = NULL, \
-                 applied_at_ms = NULL \
+                 applied_at_ms = NULL, requested_at_ms = ?1 \
              WHERE projection_kind IN ('observation', 'market_observation', 'overlay_state', 'branch_membership')",
-            [],
+            [requested_at.saturating_add(1)],
         )?;
         enqueue_projection_job(
             &transaction,

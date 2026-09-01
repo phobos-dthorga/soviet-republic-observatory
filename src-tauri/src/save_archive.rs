@@ -145,6 +145,87 @@ pub fn inspect_save_archive(
     })
 }
 
+pub fn hash_save_stats_payload(
+    path: &Path,
+    profile: &ResolvedCompatibilityProfile,
+) -> Result<String, ObservatoryError> {
+    let before = fs::metadata(path).map_err(|_| ObservatoryError::InvalidSaveCandidate)?;
+    if !before.is_file()
+        || before.len() == 0
+        || before.len() > MAX_ARCHIVE_BYTES
+        || !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+    {
+        return Err(ObservatoryError::InvalidSaveCandidate);
+    }
+    let file = File::open(path).map_err(|_| ObservatoryError::InvalidArchive)?;
+    let mut archive =
+        ZipArchive::new(BufReader::new(file)).map_err(|_| ObservatoryError::InvalidArchive)?;
+    let mut stats_index = None;
+    for index in 0..archive.len() {
+        let entry = archive
+            .by_index(index)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        let normalized_name = entry.name().replace('\\', "/");
+        if profile
+            .stats_archive_aliases()
+            .iter()
+            .any(|alias| alias == &normalized_name)
+        {
+            if stats_index.replace(index).is_some() {
+                return Err(ObservatoryError::DuplicateStatsPayload);
+            }
+            if entry.size() == 0 {
+                return Err(ObservatoryError::MissingStatsPayload);
+            }
+            if entry.size() > MAX_STATS_BYTES
+                || entry.compressed_size() > MAX_COMPRESSED_STATS_BYTES
+            {
+                return Err(ObservatoryError::StatsPayloadTooLarge);
+            }
+        }
+    }
+    let stats_index = stats_index.ok_or(ObservatoryError::MissingStatsPayload)?;
+    let mut entry = archive
+        .by_index(stats_index)
+        .map_err(|_| ObservatoryError::InvalidArchive)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut bytes_read = 0_u64;
+    loop {
+        let count = entry
+            .read(&mut buffer)
+            .map_err(|_| ObservatoryError::InvalidArchive)?;
+        if count == 0 {
+            break;
+        }
+        bytes_read = bytes_read
+            .checked_add(count as u64)
+            .ok_or(ObservatoryError::StatsPayloadTooLarge)?;
+        if bytes_read > MAX_STATS_BYTES {
+            return Err(ObservatoryError::StatsPayloadTooLarge);
+        }
+        hasher.update(&buffer[..count]);
+    }
+    drop(entry);
+    drop(archive);
+    let after = fs::metadata(path).map_err(|_| ObservatoryError::SaveChangedDuringRead)?;
+    if before.len() != after.len()
+        || before.modified().ok() != after.modified().ok()
+        || !after.is_file()
+    {
+        return Err(ObservatoryError::SaveChangedDuringRead);
+    }
+    let digest = hasher.finalize();
+    let mut payload_hash = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut payload_hash, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    Ok(payload_hash)
+}
+
 pub fn directory_identity(path: &Path) -> Result<String, ObservatoryError> {
     let canonical = path
         .canonicalize()
@@ -174,7 +255,7 @@ mod tests {
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
-    use super::inspect_save_archive;
+    use super::{hash_save_stats_payload, inspect_save_archive};
     use crate::compatibility_profile::ResolvedCompatibilityProfile;
     use crate::error::ObservatoryError;
 
@@ -197,7 +278,9 @@ mod tests {
 
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
         let inspection = inspect_save_archive(&path, &profile).expect("read-only inspection");
+        let payload_hash = hash_save_stats_payload(&path, &profile).expect("hash-only inspection");
         assert_eq!(inspection.records.len(), 3);
+        assert_eq!(payload_hash, inspection.payload_hash);
         assert_eq!(inspection.source_file_name, "synthetic-save.zip");
     }
 

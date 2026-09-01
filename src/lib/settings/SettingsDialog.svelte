@@ -5,6 +5,7 @@
   import {
     chooseDirectory,
     configureDirectory,
+    rebuildWarehouse,
   } from "../observations/desktopClient";
   import type { DirectoryKind, SetupState } from "../observations/types";
   import { noteAllAttentionCuesReplayed } from "../attention/service";
@@ -53,6 +54,7 @@
   let errorMessage = $state("");
   let statusMessage = $state("");
   let loadedForOpen = $state(false);
+  let rebuildConfirmationOpen = $state(false);
 
   function fallbackPreferences(): ApplicationPreferences {
     return {
@@ -113,6 +115,18 @@
       view = {
         preferences,
         setup: setup ?? ({} as SetupState),
+        maintenance: {
+          market_storage_contract_version: 2,
+          cached_market_records: 2805,
+          cached_market_fact_rows: 118899,
+          market_interpretation_memberships: 7200,
+          latest_indexing_phase: "complete",
+          latest_cache_records_reused: 2600,
+          latest_cache_rows_avoided: 103000,
+          latest_contention_retries: 2,
+          latest_contention_wait_ms: 410,
+          latest_resume_count: 1,
+        },
       };
       draft = draftFrom(preferences);
       return;
@@ -199,6 +213,28 @@
       statusMessage = $translation("settings-guidance-replayed");
     } catch {
       errorMessage = $translation("settings-error-unavailable");
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function rebuildAnalyticalWarehouse(): Promise<void> {
+    if (busy || !desktopAvailable || !rebuildConfirmationOpen) return;
+    busy = true;
+    errorMessage = "";
+    statusMessage = "";
+    try {
+      await rebuildWarehouse();
+      rebuildConfirmationOpen = false;
+      statusMessage = $translation("settings-rebuild-queued");
+      notify({
+        title: $translation("settings-maintenance-title"),
+        message: statusMessage,
+        tone: "success",
+        dedupeKey: "warehouse-rebuild-queued",
+      });
+    } catch {
+      errorMessage = $translation("settings-rebuild-error");
     } finally {
       busy = false;
     }
@@ -479,6 +515,76 @@
               </label>
             </div>
           {/if}
+
+          <div class="maintenance-heading">
+            <div>
+              <span class="eyebrow"
+                >{$translation("settings-maintenance-eyebrow")}</span
+              >
+              <h4>{$translation("settings-maintenance-title")}</h4>
+            </div>
+            <button
+              type="button"
+              disabled={busy || !desktopAvailable}
+              onclick={() => (rebuildConfirmationOpen = true)}
+            >
+              {$translation("settings-rebuild-action")}
+            </button>
+          </div>
+
+          {#if view}
+            <div class="maintenance-grid">
+              <div>
+                <span>{$translation("settings-cache-records")}</span>
+                <strong>{view.maintenance.cached_market_records}</strong>
+              </div>
+              <div>
+                <span>{$translation("settings-cache-rows")}</span>
+                <strong>{view.maintenance.cached_market_fact_rows}</strong>
+              </div>
+              <div>
+                <span>{$translation("settings-cache-memberships")}</span>
+                <strong
+                  >{view.maintenance.market_interpretation_memberships}</strong
+                >
+              </div>
+              <div>
+                <span>{$translation("settings-cache-last-reuse")}</span>
+                <strong>{view.maintenance.latest_cache_rows_avoided}</strong>
+              </div>
+            </div>
+            <p class="maintenance-detail">
+              {$translation("settings-cache-detail", {
+                contract: view.maintenance.market_storage_contract_version,
+                retries: view.maintenance.latest_contention_retries,
+                seconds: Math.round(
+                  view.maintenance.latest_contention_wait_ms / 1000,
+                ),
+              })}
+            </p>
+          {/if}
+
+          {#if rebuildConfirmationOpen}
+            <GuidanceSurface kind="instruction" layout="compact">
+              <strong>{$translation("settings-rebuild-confirm-title")}</strong>
+              <p>{$translation("settings-rebuild-confirm-detail")}</p>
+              <div class="confirmation-actions">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onclick={() => (rebuildConfirmationOpen = false)}
+                  >{$translation("action-cancel")}</button
+                >
+                <button
+                  type="button"
+                  class="primary-action"
+                  disabled={busy || !desktopAvailable}
+                  onclick={rebuildAnalyticalWarehouse}
+                  >{$translation("settings-rebuild-confirm-action")}</button
+                >
+              </div>
+            </GuidanceSurface>
+          {/if}
         </section>
 
         <section aria-labelledby="settings-guidance-title">
@@ -627,6 +733,12 @@
     font-size: 1.2rem;
   }
 
+  h4 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+  }
+
   .source-grid,
   .related-grid,
   .setting-grid {
@@ -721,6 +833,49 @@
     accent-color: var(--colour-observed);
   }
 
+  .maintenance-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 18px;
+    border-top: 1px solid var(--colour-line-faint);
+    padding-top: 16px;
+  }
+
+  .maintenance-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .maintenance-grid > div {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    border: 1px solid var(--colour-line-faint);
+    padding: 11px;
+    background: var(--colour-surface-raised);
+  }
+
+  .maintenance-grid span,
+  .maintenance-detail {
+    color: var(--colour-muted);
+    line-height: 1.45;
+  }
+
+  .maintenance-detail {
+    margin-top: 9px;
+  }
+
+  .confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 9px;
+    margin-top: 10px;
+  }
+
   .support-actions {
     display: flex;
     flex-wrap: wrap;
@@ -729,6 +884,8 @@
 
   .support-actions button,
   .section-heading button,
+  .maintenance-heading button,
+  .confirmation-actions button,
   .settings-footer button {
     min-height: 40px;
     padding: 8px 14px;
@@ -765,7 +922,8 @@
   @media (max-width: 900px) {
     .source-grid,
     .related-grid,
-    .setting-grid {
+    .setting-grid,
+    .maintenance-grid {
       grid-template-columns: 1fr;
     }
   }

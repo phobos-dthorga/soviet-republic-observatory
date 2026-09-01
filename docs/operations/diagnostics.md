@@ -118,3 +118,25 @@ failure circuit. Consecutive failures delay the next projector claim
 exponentially up to 30 seconds, preventing a damaged or unavailable warehouse
 from producing a hot failure loop. The diagnostic record does not include
 projection identities, definition contents, save values, SQL, or paths.
+
+## Resumable maintenance and cache evidence
+
+Long-running Markets and warehouse work is coordinated behind save recording.
+The per-connection SQLite wait remains a short host-owned safety interval;
+Settings controls only the total patience budget for resumable background
+retries. A patience expiry is recorded as a pause, not a failed interpretation.
+The durable job can resume from its first unfinished archive.
+
+The Settings maintenance assay and controlled diagnostic events report shared
+market records, shared fact rows, interpretation memberships, cache records and
+rows reused, contention duration, retry count, pause/resume state, and the
+application-owned task class holding the coordinator. These are aggregate
+operational measurements. They never include archive names, paths, raw source
+fields, save contents, SQL, or database locations.
+
+**Refresh changed data** performs the ordinary content-addressed validation
+pass. File size and modification time may avoid unnecessary archive work only
+as hints; raw `stats.ini` hashing decides identity, and access time is never
+used. **Rebuild analytical warehouse** is reserved for explicit recovery. Its
+diagnostic event records that a rebuild was queued, while SQLite evidence and
+save observation remain available.

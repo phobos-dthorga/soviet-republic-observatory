@@ -81,6 +81,20 @@ Jobs are durable and idempotent. An interruption can be resumed without
 creating a duplicate historical moment, and indexing never moves the selected
 branch or analytical head.
 
+After the first complete pass, **Refresh changed data** is the normal operation.
+It revalidates every recorded candidate while avoiding a second parse and row
+insertion when the existing content-addressed variant still matches. Archive
+size and modification time are inexpensive change hints only; access time is
+ignored, and the bounded raw `stats.ini` hash remains the authoritative proof.
+If storage remains occupied beyond the selected Settings patience budget, the
+job becomes **Paused — storage occupied**. **Resume remaining saves** continues
+at the first unfinished archive and never repeats completed immutable work.
+
+Settings exposes cache records, shared fact rows, save memberships, rows avoided
+by the latest pass, contention retries, and bounded wait time. These values are
+operational evidence rather than game evidence and never contain paths or save
+contents.
+
 An older archive that is missing or changed remains honestly unavailable. A
 new interpretation of the same raw save is grouped as a profile variant of the
 same observation; earlier interpretations stay immutable.
@@ -93,7 +107,9 @@ Historical records and rows are content-addressed across retained prefixes and
 branch forks. Each committed interpretation queues an idempotent
 `market_observation` outbox job.
 
-DuckDB migration 6 stores analytical market projections and aggregates. The
+DuckDB migration 7 normalises analytical market projections: shared historical
+records and facts are stored once, while interpretation memberships refer to
+them and exact selected-save snapshots remain interpretation-specific. The
 existing write governor limits row volume, permits one writer, records progress,
 and uses projection receipts to close the DuckDB-commit/SQLite-acknowledgement
 crash gap. Large retained histories are read back from the applied DuckDB
@@ -102,7 +118,9 @@ writer is active or the receipt is absent, it immediately retains only the exact
 selected-head SQLite ledger and labels historical models as lagging. Rebuilds
 clear only derived market partitions and requeue SQLite authority. A warehouse
 outage cannot block save recording, Archive, historical selection, or exact
-selected-head SQLite ledgers.
+selected-head SQLite ledgers. **Rebuild analytical warehouse** is an explicit,
+confirmed recovery action in Settings; it clears only derived DuckDB data and
+queues authoritative SQLite projections in rebuild-first order.
 
 Price history is fetched on demand for one selected currency/resource pair and is
 bounded to 10,000 records. The workspace never materialises the entire historical
@@ -154,8 +172,10 @@ cover localisation, architecture, accessibility, contrast, geometry, control
 sizes, and responsive layouts. The exhaustive native matrix remains reserved
 for native-specific failures.
 
-The repeatable Rust suite includes a 25-archive exact-match indexing batch that
-proves the selected branch and analytical head do not move. An ignored
+The repeatable Rust suite includes a 25-archive exact-match indexing and
+incremental-refresh batch. It proves the selected branch and analytical head do
+not move, cached rows are reused, and every source archive remains byte-for-byte
+unchanged. An ignored
 reference-machine scale assay publishes 2,805 records, one million trade rows,
 and 139 city scopes, then verifies the application read remains bounded to
 summary series and selected-head evidence rather than materialising the full

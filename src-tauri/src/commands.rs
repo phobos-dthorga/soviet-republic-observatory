@@ -625,6 +625,25 @@ pub async fn index_available_saves_for_markets(
 }
 
 #[tauri::command]
+pub async fn refresh_changed_market_data(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<MarketIndexingProgress, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.refresh_changed_market_data(|progress| {
+            let _ = app.emit(MARKET_INDEXING_PROGRESS_EVENT, progress);
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "market_refresh_worker_unavailable".to_owned(),
+        diagnostic: "The Markets refresh worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn get_catalogue_status(state: State<'_, AppState>) -> Result<CatalogueStatus, CommandError> {
     state.application.catalogue_status().map_err(Into::into)
 }

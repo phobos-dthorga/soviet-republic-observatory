@@ -24,6 +24,33 @@ pub(crate) struct MarketPersistenceStats {
 }
 
 impl ObservatoryStorage {
+    pub(crate) fn market_cache_totals(&self) -> Result<(u64, u64, u64), ObservatoryError> {
+        let connection = self.connect()?;
+        let counts = connection
+            .query_row(
+                "SELECT \
+                    (SELECT COUNT(*) FROM market_records), \
+                    (SELECT COUNT(*) FROM market_price_facts) + \
+                    (SELECT COUNT(*) FROM market_trade_facts) + \
+                    (SELECT COUNT(*) FROM market_scalar_facts), \
+                    (SELECT COUNT(*) FROM market_observation_records)",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .map_err(ObservatoryError::from)?;
+        Ok((
+            from_sql_integer(counts.0)?,
+            from_sql_integer(counts.1)?,
+            from_sql_integer(counts.2)?,
+        ))
+    }
+
     pub(crate) fn market_evidence(
         &self,
         analysis_context: AnalysisContext,
@@ -532,6 +559,35 @@ impl ObservatoryStorage {
             .map_err(Into::into)
     }
 
+    pub(crate) fn cached_market_variant_counts(
+        &self,
+        raw_payload_hash: &str,
+        resolved_profile_hash: &str,
+    ) -> Result<Option<(u32, u32)>, ObservatoryError> {
+        let connection = self.connect()?;
+        connection
+            .query_row(
+                "SELECT coverage.history_records, coverage.row_count \
+                 FROM market_interpretation_variants variant \
+                 JOIN observation_sources source \
+                   ON source.interpretation_id = variant.interpretation_id \
+                 JOIN market_observation_coverage coverage \
+                   ON coverage.payload_hash = source.payload_hash \
+                 WHERE variant.raw_payload_hash = ?1 \
+                   AND variant.resolved_profile_hash = ?2 \
+                   AND coverage.storage_contract_version = ?3 \
+                 ORDER BY variant.indexed_at_ms DESC LIMIT 1",
+                params![
+                    raw_payload_hash,
+                    resolved_profile_hash,
+                    MARKET_STORAGE_CONTRACT_VERSION
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub(crate) fn market_index_candidates(
         &self,
         source_directory_identity: &str,
@@ -577,6 +633,7 @@ impl ObservatoryStorage {
         &self,
         job_id: &str,
         candidates: &[MarketIndexCandidate],
+        refresh_all: bool,
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
@@ -603,11 +660,19 @@ impl ObservatoryStorage {
                 params![job_id, candidate.payload_hash],
             )?;
         }
-        transaction.execute(
-            "UPDATE market_indexing_items SET state = 'pending', error_code = NULL \
-             WHERE job_id = ?1 AND state IN ('running', 'failed')",
-            [job_id],
-        )?;
+        if refresh_all {
+            transaction.execute(
+                "UPDATE market_indexing_items SET state = 'pending', error_code = NULL, \
+                        records_processed = 0, rows_processed = 0 WHERE job_id = ?1",
+                [job_id],
+            )?;
+        } else {
+            transaction.execute(
+                "UPDATE market_indexing_items SET state = 'pending', error_code = NULL \
+                 WHERE job_id = ?1 AND state IN ('running', 'failed')",
+                [job_id],
+            )?;
+        }
         transaction.commit()?;
         let mut progress = load_market_index_job_progress(&connection, job_id)?;
         progress.resume_count = u32::from(resumed);

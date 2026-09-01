@@ -1704,6 +1704,21 @@ pub struct ApplicationPreferences {
 pub struct ApplicationSettingsView {
     pub preferences: ApplicationPreferences,
     pub setup: SetupState,
+    pub maintenance: MaintenanceDiagnostics,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct MaintenanceDiagnostics {
+    pub market_storage_contract_version: u32,
+    pub cached_market_records: u64,
+    pub cached_market_fact_rows: u64,
+    pub market_interpretation_memberships: u64,
+    pub latest_indexing_phase: MarketIndexingPhase,
+    pub latest_cache_records_reused: u32,
+    pub latest_cache_rows_avoided: u64,
+    pub latest_contention_retries: u32,
+    pub latest_contention_wait_ms: u64,
+    pub latest_resume_count: u32,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]

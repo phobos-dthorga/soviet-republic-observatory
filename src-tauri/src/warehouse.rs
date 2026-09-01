@@ -29,8 +29,8 @@ use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 6;
-pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v1";
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 7;
+pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v2";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
 const MAX_PRODUCTION_PATHWAY_SELECTIONS: usize = 32;
@@ -197,6 +197,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         6,
         include_str!("../warehouse_migrations/0006_market_analytics.sql"),
+    ),
+    (
+        7,
+        include_str!("../warehouse_migrations/0007_normalised_market_records.sql"),
     ),
 ];
 
@@ -701,9 +705,19 @@ impl AnalyticalWarehouse {
             .governor
             .begin(WarehouseWriteKind::MarketProjection, rows_total)?;
         let transaction = connection.transaction()?;
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_market_records AS \
+                 SELECT * FROM market_records WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_market_price_facts AS \
+                 SELECT * FROM market_price_facts WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_market_trade_facts AS \
+                 SELECT * FROM market_trade_facts WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_market_scalar_facts AS \
+                 SELECT * FROM market_scalar_facts WHERE FALSE;",
+        )?;
+        let mut rows_written = 0_u64;
         {
             let mut appender = transaction.appender("market_observation_records")?;
-            let mut rows_written = 0_u64;
             for record in &projection.records {
                 appender.append_row(params![
                     projection.interpretation_id,
@@ -711,10 +725,6 @@ impl AnalyticalWarehouse {
                     projection.branch_id,
                     record.record_hash,
                     record.ordinal,
-                    record.record_id,
-                    record.year,
-                    record.day,
-                    record.game_day,
                     projection.profile_id,
                     projection.profile_version,
                     projection.resolved_profile_hash,
@@ -727,63 +737,136 @@ impl AnalyticalWarehouse {
             }
         }
         {
-            let mut appender = transaction.appender("market_price_facts")?;
+            let mut appender = transaction.appender("incoming_market_records")?;
+            for record in &projection.records {
+                appender.append_row(params![
+                    record.record_hash,
+                    record.record_id,
+                    record.year,
+                    record.day,
+                    record.game_day,
+                ])?;
+            }
+        }
+        {
+            let mut history = transaction.appender("incoming_market_price_facts")?;
+            let mut snapshots = transaction.appender("market_snapshot_price_facts")?;
             for fact in &projection.prices {
-                appender.append_row(params![
-                    projection.interpretation_id,
-                    fact.record_hash,
-                    fact.scope_kind,
-                    fact.scope_id,
-                    fact.currency,
-                    fact.price_side,
-                    fact.resource_token,
-                    fact.value,
-                    fact.modifier,
-                    fact.source_field,
-                    fact.source_line,
-                    fact.mapping_id,
-                ])?;
+                if let Some(record_hash) = fact.record_hash.as_deref() {
+                    history.append_row(params![
+                        record_hash,
+                        fact.currency,
+                        fact.price_side,
+                        fact.resource_token,
+                        fact.value,
+                        fact.modifier,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                } else {
+                    snapshots.append_row(params![
+                        projection.interpretation_id,
+                        fact.scope_kind,
+                        fact.scope_id,
+                        fact.currency,
+                        fact.price_side,
+                        fact.resource_token,
+                        fact.value,
+                        fact.modifier,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                }
+                rows_written = rows_written.saturating_add(1);
             }
         }
         {
-            let mut appender = transaction.appender("market_trade_facts")?;
+            let mut history = transaction.appender("incoming_market_trade_facts")?;
+            let mut snapshots = transaction.appender("market_snapshot_trade_facts")?;
             for fact in &projection.trades {
-                appender.append_row(params![
-                    projection.interpretation_id,
-                    fact.record_hash,
-                    fact.scope_kind,
-                    fact.scope_id,
-                    fact.currency,
-                    fact.direction,
-                    fact.channel,
-                    fact.resource_token,
-                    fact.quantity,
-                    fact.account_value,
-                    fact.source_field,
-                    fact.source_line,
-                    fact.mapping_id,
-                ])?;
+                if let Some(record_hash) = fact.record_hash.as_deref() {
+                    history.append_row(params![
+                        record_hash,
+                        fact.currency,
+                        fact.direction,
+                        fact.channel,
+                        fact.resource_token,
+                        fact.quantity,
+                        fact.account_value,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                } else {
+                    snapshots.append_row(params![
+                        projection.interpretation_id,
+                        fact.scope_kind,
+                        fact.scope_id,
+                        fact.currency,
+                        fact.direction,
+                        fact.channel,
+                        fact.resource_token,
+                        fact.quantity,
+                        fact.account_value,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                }
+                rows_written = rows_written.saturating_add(1);
             }
         }
         {
-            let mut appender = transaction.appender("market_scalar_facts")?;
+            let mut history = transaction.appender("incoming_market_scalar_facts")?;
+            let mut snapshots = transaction.appender("market_snapshot_scalar_facts")?;
             for fact in &projection.scalars {
-                appender.append_row(params![
-                    projection.interpretation_id,
-                    fact.record_hash,
-                    fact.scope_kind,
-                    fact.scope_id,
-                    fact.fact_id,
-                    fact.currency,
-                    fact.category,
-                    fact.value,
-                    fact.source_field,
-                    fact.source_line,
-                    fact.mapping_id,
-                ])?;
+                if let Some(record_hash) = fact.record_hash.as_deref() {
+                    history.append_row(params![
+                        record_hash,
+                        fact.fact_id,
+                        fact.currency,
+                        fact.category,
+                        fact.value,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                } else {
+                    snapshots.append_row(params![
+                        projection.interpretation_id,
+                        fact.scope_kind,
+                        fact.scope_id,
+                        fact.fact_id,
+                        fact.currency,
+                        fact.category,
+                        fact.value,
+                        fact.source_field,
+                        fact.source_line,
+                        fact.mapping_id,
+                    ])?;
+                }
+                rows_written = rows_written.saturating_add(1);
             }
         }
         permit.progress(WarehouseWriteStage::Merging, rows_total);
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE new_market_records AS \
+                 SELECT DISTINCT incoming.* FROM incoming_market_records incoming \
+                 WHERE NOT EXISTS (SELECT 1 FROM market_records stored \
+                                   WHERE stored.record_hash = incoming.record_hash); \
+             INSERT INTO market_records SELECT * FROM new_market_records; \
+             INSERT INTO market_price_facts \
+                 SELECT DISTINCT fact.* FROM incoming_market_price_facts fact \
+                 JOIN new_market_records record USING(record_hash); \
+             INSERT INTO market_trade_facts \
+                 SELECT DISTINCT fact.* FROM incoming_market_trade_facts fact \
+                 JOIN new_market_records record USING(record_hash); \
+             INSERT INTO market_scalar_facts \
+                 SELECT DISTINCT fact.* FROM incoming_market_scalar_facts fact \
+                 JOIN new_market_records record USING(record_hash);",
+        )?;
         record_receipt(
             &transaction,
             projection_id,
@@ -825,8 +908,11 @@ impl AnalyticalWarehouse {
 
         let records = {
             let mut statement = connection.prepare(
-                "SELECT record_hash, ordinal, record_id, year, day, game_day \
-                 FROM market_observation_records WHERE interpretation_id = ?1 ORDER BY ordinal",
+                "SELECT membership.record_hash, membership.ordinal, record.record_id, \
+                        record.year, record.day, record.game_day \
+                 FROM market_observation_records membership \
+                 JOIN market_records record USING(record_hash) \
+                 WHERE membership.interpretation_id = ?1 ORDER BY membership.ordinal",
             )?;
             statement
                 .query_map([&metadata.interpretation_id], |row| {
@@ -843,14 +929,20 @@ impl AnalyticalWarehouse {
         };
         let prices = {
             let mut statement = connection.prepare(
-                "SELECT record_hash, scope_kind, scope_id, currency, price_side, resource_token, \
-                        value, modifier, source_field, source_line, mapping_id \
-                 FROM market_price_facts WHERE interpretation_id = ?1 \
-                   AND (record_hash IS NULL \
-                     OR record_hash = (SELECT record_hash FROM market_observation_records \
-                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) \
-                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                "SELECT fact.record_hash, NULL AS scope_kind, NULL AS scope_id, fact.currency, \
+                        fact.price_side, fact.resource_token, fact.value, fact.modifier, \
+                        fact.source_field, fact.source_line, fact.mapping_id \
+                 FROM market_price_facts fact \
+                 JOIN market_observation_records membership USING(record_hash) \
+                 WHERE membership.interpretation_id = ?1 AND ( \
+                     fact.record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) OR \
+                     fact.record_hash = (SELECT record_hash FROM market_observation_records \
                         WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 UNION ALL \
+                 SELECT NULL, scope_kind, scope_id, currency, price_side, resource_token, \
+                        value, modifier, source_field, source_line, mapping_id \
+                 FROM market_snapshot_price_facts WHERE interpretation_id = ?1 \
                  ORDER BY record_hash, scope_kind, scope_id, source_line",
             )?;
             statement
@@ -873,14 +965,20 @@ impl AnalyticalWarehouse {
         };
         let trades = {
             let mut statement = connection.prepare(
-                "SELECT record_hash, scope_kind, scope_id, currency, direction, channel, \
-                        resource_token, quantity, account_value, source_field, source_line, mapping_id \
-                 FROM market_trade_facts WHERE interpretation_id = ?1 \
-                   AND (record_hash IS NULL \
-                     OR record_hash = (SELECT record_hash FROM market_observation_records \
-                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) \
-                     OR record_hash = (SELECT record_hash FROM market_observation_records \
+                "SELECT fact.record_hash, NULL AS scope_kind, NULL AS scope_id, fact.currency, \
+                        fact.direction, fact.channel, fact.resource_token, fact.quantity, \
+                        fact.account_value, fact.source_field, fact.source_line, fact.mapping_id \
+                 FROM market_trade_facts fact \
+                 JOIN market_observation_records membership USING(record_hash) \
+                 WHERE membership.interpretation_id = ?1 AND ( \
+                     fact.record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal LIMIT 1) OR \
+                     fact.record_hash = (SELECT record_hash FROM market_observation_records \
                         WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 UNION ALL \
+                 SELECT NULL, scope_kind, scope_id, currency, direction, channel, resource_token, \
+                        quantity, account_value, source_field, source_line, mapping_id \
+                 FROM market_snapshot_trade_facts WHERE interpretation_id = ?1 \
                  ORDER BY record_hash, scope_kind, scope_id, source_line",
             )?;
             statement
@@ -904,12 +1002,18 @@ impl AnalyticalWarehouse {
         };
         let scalars = {
             let mut statement = connection.prepare(
-                "SELECT record_hash, scope_kind, scope_id, fact_id, currency, category, value, \
+                "SELECT fact.record_hash, NULL AS scope_kind, NULL AS scope_id, fact.fact_id, \
+                        fact.currency, fact.category, fact.value, fact.source_field, \
+                        fact.source_line, fact.mapping_id \
+                 FROM market_scalar_facts fact \
+                 JOIN market_observation_records membership USING(record_hash) \
+                 WHERE membership.interpretation_id = ?1 AND \
+                     fact.record_hash = (SELECT record_hash FROM market_observation_records \
+                        WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1) \
+                 UNION ALL \
+                 SELECT NULL, scope_kind, scope_id, fact_id, currency, category, value, \
                         source_field, source_line, mapping_id \
-                 FROM market_scalar_facts WHERE interpretation_id = ?1 \
-                   AND (record_hash IS NULL \
-                     OR record_hash = (SELECT record_hash FROM market_observation_records \
-                        WHERE interpretation_id = ?1 ORDER BY ordinal DESC LIMIT 1)) \
+                 FROM market_snapshot_scalar_facts WHERE interpretation_id = ?1 \
                  ORDER BY record_hash, scope_kind, scope_id, source_line",
             )?;
             statement
@@ -1289,10 +1393,14 @@ impl AnalyticalWarehouse {
         permit.progress(WarehouseWriteStage::Rebuilding, 0);
         let transaction = connection.transaction()?;
         transaction.execute("DELETE FROM observation_metrics", [])?;
+        transaction.execute("DELETE FROM market_snapshot_price_facts", [])?;
+        transaction.execute("DELETE FROM market_snapshot_trade_facts", [])?;
+        transaction.execute("DELETE FROM market_snapshot_scalar_facts", [])?;
         transaction.execute("DELETE FROM market_price_facts", [])?;
         transaction.execute("DELETE FROM market_trade_facts", [])?;
         transaction.execute("DELETE FROM market_scalar_facts", [])?;
         transaction.execute("DELETE FROM market_observation_records", [])?;
+        transaction.execute("DELETE FROM market_records", [])?;
         transaction.execute("DELETE FROM branch_observation_memberships", [])?;
         transaction.execute("DELETE FROM branch_membership_generations", [])?;
         transaction.execute(
@@ -3118,6 +3226,38 @@ mod tests {
         warehouse
             .project_market_observation("market:one", &projection, 2)
             .expect("duplicate delivery");
+        let mut second = projection.clone();
+        second.interpretation_id = "interpretation-market-two".to_owned();
+        warehouse
+            .project_market_observation("market:two", &second, 3)
+            .expect("shared-record delivery");
+        {
+            let connection = warehouse.lock().expect("cache evidence");
+            assert_eq!(
+                connection
+                    .query_row("SELECT COUNT(*) FROM market_records", [], |row| row
+                        .get::<_, u32>(0))
+                    .expect("shared records"),
+                1
+            );
+            assert_eq!(
+                connection
+                    .query_row("SELECT COUNT(*) FROM market_price_facts", [], |row| row
+                        .get::<_, u32>(0))
+                    .expect("shared price facts"),
+                1
+            );
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM market_observation_records",
+                        [],
+                        |row| row.get::<_, u32>(0)
+                    )
+                    .expect("interpretation memberships"),
+                2
+            );
+        }
         let loaded = warehouse
             .market_projection(&projection)
             .expect("read")
@@ -3172,25 +3312,28 @@ mod tests {
             let connection = warehouse.lock().expect("connection");
             connection
                 .execute_batch(
-                    "INSERT INTO market_observation_records
+                    "INSERT INTO market_records
+                     SELECT 'record-' || CAST(i AS VARCHAR), i,
+                            1980 + CAST(i / 365 AS INTEGER),
+                            CAST(i % 365 AS INTEGER) + 1, i + 1
+                     FROM range(1, 2805) values(i);
+
+                     INSERT INTO market_observation_records
                      SELECT 'interpretation-market-scale', 'raw-market-scale', 'main',
-                            'record-' || CAST(i AS VARCHAR), i, i, 1980 + CAST(i / 365 AS INTEGER),
-                            CAST(i % 365 AS INTEGER) + 1, i + 1,
+                            'record-' || CAST(i AS VARCHAR), i,
                             'reviewed', '1.1.0', 'profile-hash', 'reviewed_mapping'
                      FROM range(1, 2805) values(i);
 
                      INSERT INTO market_trade_facts
-                     SELECT 'interpretation-market-scale',
-                            'record-' || CAST((i % 2804) + 1 AS VARCHAR),
-                            NULL, NULL, 'rub',
+                     SELECT 'record-' || CAST((i % 2804) + 1 AS VARCHAR), 'rub',
                             CASE WHEN i % 2 = 0 THEN 'import' ELSE 'export' END,
                             CASE WHEN i % 4 < 2 THEN 'standard' ELSE 'international' END,
                             'resource_' || CAST(i % 128 AS VARCHAR), 1.0, 2.0,
                             '$SyntheticMarket', CAST(i % 50000 AS BIGINT), 'market.synthetic'
                      FROM range(0, 1000000) values(i);
 
-                     INSERT INTO market_trade_facts
-                     SELECT 'interpretation-market-scale', NULL, 'city', CAST(i AS VARCHAR),
+                     INSERT INTO market_snapshot_trade_facts
+                     SELECT 'interpretation-market-scale', 'city', CAST(i AS VARCHAR),
                             'rub', 'export', 'standard', 'resource_city', 1.0, 2.0,
                             '$SyntheticCity', i, 'market.synthetic.city'
                      FROM range(0, 139) values(i);",

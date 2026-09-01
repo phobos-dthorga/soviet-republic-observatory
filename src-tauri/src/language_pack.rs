@@ -16,13 +16,13 @@ use crate::error::ObservatoryError;
 
 pub const LANGUAGE_PACK_SCHEMA_VERSION: u32 = 1;
 pub const SOURCE_CATALOG_VERSION: u32 = 1;
-pub const SOURCE_CATALOG_REVISION: u32 = 43;
+pub const SOURCE_CATALOG_REVISION: u32 = 44;
 pub const SOURCE_LOCALE: &str = "en-AU";
 pub const DEFAULT_LANGUAGE_PACK_ID: &str = "observatory-en-au";
 pub const MAX_LANGUAGE_PACK_BYTES: usize = 256 * 1024;
 pub const MAX_LEGACY_LANGUAGE_PACKS: usize = 32;
 pub const MAX_LEGACY_HANDOVER_BYTES: usize = 2 * 1024 * 1024;
-const MAX_LANGUAGE_MESSAGES: usize = 2_048;
+const MAX_LANGUAGE_MESSAGES: usize = 4_096;
 const MAX_MESSAGE_PATTERN_BYTES: usize = 2_048;
 const PROTECTED_MESSAGE_PREFIXES: [&str; 16] = [
     "legal-",

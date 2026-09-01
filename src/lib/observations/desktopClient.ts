@@ -118,6 +118,10 @@ export function indexAvailableSavesForMarkets(): Promise<MarketIndexingProgress>
   return invoke<MarketIndexingProgress>("index_available_saves_for_markets");
 }
 
+export function refreshChangedMarketData(): Promise<MarketIndexingProgress> {
+  return invoke<MarketIndexingProgress>("refresh_changed_market_data");
+}
+
 export function listenForMarketIndexingProgress(
   accept: (progress: MarketIndexingProgress) => void,
 ): Promise<UnlistenFn> {

@@ -8,11 +8,11 @@ import type {
 
 export const LANGUAGE_PACK_SCHEMA_VERSION = 1 as const;
 export const SOURCE_CATALOG_VERSION = 1 as const;
-export const SOURCE_CATALOG_REVISION = 43 as const;
+export const SOURCE_CATALOG_REVISION = 44 as const;
 export const SOURCE_LOCALE = "en-AU" as const;
 export const DEFAULT_LANGUAGE_PACK_ID = "observatory-en-au" as const;
 export const MAX_LANGUAGE_PACK_BYTES = 256 * 1024;
-export const MAX_LANGUAGE_MESSAGES = 2_048;
+export const MAX_LANGUAGE_MESSAGES = 4_096;
 export const MAX_MESSAGE_PATTERN_BYTES = 2_048;
 
 export const PROTECTED_MESSAGE_PREFIXES = [

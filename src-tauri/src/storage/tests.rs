@@ -510,7 +510,7 @@ fn market_index_resume_preserves_completed_archive_checkpoints() {
     assert_eq!(candidates.len(), 2);
 
     storage
-        .start_market_index_job("resume-job", &candidates)
+        .start_market_index_job("resume-job", &candidates, false)
         .expect("new job");
     storage
         .update_market_index_item(
@@ -524,7 +524,7 @@ fn market_index_resume_preserves_completed_archive_checkpoints() {
         .expect("checkpoint");
 
     let resumed = storage
-        .start_market_index_job("resume-job", &candidates)
+        .start_market_index_job("resume-job", &candidates, false)
         .expect("resumed job");
     assert_eq!(resumed.completed_archives, 1);
     assert_eq!(resumed.resume_count, 1);
@@ -539,6 +539,15 @@ fn market_index_resume_preserves_completed_archive_checkpoints() {
         states.get(&candidates[1].payload_hash).map(String::as_str),
         Some("pending")
     );
+
+    let refreshed = storage
+        .start_market_index_job("resume-job", &candidates, true)
+        .expect("full cache validation pass");
+    assert_eq!(refreshed.completed_archives, 0);
+    let refreshed_states = storage
+        .market_index_item_states("resume-job")
+        .expect("refreshed item states");
+    assert!(refreshed_states.values().all(|state| state == "pending"));
 }
 
 #[test]
@@ -600,6 +609,14 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
     assert_eq!(retry.failed_jobs, 0);
     assert_eq!(retry.pending_jobs, 4);
     assert!(retry.oldest_unresolved_at_ms.is_some());
+    assert_eq!(
+        storage
+            .claim_projection_job()
+            .expect("claim rebuild")
+            .expect("rebuild job")
+            .projection_kind,
+        "rebuild"
+    );
 }
 
 #[test]

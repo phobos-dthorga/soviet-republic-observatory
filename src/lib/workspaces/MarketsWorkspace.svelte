@@ -7,6 +7,7 @@
     clearMarketSelection,
     getMarketPriceSeries,
     indexAvailableSavesForMarkets,
+    refreshChangedMarketData,
     recoverMarketIndexing,
     removeMarketDefinition,
     rollbackMarketDefinition,
@@ -151,7 +152,10 @@
   const indexActionKey = $derived(
     indexingProgress?.phase === "paused"
       ? "markets-index-resume-action"
-      : "markets-index-action",
+      : (workspace?.commissioning.current_engine_indexed_save_count ?? 0) > 0 ||
+          indexingProgress?.phase === "complete"
+        ? "markets-index-refresh-action"
+        : "markets-index-action",
   );
   const baseRecords = $derived.by(() => {
     const seen = new Map<string, { hash: string; year: number; day: number }>();
@@ -398,7 +402,14 @@
     if (busy || !desktopAvailable) return;
     busy = true;
     try {
-      const progress = await indexAvailableSavesForMarkets();
+      const refresh =
+        indexingProgress?.phase !== "paused" &&
+        ((workspace?.commissioning.current_engine_indexed_save_count ?? 0) >
+          0 ||
+          indexingProgress?.phase === "complete");
+      const progress = await (refresh
+        ? refreshChangedMarketData()
+        : indexAvailableSavesForMarkets());
       onprogress(progress);
       if (progress.phase === "paused") {
         notify({
