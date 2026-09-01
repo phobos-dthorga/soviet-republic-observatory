@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import {
     formatNumber,
@@ -9,7 +10,13 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import { exactObservationChartBindings } from "../navigation/chartBindings";
-  import type { RelatedDataDestination } from "../navigation/relatedData";
+  import {
+    destinationsForSubject,
+    type RelatedDataDestination,
+    type WorkspaceFilters,
+    type WorkspaceLocation,
+  } from "../navigation/relatedData";
+  import { registerNavigationGuard } from "../navigation/navigationGuards";
   import { notify } from "../notifications/service";
   import {
     activateRepublicPlan,
@@ -39,12 +46,16 @@
   let {
     workspace = null,
     desktopAvailable,
+    location,
     onupdate,
+    onlocationchange,
     onrelatednavigate,
   }: {
     workspace?: RepublicPlanWorkspace | null;
     desktopAvailable: boolean;
+    location: WorkspaceLocation;
     onupdate: (workspace: RepublicPlanWorkspace) => void;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
     onrelatednavigate?: (
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
@@ -82,6 +93,7 @@
   let schedule = $state<PlanScheduleKind>("linear");
   let targets = $state<EditableTarget[]>([]);
   let selectedMetricId = $state("");
+  let draftDirty = $state(false);
 
   const activePlan = $derived(workspace?.active_plan ?? null);
   const selectedTarget = $derived(
@@ -124,6 +136,16 @@
   );
 
   $effect(() => {
+    const requestedMetric = location.filters.metricId;
+    if (
+      requestedMetric &&
+      activePlan?.targets.some(
+        (target) => target.target.metric_id === requestedMetric,
+      )
+    ) {
+      selectedMetricId = requestedMetric;
+      return;
+    }
     const firstMetric = activePlan?.targets[0]?.target.metric_id ?? "";
     if (
       !activePlan?.targets.some(
@@ -133,6 +155,26 @@
       selectedMetricId = firstMetric;
     }
   });
+
+  function selectMetric(metricId: string): void {
+    selectedMetricId = metricId;
+    onlocationchange?.({
+      metricId,
+      planRevision: activePlan?.revision.revision,
+    });
+  }
+
+  function openTarget(origin: HTMLElement): void {
+    if (!selectedTarget || !activePlan) return;
+    onrelatednavigate?.(
+      destinationsForSubject({
+        kind: "plan_target",
+        metricId: selectedTarget.target.metric_id,
+        revision: activePlan.revision.revision,
+      }),
+      origin,
+    );
+  }
 
   $effect(() => {
     if (!editingPlanId && !name) resetDraft();
@@ -206,6 +248,7 @@
               guardrail_percent: 5,
             },
           ];
+    draftDirty = false;
   }
 
   function editActivePlan(): void {
@@ -222,6 +265,7 @@
       guardrail_basis_points: target.guardrail_basis_points,
       guardrail_percent: target.guardrail_basis_points / 100,
     }));
+    draftDirty = false;
   }
 
   function addTarget(): void {
@@ -302,6 +346,7 @@
       });
       editingPlanId = null;
       name = "";
+      draftDirty = false;
     } catch (error) {
       notify({
         title: $translation("plan-notification-title"),
@@ -375,6 +420,8 @@
   function directionLabel(direction: PlanDirection): string {
     return $translation(directionKeys[direction]);
   }
+
+  onMount(() => registerNavigationGuard("plan-draft", () => draftDirty));
 
   function reading(value: number | null): string {
     return value == null
@@ -541,7 +588,7 @@
                   target.target.metric_id}
                 class:active={selectedTarget.target.metric_id ===
                   target.target.metric_id}
-                onclick={() => (selectedMetricId = target.target.metric_id)}
+                onclick={() => selectMetric(target.target.metric_id)}
                 >{metricLabel(target.target.metric_id)}</button
               >
             {/each}
@@ -566,6 +613,12 @@
               >
             </article>
           </div>
+          <button
+            type="button"
+            class="related-data-link"
+            onclick={(event) => openTarget(event.currentTarget)}
+            >{$translation("related-nav-open")}</button
+          >
           <ObservatoryChart
             spec={targetChart}
             height="310px"
@@ -608,7 +661,11 @@
             </div>
           {/if}
         </header>
-        <form onsubmit={submitPlan}>
+        <form
+          onsubmit={submitPlan}
+          oninput={() => (draftDirty = true)}
+          onchange={() => (draftDirty = true)}
+        >
           <div class="plan-form-grid">
             <label>
               <span>{$translation("plan-name")}</span>

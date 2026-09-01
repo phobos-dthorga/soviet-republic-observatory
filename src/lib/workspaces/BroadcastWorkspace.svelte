@@ -8,6 +8,8 @@
   import {
     defaultWorkspaceLocation,
     type RelatedDataDestination,
+    type WorkspaceFilters,
+    type WorkspaceLocation,
   } from "../navigation/relatedData";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
   import type {
@@ -25,10 +27,14 @@
   let {
     receiverDataset = null,
     metricContexts = [],
+    location,
+    onlocationchange,
     onrelatednavigate,
   }: {
     receiverDataset?: ReceiverDataset | null;
     metricContexts?: PublishedMetricContext[];
+    location: WorkspaceLocation;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
     onrelatednavigate?: (
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
@@ -84,6 +90,18 @@
         )
       : null;
   });
+
+  $effect(() => {
+    const station = location.filters.stationId;
+    if (station === "radio" || station === "television") {
+      selectedStation = station;
+    }
+  });
+
+  function selectStation(stationId: (typeof stationIds)[number]): void {
+    selectedStation = stationId;
+    onlocationchange?.({ stationId });
+  }
 
   function stationName(station: (typeof stationIds)[number]): string {
     return $translation(
@@ -317,7 +335,7 @@
           type="button"
           aria-pressed={selectedStation === stationId}
           class:active={selectedStation === stationId}
-          onclick={() => (selectedStation = stationId)}
+          onclick={() => selectStation(stationId)}
           >{stationName(stationId)}</button
         >
       {/each}

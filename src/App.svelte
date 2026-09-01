@@ -40,6 +40,8 @@
   } from "./lib/navigation/dialogStack";
   import RelatedDataBreadcrumb from "./lib/navigation/RelatedDataBreadcrumb.svelte";
   import RelatedViewChooser from "./lib/navigation/RelatedViewChooser.svelte";
+  import { focusContainedWorkspaceTarget } from "./lib/navigation/containedSectionNavigation";
+  import { hasUnsavedNavigationChanges } from "./lib/navigation/navigationGuards";
   import {
     defaultWorkspaceLocation,
     pushNavigationTrail,
@@ -47,6 +49,7 @@
     type AnalysisContextReference,
     type NavigationTrailEntry,
     type RelatedDataDestination,
+    type WorkspaceFilters,
     type WorkspaceLocation,
     type WorkspaceName,
   } from "./lib/navigation/relatedData";
@@ -72,6 +75,7 @@
     reviewPopulationDataset,
     reviewProductionPathway,
     reviewProductionRoute,
+    reviewReceiverDataset,
     reviewRepublicPlanWorkspace,
     reviewRepublicBrief,
     reviewWarehouseAttention,
@@ -157,6 +161,7 @@
   let navigationBusy = $state(false);
   let relatedChoices = $state<RelatedDataDestination[]>([]);
   let relatedChoiceOrigin = $state<HTMLElement | null>(null);
+  let navigationOriginSequence = 0;
   let dialogStack = $state<DialogRoute[]>([]);
   const activeDialog = $derived(topDialogRoute(dialogStack));
   let diagnosticsBusy = $state(false);
@@ -195,10 +200,25 @@
     };
   }
 
+  function canLeaveCurrentWorkspace(): boolean {
+    return (
+      !hasUnsavedNavigationChanges() ||
+      window.confirm($translation("related-nav-unsaved-confirm"))
+    );
+  }
+
   function openWorkspace(workspace: WorkspaceName): void {
+    if (workspace !== activeWorkspace && !canLeaveCurrentWorkspace()) return;
     navigationTrail = [];
     relatedChoices = [];
     activeLocation = defaultWorkspaceLocation(workspace);
+  }
+
+  function updateActiveFilters(filters: WorkspaceFilters): void {
+    activeLocation = {
+      ...activeLocation,
+      filters: { ...activeLocation.filters, ...filters },
+    };
   }
 
   function requestRelatedNavigation(
@@ -210,18 +230,37 @@
         destinations.findIndex((item) => item.id === destination.id) === index,
     );
     if (unique.length === 0) return;
+    relatedChoiceOrigin =
+      origin ?? (document.activeElement as HTMLElement | null);
     if (unique.length === 1) {
       void navigateRelated(unique[0]);
       return;
     }
-    relatedChoiceOrigin =
-      origin ?? (document.activeElement as HTMLElement | null);
     relatedChoices = unique;
   }
 
   function closeRelatedChoices(): void {
+    const origin = relatedChoiceOrigin;
     relatedChoices = [];
-    void tick().then(() => relatedChoiceOrigin?.focus());
+    relatedChoiceOrigin = null;
+    void tick().then(() => origin?.focus());
+  }
+
+  function cloneLocation(location: WorkspaceLocation): WorkspaceLocation {
+    return {
+      ...location,
+      filters: { ...location.filters },
+    };
+  }
+
+  function relatedOriginId(): string | undefined {
+    const origin = relatedChoiceOrigin;
+    if (!origin) return undefined;
+    if (!origin.id) {
+      navigationOriginSequence += 1;
+      origin.id = `related-navigation-origin-${navigationOriginSequence}`;
+    }
+    return origin.id;
   }
 
   async function restoreAnalysisContext(
@@ -248,10 +287,14 @@
   async function navigateRelated(
     destination: RelatedDataDestination,
   ): Promise<void> {
-    if (navigationBusy) return;
+    if (navigationBusy || !canLeaveCurrentWorkspace()) return;
     navigationBusy = true;
+    const originId = relatedOriginId();
     const previous: NavigationTrailEntry = {
-      location: structuredClone(activeLocation),
+      location: {
+        ...cloneLocation(activeLocation),
+        focusId: originId ?? activeLocation.focusId,
+      },
       context: currentAnalysisContext(),
     };
     try {
@@ -262,11 +305,19 @@
           ),
         );
       }
-      activeLocation = structuredClone(destination.location);
+      activeLocation = cloneLocation(destination.location);
       navigationTrail = pushNavigationTrail(navigationTrail, previous);
       relatedChoices = [];
+      relatedChoiceOrigin = null;
       await focusRelatedLocation(activeLocation);
     } catch {
+      try {
+        await restoreAnalysisContext(previous.context);
+        activeLocation = cloneLocation(previous.location);
+        await focusRelatedLocation(activeLocation);
+      } catch {
+        // The original failure is reported below. Recovery remains best effort.
+      }
       notify({
         title: $translation("related-nav-failed-title"),
         message: $translation("related-nav-failed-message"),
@@ -278,14 +329,19 @@
   }
 
   async function returnThroughRelatedTrail(index?: number): Promise<void> {
-    if (navigationBusy || navigationTrail.length === 0) return;
+    if (
+      navigationBusy ||
+      navigationTrail.length === 0 ||
+      !canLeaveCurrentWorkspace()
+    )
+      return;
     const targetIndex = index ?? navigationTrail.length - 1;
     const target = navigationTrail[targetIndex];
     if (!target) return;
     navigationBusy = true;
     try {
       await restoreAnalysisContext(target.context);
-      activeLocation = structuredClone(target.location);
+      activeLocation = cloneLocation(target.location);
       navigationTrail = navigationTrail.slice(0, targetIndex);
       await focusRelatedLocation(activeLocation);
     } catch {
@@ -309,18 +365,7 @@
     const target = document.getElementById(
       location.focusId ?? location.section,
     );
-    const canvas = target?.closest<HTMLElement>(".workspace > .canvas");
-    if (!target || !canvas) return;
-    if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
-    target.focus({ preventScroll: true });
-    const targetBox = target.getBoundingClientRect();
-    const canvasBox = canvas.getBoundingClientRect();
-    canvas.scrollTo({
-      top: Math.max(0, canvas.scrollTop + targetBox.top - canvasBox.top - 8),
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
+    if (!target || !focusContainedWorkspaceTarget(target)) return;
     target.dataset.relatedArrival = "true";
     window.setTimeout(() => delete target.dataset.relatedArrival, 1800);
   }
@@ -605,6 +650,7 @@
     marketWorkspace = null;
     reviewRouteFixture = null;
     reviewPathwayFixture = null;
+    receiverDataset = null;
 
     switch (request.scenario) {
       case "workspace-briefing":
@@ -613,9 +659,11 @@
         break;
       case "workspace-monitor":
         openWorkspace("monitor");
+        receiverDataset = reviewReceiverDataset();
         break;
       case "workspace-broadcast":
         openWorkspace("broadcast");
+        receiverDataset = reviewReceiverDataset();
         break;
       case "workspace-extensions":
         openWorkspace("extensions");
@@ -1191,6 +1239,9 @@
   {#if activeWorkspace === "briefing"}
     <BriefingWorkspace
       brief={republicBrief}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
+      onrelatednavigate={requestRelatedNavigation}
       onopenworkspace={(workspace) =>
         requestRelatedNavigation([workspaceDestination(workspace)])}
     />
@@ -1201,17 +1252,21 @@
       {receiverDataset}
       {desktopAvailable}
       metricContexts={publishedMetricContexts}
+      onrelatednavigate={requestRelatedNavigation}
       oncompare={compareArchiveObservations}
     />
   {:else if activeWorkspace === "broadcast"}
     <BroadcastWorkspace
       {receiverDataset}
       metricContexts={publishedMetricContexts}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
       onrelatednavigate={requestRelatedNavigation}
     />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace
       {desktopAvailable}
+      onrelatednavigate={requestRelatedNavigation}
       observationContext={receiverDataset
         ? `${receiverDataset.analysis_context_id ?? "unbound"}:${receiverDataset.interpretation_id}:${receiverDataset.branch_id}`
         : ""}
@@ -1220,6 +1275,8 @@
     <PlanWorkspace
       workspace={republicPlan}
       {desktopAvailable}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
       onupdate={(updated) => {
         republicPlan = updated;
         void refreshRepublicBrief();
@@ -1230,6 +1287,9 @@
     <MaterialsWorkspace
       {desktopAvailable}
       gameConfigured={Boolean(setupState?.game_directory)}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
+      onrelatednavigate={requestRelatedNavigation}
       reviewRoute={reviewRouteFixture}
       reviewPathway={reviewPathwayFixture}
     />
@@ -1238,6 +1298,9 @@
       dataset={populationDataset}
       metricContexts={publishedMetricContexts}
       {desktopAvailable}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
+      onrelatednavigate={requestRelatedNavigation}
       onopenresearch={() => openDialog("research")}
     />
   {:else if activeWorkspace === "markets"}
@@ -1245,6 +1308,8 @@
       workspace={marketWorkspace}
       indexingProgress={marketIndexingProgress}
       {desktopAvailable}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
       onupdate={(updated) => (marketWorkspace = updated)}
       onprogress={(progress) => {
         marketIndexingProgress = progress;
@@ -1256,6 +1321,8 @@
     <ArchiveWorkspace
       archive={archiveOverview}
       {desktopAvailable}
+      location={activeLocation}
+      onrelatednavigate={requestRelatedNavigation}
       onselect={selectBranch}
       oninspect={inspectObservation}
       oncontinue={continueFromObservation}

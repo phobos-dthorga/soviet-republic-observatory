@@ -2,6 +2,11 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatDate, formatNumber, formatSignedNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import {
+    destinationsForSubject,
+    type RelatedDataDestination,
+    type WorkspaceLocation,
+  } from "../navigation/relatedData";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import type {
     ArchiveObservation,
@@ -13,6 +18,8 @@
   let {
     archive,
     desktopAvailable,
+    location,
+    onrelatednavigate,
     onselect,
     oninspect,
     oncontinue,
@@ -22,6 +29,11 @@
   }: {
     archive: ArchiveOverview | null;
     desktopAvailable: boolean;
+    location: WorkspaceLocation;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
     onselect: (branchId: string) => Promise<void>;
     oninspect: (interpretationId: string) => Promise<void>;
     oncontinue: (interpretationId: string, label: string) => Promise<void>;
@@ -213,6 +225,31 @@
     return `${gameDate(observation.latest_year, observation.latest_day)} · ${observation.source_file_name}`;
   }
 
+  function openObservationViews(
+    observation: ArchiveObservation,
+    origin: HTMLElement,
+  ): void {
+    if (
+      observation.latest_year === null ||
+      observation.latest_day === null ||
+      observation.branch_id === "unassigned"
+    ) {
+      return;
+    }
+    onrelatednavigate?.(
+      destinationsForSubject({
+        kind: "observation",
+        reference: {
+          interpretation_id: observation.interpretation_id,
+          branch_id: observation.branch_id,
+          year: observation.latest_year,
+          day: observation.latest_day,
+        },
+      }),
+      origin,
+    );
+  }
+
   const receiverLabels: Record<string, TranslationKey> = {
     "core.citizens.electronics.none": "receiver-none",
     "core.citizens.electronics.radio": "receiver-radio",
@@ -292,7 +329,7 @@
     </GuidanceSurface>
   </aside>
 
-  <section class="canvas">
+  <section class="canvas" id="archive-overview">
     <GuidanceSurface
       kind="instruction"
       layout="inline"
@@ -397,6 +434,7 @@
       </section>
 
       <section
+        id="archive-comparison"
         class="archive-comparison"
         aria-labelledby="archive-comparison-title"
       >
@@ -575,8 +613,11 @@
         </div>
         {#each archive.observations as observation}
           <article
+            id={`archive-observation-${observation.interpretation_id}`}
             class:selected={observation.included_in_context}
             class:active-head={observation.active_head}
+            class:related-selected={location.filters.interpretationId ===
+              observation.interpretation_id}
           >
             <div>
               <strong>{observation.source_file_name}</strong>
@@ -600,6 +641,17 @@
                     observation.branch_id === "unassigned"}
                   onclick={() => void continueFrom(observation)}
                   >{$translation("archive-continue-save")}</button
+                >
+                <button
+                  type="button"
+                  class="related-data-link"
+                  disabled={contextBusy ||
+                    observation.branch_id === "unassigned" ||
+                    observation.latest_year === null ||
+                    observation.latest_day === null}
+                  onclick={(event) =>
+                    openObservationViews(observation, event.currentTarget)}
+                  >{$translation("related-nav-open")}</button
                 >
               </div>
             </div>

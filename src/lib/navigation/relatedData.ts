@@ -62,7 +62,7 @@ export type RelatedDataRelationship =
 
 export type RelatedDataSubject =
   | { kind: "metric"; metricId: string }
-  | { kind: "observation"; interpretationId: string }
+  | { kind: "observation"; reference: ExactObservationReference }
   | {
       kind: "resource";
       resourceToken: string;
@@ -148,11 +148,31 @@ export function workspaceDestination(
     throw new Error("invalid_related_destination");
   }
   return {
-    id: `${workspace}:${section}`,
+    id: workspaceLocationId(workspace, section, filters),
     labelKey: workspaceLabelKey(workspace),
     relationship: "details",
     location: { workspace, section, filters },
   };
+}
+
+function withRelationship(
+  destination: RelatedDataDestination,
+  relationship: RelatedDataRelationship,
+): RelatedDataDestination {
+  return { ...destination, relationship };
+}
+
+function workspaceLocationId(
+  workspace: WorkspaceName,
+  section: WorkspaceSection,
+  filters: WorkspaceFilters,
+): string {
+  const identity = Object.entries(filters)
+    .filter(([, value]) => value !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+    .join("&");
+  return `${workspace}:${section}${identity ? `?${identity}` : ""}`;
 }
 
 export function isWorkspaceSection(
@@ -171,24 +191,47 @@ export function destinationsForSubject(
       return destinationsForMetric(subject.metricId);
     case "observation":
       return [
-        workspaceDestination("archive", "archive-overview", {
-          interpretationId: subject.interpretationId,
-        }),
+        exactWorkspaceDestination("briefing", "briefing", subject.reference),
+        exactWorkspaceDestination("broadcast", "receivers", subject.reference),
+        exactWorkspaceDestination(
+          "population",
+          "population-status",
+          subject.reference,
+        ),
+        exactWorkspaceDestination(
+          "markets",
+          "markets-pulse",
+          subject.reference,
+        ),
+        exactWorkspaceDestination(
+          "archive",
+          "archive-overview",
+          subject.reference,
+        ),
       ];
     case "resource":
       return [
-        workspaceDestination("markets", "markets-trade", {
-          resourceToken: subject.resourceToken,
-          currency: subject.currency,
-          channel: subject.channel,
-        }),
-        workspaceDestination("markets", "markets-prices", {
-          resourceToken: subject.resourceToken,
-          currency: subject.currency,
-        }),
-        workspaceDestination("materials", "catalogue-browser", {
-          catalogueEntityId: subject.resourceToken,
-        }),
+        withRelationship(
+          workspaceDestination("markets", "markets-trade", {
+            resourceToken: subject.resourceToken,
+            currency: subject.currency,
+            channel: subject.channel,
+          }),
+          "details",
+        ),
+        withRelationship(
+          workspaceDestination("markets", "markets-prices", {
+            resourceToken: subject.resourceToken,
+            currency: subject.currency,
+          }),
+          "history",
+        ),
+        withRelationship(
+          workspaceDestination("materials", "definition-dossier", {
+            catalogueEntityId: subject.resourceToken,
+          }),
+          "source",
+        ),
       ];
     case "city":
       return [
@@ -201,19 +244,49 @@ export function destinationsForSubject(
       ];
     case "catalogue_entity":
       return [
-        workspaceDestination("materials", "definition-dossier", {
-          catalogueEntityId: subject.entityId,
-        }),
+        withRelationship(
+          workspaceDestination("materials", "definition-dossier", {
+            catalogueEntityId: subject.entityId,
+          }),
+          "source",
+        ),
       ];
     case "plan_target":
       return [
-        ...destinationsForMetric(subject.metricId),
-        workspaceDestination("plan", "plan-trajectory", {
-          metricId: subject.metricId,
-          planRevision: subject.revision,
-        }),
+        ...destinationsForMetric(subject.metricId).filter(
+          (destination) => destination.location.workspace !== "plan",
+        ),
+        withRelationship(
+          workspaceDestination("plan", "plan-trajectory", {
+            metricId: subject.metricId,
+            planRevision: subject.revision,
+          }),
+          "planning",
+        ),
       ];
   }
+}
+
+function exactWorkspaceDestination(
+  workspace: WorkspaceName,
+  section: WorkspaceSection,
+  reference: ExactObservationReference,
+): RelatedDataDestination {
+  const destination = workspaceDestination(workspace, section, {
+    interpretationId: reference.interpretation_id,
+  });
+  return {
+    ...destination,
+    relationship: "history",
+    exactObservation: reference,
+    location: {
+      ...destination.location,
+      focusId:
+        workspace === "archive"
+          ? `archive-observation-${reference.interpretation_id}`
+          : destination.location.focusId,
+    },
+  };
 }
 
 function destinationsForMetric(metricId: string): RelatedDataDestination[] {
@@ -234,8 +307,14 @@ function destinationsForMetric(metricId: string): RelatedDataDestination[] {
     metricId.includes("immigrant")
   ) {
     return [
-      workspaceDestination("population", "population-status", { metricId }),
-      workspaceDestination("plan", "plan-trajectory", { metricId }),
+      withRelationship(
+        workspaceDestination("population", "population-status", { metricId }),
+        "details",
+      ),
+      withRelationship(
+        workspaceDestination("plan", "plan-editor", { metricId }),
+        "planning",
+      ),
     ];
   }
   return [];

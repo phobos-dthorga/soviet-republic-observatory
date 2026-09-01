@@ -81,4 +81,24 @@ describe("exact observation chart bindings", () => {
       ),
     ).toEqual([]);
   });
+
+  it("supports exact sampled population dates without changing chart data", () => {
+    expect(
+      exactObservationChartBindings(
+        chart,
+        [
+          {
+            sampled_game_day: 736_903,
+            exact_observation: {
+              interpretation_id: "population-save",
+              branch_id: "main",
+              year: 2018,
+              day: 333,
+            },
+          },
+        ],
+        defaultWorkspaceLocation("population"),
+      ),
+    ).toHaveLength(1);
+  });
 });

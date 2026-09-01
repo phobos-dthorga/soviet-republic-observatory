@@ -7,9 +7,77 @@ import type {
   PopulationDataset,
   ProductionPathwayModel,
   ProductionRouteModel,
+  ReceiverDataset,
   RepublicBrief,
   RepublicPlanWorkspace,
 } from "../observations/types";
+
+export function reviewReceiverDataset(): ReceiverDataset {
+  const point = (
+    interpretation_id: string,
+    year: number,
+    day: number,
+    radio: number,
+  ) => ({
+    record_id: year * 365 + day,
+    year,
+    day,
+    game_day: year * 365 + day,
+    none: 32_790,
+    radio,
+    television: 9_702,
+    computer: 2_457,
+    classified_total: 32_790 + radio + 9_702 + 2_457,
+    exact_observation: {
+      interpretation_id,
+      branch_id: "main",
+      year,
+      day,
+    },
+  });
+  return {
+    payload_hash: "review-receiver-payload",
+    interpretation_id: "review-reading-2015-077",
+    source_file_name: "UI-REVIEW-PG7.zip",
+    source_file_size: 1_234_567,
+    source_modified_ms: 1_725_000_000_000,
+    imported_at_ms: 1_725_000_001_000,
+    parser_version: "wrsr-definition-directives.v3",
+    format_profile: "reviewed-1.1.1.9",
+    compatibility: {
+      profile_id: "org.republic-observatory.wrsr-1.1.1.9",
+      profile_version: "1.0.0",
+      profile_content_hash: "review-profile-content",
+      resolved_profile_hash: "review-profile-resolved",
+      base_profile_hash: null,
+      profile_source: "reviewed_builtin",
+      mapping_classification: "reviewed_mapping",
+      parser_engine_version: "wrsr-definition-directives.v3",
+    },
+    branch_id: "main",
+    original_branch_id: "main",
+    analysis_context_id: "review-context-main-tip",
+    geographic_scope: "whole_republic",
+    coverage: {
+      status: "complete",
+      history_records: 2,
+      chartable_records: 2,
+      dropped_records: 0,
+      warnings: [],
+    },
+    source_fields: [
+      {
+        metric_id: "core.citizens.electronics.radio",
+        source_field: "$Citizens_ElectronicRadio",
+        latest_source_line: 1_719_858,
+      },
+    ],
+    points: [
+      point("review-reading-2015-067", 2015, 67, 25_102),
+      point("review-reading-2015-077", 2015, 77, 25_347),
+    ],
+  };
+}
 
 export function reviewMarketWorkspace(
   state: "ready" | "partial" | "empty" | "lagging" = "ready",
@@ -30,7 +98,7 @@ export function reviewMarketWorkspace(
     profile_id: "org.republic-observatory.wrsr-1.1.1.9",
     profile_version: "1.1.0",
     source_fields: ["$Resources_ImportRUB", "$Resources_ExportRUB"],
-    analytical_head: "review-interpretation-2015-077",
+    analytical_head: "review-reading-2015-077",
   };
   const trades = [
     {
@@ -52,7 +120,7 @@ export function reviewMarketWorkspace(
       export_value: 1450,
       trade_result: 350,
       exact_observation: {
-        interpretation_id: "review-interpretation-2015-077",
+        interpretation_id: "review-reading-2015-077",
         branch_id: "main",
         year: 2015,
         day: 77,
@@ -358,7 +426,7 @@ export function reviewMarketIndexingProgress(
 const reviewContext = {
   context_id: "review-context-main-2015-077",
   selected_branch_id: "main",
-  head_interpretation_id: "review-interpretation-2015-077",
+  head_interpretation_id: "review-reading-2015-077",
   original_branch_id: "main",
   mode: "latest" as const,
   origin: "automatic" as const,
@@ -402,7 +470,7 @@ export function reviewRepublicBrief(): RepublicBrief {
     schema_version: 1,
     analysis_context: { ...reviewContext },
     observation: {
-      interpretation_id: "review-interpretation-2015-077",
+      interpretation_id: "review-reading-2015-077",
       source_file_name: "UI-REVIEW-PG7.zip",
       year: 2015,
       day: 77,
@@ -414,7 +482,7 @@ export function reviewRepublicBrief(): RepublicBrief {
       resolved_profile_hash: "reviewed-profile-fixture",
     },
     comparison: {
-      interpretation_id: "review-interpretation-2015-067",
+      interpretation_id: "review-reading-2015-067",
       source_file_name: "UI-REVIEW-PG6.zip",
       year: 2015,
       day: 67,
@@ -646,7 +714,7 @@ export function reviewRepublicPlanWorkspace(): RepublicPlanWorkspace {
         name: "Fifth Five-Year Plan",
         revision: 2,
         branch_id: "main",
-        start_interpretation_id: "review-interpretation-2015-067",
+        start_interpretation_id: "review-reading-2015-067",
         start_profile_hash: "reviewed-profile-fixture",
         start_year: 2015,
         start_day: 67,
@@ -687,7 +755,7 @@ export function reviewRepublicPlanWorkspace(): RepublicPlanWorkspace {
               observed_value: 58_137,
               scheduled_value: 58_400,
               exact_observation: {
-                interpretation_id: "review-interpretation-2015-077",
+                interpretation_id: "review-reading-2015-077",
                 branch_id: "main",
                 year: 2015,
                 day: 77,
@@ -705,7 +773,7 @@ export function reviewPopulationDataset(): PopulationDataset {
     analysis_context: { ...reviewContext },
     observations: [
       {
-        interpretation_id: "review-interpretation-2015-077",
+        interpretation_id: "review-reading-2015-077",
         source_file_name: "UI-REVIEW-PG7.zip",
         membership_revision: 38,
         sampled_year: 2015,
@@ -716,6 +784,12 @@ export function reviewPopulationDataset(): PopulationDataset {
         profile_id: "org.republic-observatory.wrsr-1.1.1.9",
         profile_version: "1.0.0",
         resolved_profile_hash: "reviewed-profile-fixture",
+        exact_observation: {
+          interpretation_id: "review-reading-2015-077",
+          branch_id: "main",
+          year: 2015,
+          day: 77,
+        },
         facts: [
           {
             fact_id: "source.stats.citizens.adults",
@@ -764,8 +838,8 @@ export function reviewPopulationDataset(): PopulationDataset {
 
 export function reviewArchiveOverview(historical = false): ArchiveOverview {
   const head = historical
-    ? "review-interpretation-2015-067"
-    : "review-interpretation-2015-077";
+    ? "review-reading-2015-067"
+    : "review-reading-2015-077";
   return {
     selected_branch_id: "main",
     file_observation_count: 2,
@@ -789,7 +863,7 @@ export function reviewArchiveOverview(historical = false): ArchiveOverview {
       },
     ],
     observations: [67, 77].map((day, index) => {
-      const interpretationId = `review-interpretation-2015-0${day}`;
+      const interpretationId = `review-reading-2015-0${day}`;
       return {
         payload_hash: `review-payload-${day}`,
         interpretation_id: interpretationId,

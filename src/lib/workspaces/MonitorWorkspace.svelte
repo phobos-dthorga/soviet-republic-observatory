@@ -12,6 +12,12 @@
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
+  import { exactObservationDestination } from "../navigation/chartBindings";
+  import {
+    destinationsForSubject,
+    type ChartNavigationBinding,
+    type RelatedDataDestination,
+  } from "../navigation/relatedData";
   import type {
     ArchiveComparison,
     ArchiveOverview,
@@ -28,6 +34,7 @@
     receiverDataset,
     desktopAvailable,
     oncompare,
+    onrelatednavigate,
     metricContexts = [],
   }: {
     health: RecorderHealth | null;
@@ -35,6 +42,10 @@
     receiverDataset: ReceiverDataset | null;
     desktopAvailable: boolean;
     metricContexts?: PublishedMetricContext[];
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
     oncompare: (
       fromPayloadHash: string,
       toPayloadHash: string,
@@ -86,6 +97,60 @@
   const receiverChangeChart = $derived(
     createReceiverChangeChart(comparison, $translation),
   );
+  const cadenceNavigation = $derived.by((): ChartNavigationBinding[] => {
+    let pointIndex = 0;
+    const bindings: ChartNavigationBinding[] = [];
+    for (let index = 1; index < branchObservations.length; index += 1) {
+      const observation = branchObservations[index];
+      const previous = branchObservations[index - 1];
+      if (
+        observation.latest_year === null ||
+        observation.latest_day === null ||
+        previous.latest_year === null ||
+        previous.latest_day === null ||
+        observation.branch_id === "unassigned"
+      ) {
+        continue;
+      }
+      bindings.push({
+        seriesId: "elapsed-game-days",
+        pointIndex,
+        destinations: [
+          exactObservationDestination(
+            {
+              interpretation_id: observation.interpretation_id,
+              branch_id: observation.branch_id,
+              year: observation.latest_year,
+              day: observation.latest_day,
+            },
+            {
+              workspace: "archive",
+              section: "archive-overview",
+              focusId: `archive-observation-${observation.interpretation_id}`,
+              filters: {
+                interpretationId: observation.interpretation_id,
+              },
+            },
+          ),
+        ],
+      });
+      pointIndex += 1;
+    }
+    return bindings;
+  });
+  const receiverChangeNavigation = $derived.by((): ChartNavigationBinding[] => {
+    const metricIds = [
+      "core.citizens.electronics.none",
+      "core.citizens.electronics.radio",
+      "core.citizens.electronics.television",
+      "core.citizens.electronics.computer",
+    ];
+    return metricIds.map((metricId, pointIndex) => ({
+      seriesId: "receiver-change",
+      pointIndex,
+      destinations: destinationsForSubject({ kind: "metric", metricId }),
+    }));
+  });
   const largestInterval = $derived(largestObservationInterval(archive));
   const receiverChangeHelp = $derived.by(() => {
     const context = publishedMetricContext(
@@ -363,11 +428,15 @@
           <ObservatoryChart
             spec={cadenceChart}
             eyebrow={$translation("monitor-section-pulse")}
+            navigation={cadenceNavigation}
+            {onrelatednavigate}
           />
           <ObservatoryChart
             spec={receiverChangeChart}
             eyebrow={$translation("monitor-latest-change")}
             help={receiverChangeHelp}
+            navigation={receiverChangeNavigation}
+            {onrelatednavigate}
           />
         </div>
 

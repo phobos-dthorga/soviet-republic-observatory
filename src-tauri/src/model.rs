@@ -622,6 +622,7 @@ pub struct PopulationObservation {
     pub profile_id: String,
     pub profile_version: String,
     pub resolved_profile_hash: String,
+    pub exact_observation: Option<ExactObservationReference>,
     pub facts: Vec<PopulationFact>,
 }
 

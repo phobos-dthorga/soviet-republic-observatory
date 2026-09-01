@@ -7,7 +7,8 @@ import type {
 } from "./relatedData";
 
 export type ExactObservationPoint = {
-  game_day: number;
+  game_day?: number;
+  sampled_game_day?: number;
   exact_observation: ExactObservationReference | null;
 };
 
@@ -58,8 +59,10 @@ function uniqueExactReferences(
   const candidates = new Map<number, ExactObservationReference[]>();
   for (const point of points) {
     if (!point.exact_observation) continue;
-    candidates.set(point.game_day, [
-      ...(candidates.get(point.game_day) ?? []),
+    const gameDay = point.game_day ?? point.sampled_game_day;
+    if (gameDay === undefined) continue;
+    candidates.set(gameDay, [
+      ...(candidates.get(gameDay) ?? []),
       point.exact_observation,
     ]);
   }

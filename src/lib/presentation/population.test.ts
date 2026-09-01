@@ -40,6 +40,7 @@ const dataset: PopulationDataset = {
       profile_id: "org.republic-observatory.wrsr-1.1.1.9",
       profile_version: "1.0.0",
       resolved_profile_hash: "a".repeat(64),
+      exact_observation: null,
       facts: [
         {
           fact_id: "source.stats.citizens.small_children",
@@ -67,6 +68,7 @@ const dataset: PopulationDataset = {
       profile_id: "org.republic-observatory.wrsr-1.1.1.9",
       profile_version: "1.0.0",
       resolved_profile_hash: "a".repeat(64),
+      exact_observation: null,
       facts: [
         {
           fact_id: "source.stats.citizens.small_children",

@@ -158,6 +158,7 @@ export type PopulationObservation = {
   profile_id: string;
   profile_version: string;
   resolved_profile_hash: string;
+  exact_observation: ExactObservationReference | null;
   facts: PopulationFact[];
 };
 

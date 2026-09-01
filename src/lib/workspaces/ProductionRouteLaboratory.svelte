@@ -5,6 +5,12 @@
   import ProductionPathwayLaboratory from "./ProductionPathwayLaboratory.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import {
+    destinationsForSubject,
+    type ChartNavigationBinding,
+    type RelatedDataDestination,
+    type WorkspaceFilters,
+  } from "../navigation/relatedData";
+  import {
     createProductionRouteChart,
     productionResourceLabel,
     productionRouteUnit,
@@ -29,6 +35,8 @@
     generationId,
     overlayProfileName,
     overlayRevision,
+    onlocationchange,
+    onrelatednavigate,
     reviewRoute = null,
     reviewPathway = null,
   } = $props<{
@@ -37,6 +45,11 @@
     generationId: string | null;
     overlayProfileName: string | null;
     overlayRevision: number | null;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
     reviewRoute?: ProductionRouteModel | null;
     reviewPathway?: ProductionPathwayModel | null;
   }>();
@@ -63,6 +76,19 @@
   const auxiliaryFlows = $derived(
     route?.flows.filter((flow) => flow.basis_role === "auxiliary") ?? [],
   );
+  const chartNavigation = $derived.by((): ChartNavigationBinding[] => {
+    if (!chart || !route) return [];
+    return route.flows
+      .filter((flow) => flow.basis_role === "primary")
+      .map((flow, pointIndex) => ({
+        seriesId: chart.id,
+        pointIndex,
+        destinations: destinationsForSubject({
+          kind: "resource",
+          resourceToken: flow.resource_id,
+        }),
+      }));
+  });
 
   $effect(() => {
     const snapshotIdentity = currentSnapshotIdentity();
@@ -332,7 +358,10 @@
           <select
             bind:value={selectedRouteId}
             disabled={busy}
-            onchange={() => void loadRoute(false)}
+            onchange={() => {
+              onlocationchange?.({ catalogueEntityId: selectedRouteId });
+              void loadRoute(false);
+            }}
           >
             {#each recipes as recipe}
               <option value={recipe.entity_id}
@@ -346,7 +375,10 @@
           <select
             bind:value={selectedOutputId}
             disabled={busy || outputs.length === 0}
-            onchange={() => void selectOutput()}
+            onchange={() => {
+              onlocationchange?.({ resourceToken: selectedOutputId });
+              void selectOutput();
+            }}
           >
             {#each outputs as output}
               <option value={output.resource_id}>{resourceLabel(output)}</option
@@ -420,6 +452,8 @@
         <ObservatoryChart
           spec={chart}
           eyebrow={$translation("production-route-chart-eyebrow")}
+          navigation={chartNavigation}
+          {onrelatednavigate}
         />
       {:else}
         <div class="route-notice attention">
@@ -450,7 +484,18 @@
             {#each auxiliaryFlows as flow}
               <article>
                 <div>
-                  <strong>{resourceLabel(flow)}</strong>
+                  <button
+                    type="button"
+                    class="related-data-link"
+                    onclick={(event) =>
+                      onrelatednavigate?.(
+                        destinationsForSubject({
+                          kind: "resource",
+                          resourceToken: flow.resource_id,
+                        }),
+                        event.currentTarget,
+                      )}>{resourceLabel(flow)}</button
+                  >
                   <code>{flow.resource_id}</code>
                 </div>
                 <span
@@ -505,7 +550,18 @@
                 <tr>
                   <td>{directionLabel(flow)}</td>
                   <th scope="row">
-                    <strong>{resourceLabel(flow)}</strong>
+                    <button
+                      type="button"
+                      class="related-data-link"
+                      onclick={(event) =>
+                        onrelatednavigate?.(
+                          destinationsForSubject({
+                            kind: "resource",
+                            resourceToken: flow.resource_id,
+                          }),
+                          event.currentTarget,
+                        )}>{resourceLabel(flow)}</button
+                    >
                     <code>{flow.resource_id}</code>
                   </th>
                   <td>{quantity(flow.source_quantity)}</td>
@@ -779,7 +835,7 @@
   }
 
   .auxiliary-grid div,
-  .auxiliary-grid strong,
+  .auxiliary-grid .related-data-link,
   .auxiliary-grid code,
   .auxiliary-grid small {
     display: block;
@@ -831,7 +887,7 @@
     font-weight: 600;
   }
 
-  tbody th strong,
+  tbody th .related-data-link,
   tbody th code {
     display: block;
   }

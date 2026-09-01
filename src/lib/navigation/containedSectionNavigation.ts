@@ -29,28 +29,8 @@ export function containedSectionNavigation(node: HTMLAnchorElement) {
     event.preventDefault();
 
     const target = document.getElementById(decodeURIComponent(href.slice(1)));
-    const canvas = target?.closest<HTMLElement>(WORKSPACE_CANVAS_SELECTOR);
-    if (
-      !target ||
-      !canvas ||
-      node.closest(".workspace") !== target.closest(".workspace")
-    ) {
-      return;
-    }
-
-    if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
-    target.focus({ preventScroll: true });
-
-    const targetBox = target.getBoundingClientRect();
-    const canvasBox = canvas.getBoundingClientRect();
-    const top = Math.max(
-      0,
-      canvas.scrollTop + targetBox.top - canvasBox.top - 8,
-    );
-    const reducedMotion = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    canvas.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+    if (node.closest(".workspace") !== target?.closest(".workspace")) return;
+    focusContainedWorkspaceTarget(target);
   }
 
   node.addEventListener("click", navigate);
@@ -59,4 +39,22 @@ export function containedSectionNavigation(node: HTMLAnchorElement) {
       node.removeEventListener("click", navigate);
     },
   };
+}
+
+export function focusContainedWorkspaceTarget(
+  target: HTMLElement | null,
+): boolean {
+  const canvas = target?.closest<HTMLElement>(WORKSPACE_CANVAS_SELECTOR);
+  if (!target || !canvas) return false;
+  if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
+  target.focus({ preventScroll: true });
+
+  const targetBox = target.getBoundingClientRect();
+  const canvasBox = canvas.getBoundingClientRect();
+  const top = Math.max(0, canvas.scrollTop + targetBox.top - canvasBox.top - 8);
+  const reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
+  canvas.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+  return true;
 }

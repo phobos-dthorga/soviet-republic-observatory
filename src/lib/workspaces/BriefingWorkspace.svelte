@@ -8,6 +8,12 @@
   } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import {
+    destinationsForSubject,
+    type RelatedDataDestination,
+    type WorkspaceFilters,
+    type WorkspaceLocation,
+  } from "../navigation/relatedData";
   import type {
     BriefFinding,
     BriefMetric,
@@ -33,10 +39,19 @@
 
   let {
     brief = null,
+    location,
     onopenworkspace = () => {},
+    onlocationchange,
+    onrelatednavigate,
   }: {
     brief?: RepublicBrief | null;
+    location: WorkspaceLocation;
     onopenworkspace?: (workspace: LinkedWorkspace) => void;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
   } = $props();
 
   const sections: Array<{
@@ -208,6 +223,29 @@
       : [],
   );
 
+  $effect(() => {
+    const metricId = location.filters.metricId;
+    if (
+      metricId &&
+      brief?.metrics.some((metric) => metric.metric_id === metricId)
+    ) {
+      selectedMetricId = metricId;
+    }
+  });
+
+  function selectMetric(metricId: string): void {
+    selectedMetricId = metricId;
+    onlocationchange?.({ metricId });
+  }
+
+  function openMetric(metricId: string, origin: HTMLElement): void {
+    selectMetric(metricId);
+    onrelatednavigate?.(
+      destinationsForSubject({ kind: "metric", metricId }),
+      origin,
+    );
+  }
+
   function findingCopy(finding: BriefFinding): [string, string] {
     const keys = findingKeys[finding.code as keyof typeof findingKeys];
     if (!keys)
@@ -349,15 +387,18 @@
       >
         {#each headlineMetrics as metric}
           <div class="metric-card-shell">
-            <button
-              type="button"
+            <article
               class="kpi-card metric-card"
               class:selected={selectedMetric?.metric_id === metric.metric_id}
-              aria-pressed={selectedMetric?.metric_id === metric.metric_id}
-              onclick={() => (selectedMetricId = metric.metric_id)}
             >
               <header>
-                <span>{briefMetricLabel(metric.metric_id, $translation)}</span>
+                <button
+                  type="button"
+                  class="metric-select"
+                  aria-pressed={selectedMetric?.metric_id === metric.metric_id}
+                  onclick={() => selectMetric(metric.metric_id)}
+                  >{briefMetricLabel(metric.metric_id, $translation)}</button
+                >
                 <span class="coverage"
                   >{$translation(
                     brief?.observation?.coverage_status === "complete"
@@ -368,6 +409,14 @@
               </header>
               <strong>{metricValue(metric)}</strong>
               <p>{metricChange(metric)}</p>
+              <button
+                id={`briefing-related-${metric.metric_id}`}
+                type="button"
+                class="related-data-link"
+                onclick={(event) =>
+                  openMetric(metric.metric_id, event.currentTarget)}
+                >{$translation("related-nav-open")}</button
+              >
               <footer>
                 <span>{metricContextSummary(metric.context, $translation)}</span
                 >
@@ -379,7 +428,7 @@
                   )}</span
                 >
               </footer>
-            </button>
+            </article>
             <span class="metric-card-help">
               <MetricContextHelp
                 metricId={metric.metric_id}
@@ -651,7 +700,16 @@
     height: 100%;
     color: inherit;
     text-align: start;
-    cursor: pointer;
+    cursor: default;
+  }
+
+  .metric-select {
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--colour-text);
+    text-align: start;
   }
 
   .metric-card-shell {

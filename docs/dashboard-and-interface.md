@@ -27,8 +27,8 @@ The desktop foundation uses five persistent bands:
 5. **Inspector** — selected resource/city/metric evidence, attention queue,
    provenance, and linked actions.
 
-On narrow displays the navigator and inspector become stacked drawers without
-changing their semantic order.
+On narrow displays the navigator, canvas, and inspector use their own contained
+scrolling regions. The application header never becomes part of page scrolling.
 
 ## Primary workspaces
 
@@ -51,10 +51,28 @@ changing their semantic order.
   coverage.
 
 The current application enables Briefing, Monitor, Broadcast, Extensions,
-Plan, Materials, Population, and Archive in primary navigation. The other buttons
-remain visibly disabled until their analytical vertical slices exist. The shell
-owns only global navigation and observation context; each enabled destination
-is a presentational workspace component.
+Plan, Materials, Population, Markets, and Archive in primary navigation. The
+shell owns global navigation, recorded-save context, and related-data history;
+each enabled destination remains a presentational workspace component.
+
+### Related information
+
+Values and chart points may offer **Open related view** when Observatory can
+prove the connection through a stable metric, resource, city, catalogue item,
+plan, contribution, or recorded-save identity. One clear destination opens at
+once. Several equally useful destinations use a compact chooser.
+
+The shell carries relevant filters into the destination and records the prior
+screen in a session-only breadcrumb. `Alt+Left` follows that trail when no
+dialog is open. Exact historical points may change the selected save only when
+they resolve to one compatible recorded save; Observatory never chooses a
+nearby date. Unsaved Plan and Markets drafts require confirmation before a
+navigation action can discard them.
+
+Charts keep navigation outside their inert data contract. Every clickable mark
+has the same action in the chart's keyboard-accessible data table. Analysis
+Packs can contribute known metrics but cannot author routes, selectors, URLs,
+or commands.
 
 ### Observation archive
 

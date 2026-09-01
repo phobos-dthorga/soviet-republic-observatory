@@ -1,10 +1,17 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import { exactObservationChartBindings } from "../navigation/chartBindings";
-  import type { RelatedDataDestination } from "../navigation/relatedData";
+  import {
+    destinationsForSubject,
+    type RelatedDataDestination,
+    type WorkspaceFilters,
+    type WorkspaceLocation,
+  } from "../navigation/relatedData";
+  import { registerNavigationGuard } from "../navigation/navigationGuards";
   import { notify, type RecoveryProposal } from "../notifications/service";
   import {
     clearMarketSelection,
@@ -41,15 +48,19 @@
     workspace = null,
     indexingProgress = null,
     desktopAvailable,
+    location,
     onupdate,
     onprogress,
+    onlocationchange,
     onrelatednavigate,
   }: {
     workspace?: MarketWorkspace | null;
     indexingProgress?: MarketIndexingProgress | null;
     desktopAvailable: boolean;
+    location: WorkspaceLocation;
     onupdate: (workspace: MarketWorkspace) => void;
     onprogress: (progress: MarketIndexingProgress) => void;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
     onrelatednavigate?: (
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
@@ -90,6 +101,8 @@
   let priceSeriesLoading = $state(false);
   let priceRequest = 0;
   let smartDefaultContext = $state("");
+  let basketDirty = $state(false);
+  let scenarioDirty = $state(false);
 
   const pulse = $derived(
     workspace?.currencies.find(
@@ -148,6 +161,49 @@
           },
         })
       : [],
+  );
+  const exportNavigation = $derived.by(() =>
+    (workspace?.resource_ledger ?? [])
+      .filter(
+        (row) =>
+          row.currency === selectedCurrency &&
+          row.channel === "standard" &&
+          row.export_account_value > 0,
+      )
+      .sort(
+        (left, right) => right.export_account_value - left.export_account_value,
+      )
+      .slice(0, 20)
+      .map((row, pointIndex) => ({
+        seriesId: "positive-exports",
+        pointIndex,
+        destinations: destinationsForSubject({
+          kind: "resource" as const,
+          resourceToken: row.resource_token,
+          currency: selectedCurrency,
+          channel: "standard" as const,
+        }),
+      })),
+  );
+  const cityNavigation = $derived.by(() =>
+    (workspace?.cities ?? [])
+      .filter(
+        (row) =>
+          row.currency === selectedCurrency && row.channel === "standard",
+      )
+      .sort(
+        (left, right) =>
+          Math.abs(right.trade_result) - Math.abs(left.trade_result),
+      )
+      .slice(0, 20)
+      .map((row, pointIndex) => ({
+        seriesId: "city-trade-result",
+        pointIndex,
+        destinations: destinationsForSubject({
+          kind: "city" as const,
+          cityId: row.source_id,
+        }),
+      })),
   );
   const pulseHelp = $derived(
     pulse ? marketMetricHelp(pulse.context, $translation) : null,
@@ -250,6 +306,49 @@
     }
     if (recommendedResource) priceResource = recommendedResource;
   });
+
+  $effect(() => {
+    const requestedCurrency = location.filters.currency;
+    const requestedChannel = location.filters.channel;
+    const requestedResource = location.filters.resourceToken;
+    if (requestedCurrency === "rub" || requestedCurrency === "usd") {
+      selectedCurrency = requestedCurrency;
+    }
+    if (
+      requestedChannel === "standard" ||
+      requestedChannel === "international"
+    ) {
+      selectedChannel = requestedChannel;
+    }
+    if (requestedResource) {
+      priceResource = requestedResource;
+      ledgerFilter = requestedResource;
+    }
+  });
+
+  function publishFilters(filters: WorkspaceFilters): void {
+    onlocationchange?.({
+      currency: selectedCurrency,
+      channel: selectedChannel,
+      resourceToken: priceResource || undefined,
+      ...filters,
+    });
+  }
+
+  function openResource(resourceToken: string, origin: HTMLElement): void {
+    priceResource = resourceToken;
+    ledgerFilter = resourceToken;
+    publishFilters({ resourceToken });
+    onrelatednavigate?.(
+      destinationsForSubject({
+        kind: "resource",
+        resourceToken,
+        currency: selectedCurrency,
+        channel: selectedChannel,
+      }),
+      origin,
+    );
+  }
 
   $effect(() => {
     if (!baseRecords.some((record) => record.hash === basketBase)) {
@@ -495,6 +594,7 @@
             ...basketWeights,
             { resource_token: weightResource, weight: weightValue },
           ];
+    basketDirty = true;
   }
 
   async function saveBasket(): Promise<void> {
@@ -511,6 +611,7 @@
     };
     try {
       onupdate(await saveMarketBasket(draft));
+      basketDirty = false;
       notify({
         title: $translation("markets-baskets-title"),
         message: $translation("markets-basket-saved"),
@@ -559,6 +660,7 @@
     };
     try {
       onupdate(await saveMarketScenario(draft));
+      scenarioDirty = false;
       notify({
         title: $translation("markets-scenarios-title"),
         message: $translation("markets-scenario-saved"),
@@ -643,6 +745,13 @@
       keys[code as keyof typeof keys] ?? "markets-limit-unknown",
     );
   }
+
+  onMount(() =>
+    registerNavigationGuard(
+      "markets-drafts",
+      () => basketDirty || scenarioDirty,
+    ),
+  );
 
   function coverageFacetLabel(facetId: string): string {
     const keys = {
@@ -872,14 +981,20 @@
       >
         <label>
           <span>{$translation("markets-currency")}</span>
-          <select bind:value={selectedCurrency}>
+          <select
+            bind:value={selectedCurrency}
+            onchange={() => publishFilters({ currency: selectedCurrency })}
+          >
             <option value="rub">RUB</option>
             <option value="usd">USD</option>
           </select>
         </label>
         <label>
           <span>{$translation("markets-channel")}</span>
-          <select bind:value={selectedChannel}>
+          <select
+            bind:value={selectedChannel}
+            onchange={() => publishFilters({ channel: selectedChannel })}
+          >
             <option value="standard"
               >{$translation("markets-channel-standard")}</option
             >
@@ -1001,6 +1116,8 @@
           help={concentrationHelp
             ? marketMetricHelp(concentrationHelp, $translation)
             : null}
+          navigation={exportNavigation}
+          {onrelatednavigate}
         />
       </section>
 
@@ -1046,13 +1163,21 @@
               ></thead
             ><tbody
               >{#each filteredLedger as row}<tr
-                  ><th scope="row"><code>{row.resource_token}</code></th><td
-                    >{money(row.import_quantity)}</td
-                  ><td>{money(row.import_account_value)}</td><td
-                    >{money(row.export_quantity)}</td
-                  ><td>{money(row.export_account_value)}</td><td
-                    >{signed(row.trade_result)}</td
-                  ><td>{money(row.disposal_cost)}</td></tr
+                  ><th scope="row"
+                    ><button
+                      type="button"
+                      class="related-data-link"
+                      onclick={(event) =>
+                        openResource(row.resource_token, event.currentTarget)}
+                      ><code>{row.resource_token}</code></button
+                    ></th
+                  ><td>{money(row.import_quantity)}</td><td
+                    >{money(row.import_account_value)}</td
+                  ><td>{money(row.export_quantity)}</td><td
+                    >{money(row.export_account_value)}</td
+                  ><td>{signed(row.trade_result)}</td><td
+                    >{money(row.disposal_cost)}</td
+                  ></tr
                 >{/each}</tbody
             >
           </table>
@@ -1075,7 +1200,10 @@
           </div>
           <label class="price-resource-selector">
             <span>{$translation("markets-price-resource")}</span>
-            <select bind:value={priceResource}>
+            <select
+              bind:value={priceResource}
+              onchange={() => publishFilters({ resourceToken: priceResource })}
+            >
               {#each availableWeightResources as resource}
                 <option value={resource}>{resource}</option>
               {/each}
@@ -1126,11 +1254,17 @@
               >{#each (workspace.price_ledger ?? [])
                 .filter((row) => row.currency === selectedCurrency)
                 .slice(0, 150) as row}<tr
-                  ><th scope="row"><code>{row.resource_token}</code></th><td
-                    >{money(row.purchase_price)}</td
-                  ><td>{money(row.sell_price)}</td><td
-                    >{money(row.base_price)}</td
-                  ><td
+                  ><th scope="row"
+                    ><button
+                      type="button"
+                      class="related-data-link"
+                      onclick={(event) =>
+                        openResource(row.resource_token, event.currentTarget)}
+                      ><code>{row.resource_token}</code></button
+                    ></th
+                  ><td>{money(row.purchase_price)}</td><td
+                    >{money(row.sell_price)}</td
+                  ><td>{money(row.base_price)}</td><td
                     >{row.purchase_index == null
                       ? "—"
                       : row.purchase_index.toFixed(1)}</td
@@ -1226,6 +1360,8 @@
           spec={cityChart}
           eyebrow={$translation("markets-section-cities")}
           help={cityHelp ? marketMetricHelp(cityHelp, $translation) : null}
+          navigation={cityNavigation}
+          {onrelatednavigate}
         />
       </section>
 
@@ -1306,6 +1442,8 @@
               </article>{/each}
           </div>
           <form
+            oninput={() => (basketDirty = true)}
+            onchange={() => (basketDirty = true)}
             onsubmit={(event) => {
               event.preventDefault();
               void saveBasket();
@@ -1373,10 +1511,12 @@
             <div class="weight-list">
               {#each basketWeights as weight}<button
                   type="button"
-                  onclick={() =>
-                    (basketWeights = basketWeights.filter(
+                  onclick={() => {
+                    basketWeights = basketWeights.filter(
                       (entry) => entry.resource_token !== weight.resource_token,
-                    ))}>{weight.resource_token} · {weight.weight} ×</button
+                    );
+                    basketDirty = true;
+                  }}>{weight.resource_token} · {weight.weight} ×</button
                 >{/each}
             </div>
             <div class="form-actions">
@@ -1457,6 +1597,8 @@
               </article>{/each}
           </div>
           <form
+            oninput={() => (scenarioDirty = true)}
+            onchange={() => (scenarioDirty = true)}
             onsubmit={(event) => {
               event.preventDefault();
               void saveScenario();

@@ -219,6 +219,7 @@ pub struct ResolvedAnalysisChart {
 pub struct ResolvedAnalysisSeries {
     pub id: String,
     pub label: String,
+    pub published_metric_id: Option<String>,
     pub style: Option<AnalysisSeriesStyle>,
     pub stack_id: Option<String>,
     pub points: Vec<ResolvedAnalysisPoint>,
@@ -526,6 +527,12 @@ impl AnalysisPackDocument {
                         ResolvedAnalysisSeries {
                             id: series.id.clone(),
                             label: series.label.clone(),
+                            published_metric_id: match &series.metric {
+                                MetricReference::Core(reference) => {
+                                    Some(reference.core_metric.clone())
+                                }
+                                MetricReference::Derived(_) => None,
+                            },
                             style: series.style,
                             stack_id: series.stack_id.clone(),
                             points,

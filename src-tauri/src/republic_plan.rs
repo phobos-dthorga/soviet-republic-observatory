@@ -473,6 +473,7 @@ mod tests {
             profile_id: "profile".to_owned(),
             profile_version: "1.0.0".to_owned(),
             resolved_profile_hash: "profile".to_owned(),
+            exact_observation: None,
             facts: vec![PopulationFact {
                 fact_id: crate::metric_catalogue::ADULTS.to_owned(),
                 value,

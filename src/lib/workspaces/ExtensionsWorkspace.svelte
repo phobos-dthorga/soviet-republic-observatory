@@ -13,6 +13,11 @@
   import { translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import {
+    destinationsForSubject,
+    type ChartNavigationBinding,
+    type RelatedDataDestination,
+  } from "../navigation/relatedData";
+  import {
     notify,
     type NotificationTone,
     type TechnicalDetailsView,
@@ -35,7 +40,15 @@
   let {
     desktopAvailable = false,
     observationContext = "",
-  }: { desktopAvailable?: boolean; observationContext?: string } = $props();
+    onrelatednavigate,
+  }: {
+    desktopAvailable?: boolean;
+    observationContext?: string;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
+  } = $props();
   let packs = $state<AnalysisPackSummary[]>([]);
   let contributions = $state<AnalysisPackContribution[]>([]);
   let inspection = $state<AnalysisPackInspection | null>(null);
@@ -251,6 +264,23 @@
     chart: ResolvedAnalysisChart,
   ) {
     return chartSpecForAnalysisContribution(contribution, chart, $translation);
+  }
+
+  function chartNavigation(
+    chart: ResolvedAnalysisChart,
+  ): ChartNavigationBinding[] {
+    return chart.series.flatMap((series) =>
+      series.published_metric_id
+        ? series.points.map((_, pointIndex) => ({
+            seriesId: series.id,
+            pointIndex,
+            destinations: destinationsForSubject({
+              kind: "extension_contribution",
+              metricId: series.published_metric_id!,
+            }),
+          }))
+        : [],
+    );
   }
 
   $effect(() => {
@@ -594,6 +624,8 @@
                 spec={chartSpec(contribution, chart)}
                 eyebrow={$translation("evidence-extension-calculation")}
                 height="320px"
+                navigation={chartNavigation(chart)}
+                {onrelatednavigate}
               />
             </div>
           {/each}

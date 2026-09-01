@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 50,
+  "source_catalog_revision": 51,
   "messages": {
     "settings-introduction": "Configure Observatory's private local sources, accessible presentation, and bounded background-work behaviour.",
     "settings-recorder-priority-detail": "These preferences change how patiently and quickly resumable maintenance runs. They cannot weaken evidence checks, database limits, or recorder priority.",

@@ -108,7 +108,7 @@ fn load_republic_observations(
             .is_none_or(|observation| observation.interpretation_id != interpretation_id)
         {
             observations.push(PopulationObservation {
-                interpretation_id,
+                interpretation_id: interpretation_id.clone(),
                 source_file_name: row.get(1)?,
                 membership_revision: row.get(2)?,
                 sampled_year: row.get(3)?,
@@ -119,6 +119,12 @@ fn load_republic_observations(
                 profile_id: row.get(8)?,
                 profile_version: row.get(9)?,
                 resolved_profile_hash: row.get(10)?,
+                exact_observation: Some(crate::model::ExactObservationReference {
+                    interpretation_id,
+                    branch_id: branch_id.to_owned(),
+                    year: row.get(3)?,
+                    day: row.get(4)?,
+                }),
                 facts: Vec::new(),
             });
         }

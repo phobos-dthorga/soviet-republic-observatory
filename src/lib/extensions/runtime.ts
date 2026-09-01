@@ -57,6 +57,7 @@ export type ResolvedAnalysisChart = {
   series: Array<{
     id: string;
     label: string;
+    published_metric_id: string | null;
     style?: "solid" | "dashed";
     stack_id?: string;
     points: ResolvedAnalysisPoint[];

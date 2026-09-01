@@ -1,7 +1,15 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { activeLocale, translation } from "../i18n/runtime";
-  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import {
+    containedSectionNavigation,
+    focusContainedWorkspaceTarget,
+  } from "../navigation/containedSectionNavigation";
+  import type {
+    RelatedDataDestination,
+    WorkspaceFilters,
+    WorkspaceLocation,
+  } from "../navigation/relatedData";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import ProductionRouteLaboratory from "./ProductionRouteLaboratory.svelte";
   import {
@@ -46,11 +54,20 @@
   let {
     desktopAvailable,
     gameConfigured,
+    location,
+    onlocationchange,
+    onrelatednavigate,
     reviewRoute = null,
     reviewPathway = null,
   } = $props<{
     desktopAvailable: boolean;
     gameConfigured: boolean;
+    location: WorkspaceLocation;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
     reviewRoute?: ProductionRouteModel | null;
     reviewPathway?: ProductionPathwayModel | null;
   }>();
@@ -79,6 +96,7 @@
   let clockMs = $state(Date.now());
   let searchRequest = 0;
   let dossierRequest = 0;
+  let requestedEntityId = "";
   const refreshActive = $derived(
     refreshProgress != null &&
       ["discovering", "scanning", "publishing", "finalising"].includes(
@@ -249,6 +267,31 @@
     }
   }
 
+  async function chooseEntity(entityId: string): Promise<void> {
+    await selectEntity(entityId);
+    onlocationchange?.({ catalogueEntityId: entityId });
+  }
+
+  async function openRequestedEntity(entityId: string): Promise<void> {
+    try {
+      await selectEntity(entityId);
+    } catch {
+      query = entityId;
+      await runSearch();
+      const match = page?.items.find(
+        (item) => item.entity_id === entityId || item.display_name === entityId,
+      );
+      if (match) await selectEntity(match.entity_id);
+    }
+  }
+
+  $effect(() => {
+    const next = location.filters.catalogueEntityId ?? "";
+    if (!next || next === requestedEntityId || !status?.generation) return;
+    requestedEntityId = next;
+    void openRequestedEntity(next);
+  });
+
   async function runAction(action: () => Promise<unknown>): Promise<void> {
     busy = true;
     message = "";
@@ -337,9 +380,7 @@
       profile.latest_revision,
     );
     inspection = await inspectPlanningOverlay(overlayText);
-    document
-      .querySelector("#overlay-workbench")
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    focusContainedWorkspaceTarget(document.getElementById("overlay-workbench"));
   }
 
   onMount(() => {
@@ -489,6 +530,8 @@
           null}
         overlayProfileName={status?.active_overlay?.display_name ?? null}
         overlayRevision={status?.active_overlay?.active_revision ?? null}
+        {onlocationchange}
+        {onrelatednavigate}
         {reviewRoute}
         {reviewPathway}
       />
@@ -608,7 +651,7 @@
             <button
               type="button"
               class:selected={dossier?.summary.entity_id === item.entity_id}
-              onclick={() => selectEntity(item.entity_id)}
+              onclick={() => void chooseEntity(item.entity_id)}
             >
               <span class="entity-kind">{item.entity_kind}</span><strong
                 >{item.display_name}</strong

@@ -46,6 +46,7 @@ const contribution: AnalysisPackContribution = {
         {
           id: "radio",
           label: "Radio",
+          published_metric_id: "core.citizens.electronics.radio",
           stack_id: "receiver_classes",
           provenance: {
             kind: "extension_calculation",

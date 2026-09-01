@@ -354,6 +354,7 @@
                     <td>
                       {#if destinations.length > 0}
                         <button
+                          id={`chart-related-${spec.id}-${link.id}`}
                           class="table-link"
                           onclick={(event) =>
                             requestRelatedView(
@@ -440,6 +441,7 @@
                   <td>
                     {#if row.destinations.length > 0}
                       <button
+                        id={`chart-related-${spec.id}-${row.seriesId}-${row.pointIndex}`}
                         class="table-link"
                         onclick={(event) =>
                           requestRelatedView(

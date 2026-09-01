@@ -7,6 +7,13 @@
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
+  import { exactObservationChartBindings } from "../navigation/chartBindings";
+  import {
+    destinationsForSubject,
+    type RelatedDataDestination,
+    type WorkspaceFilters,
+    type WorkspaceLocation,
+  } from "../navigation/relatedData";
   import type {
     PopulationDataset,
     PublishedMetricContext,
@@ -28,11 +35,20 @@
     dataset = null,
     metricContexts = [],
     desktopAvailable,
+    location,
+    onlocationchange,
+    onrelatednavigate,
     onopenresearch,
   }: {
     dataset?: PopulationDataset | null;
     metricContexts?: PublishedMetricContext[];
     desktopAvailable: boolean;
+    location: WorkspaceLocation;
+    onlocationchange?: (filters: WorkspaceFilters) => void;
+    onrelatednavigate?: (
+      destinations: RelatedDataDestination[],
+      origin: HTMLElement | null,
+    ) => void;
     onopenresearch: () => void;
   } = $props();
 
@@ -89,13 +105,60 @@
       $translation,
     ),
   );
+  const statusNavigation = $derived(
+    dataset
+      ? exactObservationChartBindings(statusChart, dataset.observations, {
+          workspace: "population",
+          section: "population-status",
+          filters: {},
+        })
+      : [],
+  );
+  const movementNavigation = $derived(
+    dataset
+      ? exactObservationChartBindings(movementChart, dataset.observations, {
+          workspace: "population",
+          section: "population-movement",
+          filters: {},
+        })
+      : [],
+  );
 
   $effect(() => {
+    const requestedCity = location.filters.cityId;
+    if (
+      requestedCity &&
+      dataset?.cities.some((city) => city.scope_id === requestedCity)
+    ) {
+      selectedCityId = requestedCity;
+      return;
+    }
     const firstCity = dataset?.cities[0]?.scope_id ?? "";
     if (!dataset?.cities.some((city) => city.scope_id === selectedCityId)) {
       selectedCityId = firstCity;
     }
   });
+
+  function selectCity(cityId: string): void {
+    selectedCityId = cityId;
+    onlocationchange?.({ cityId });
+  }
+
+  function openMetric(metricId: string, origin: HTMLElement): void {
+    onlocationchange?.({ metricId });
+    onrelatednavigate?.(
+      destinationsForSubject({ kind: "metric", metricId }),
+      origin,
+    );
+  }
+
+  function openCity(origin: HTMLElement): void {
+    if (!selectedCity) return;
+    onrelatednavigate?.(
+      destinationsForSubject({ kind: "city", cityId: selectedCity.scope_id }),
+      origin,
+    );
+  }
 
   function emptyDataset(): PopulationDataset {
     return {
@@ -310,6 +373,13 @@
           </header>
           <strong>{factValue("source.stats.citizens.adults")}</strong>
           <p>{$translation("population-direct-source-count")}</p>
+          <button
+            type="button"
+            class="related-data-link"
+            onclick={(event) =>
+              openMetric("source.stats.citizens.adults", event.currentTarget)}
+            >{$translation("related-nav-open")}</button
+          >
         </article>
         <article class="kpi-card">
           <header>
@@ -327,6 +397,15 @@
           </header>
           <strong>{factValue("source.stats.citizens.small_children")}</strong>
           <p>{$translation("population-direct-source-count")}</p>
+          <button
+            type="button"
+            class="related-data-link"
+            onclick={(event) =>
+              openMetric(
+                "source.stats.citizens.small_children",
+                event.currentTarget,
+              )}>{$translation("related-nav-open")}</button
+          >
         </article>
         <article class="kpi-card">
           <header>
@@ -344,6 +423,15 @@
           </header>
           <strong>{factValue("source.stats.citizens.unemployed")}</strong>
           <p>{$translation("population-no-rate-denominator")}</p>
+          <button
+            type="button"
+            class="related-data-link"
+            onclick={(event) =>
+              openMetric(
+                "source.stats.citizens.unemployed",
+                event.currentTarget,
+              )}>{$translation("related-nav-open")}</button
+          >
         </article>
         <article class="kpi-card">
           <header>
@@ -355,6 +443,13 @@
             >{formatNumber(dataset?.cities.length ?? 0, $activeLocale)}</strong
           >
           <p>{$translation("population-city-identifiers-neutral")}</p>
+          <button
+            type="button"
+            class="related-data-link"
+            disabled={!selectedCity}
+            onclick={(event) => openCity(event.currentTarget)}
+            >{$translation("related-nav-open")}</button
+          >
         </article>
       </section>
 
@@ -363,6 +458,8 @@
           spec={statusChart}
           height="285px"
           eyebrow={$translation("population-section-status")}
+          navigation={statusNavigation}
+          {onrelatednavigate}
         />
         <ObservatoryChart
           spec={educationChart}
@@ -381,6 +478,8 @@
           height="285px"
           eyebrow={$translation("population-section-movement")}
           help={movementHelp}
+          navigation={movementNavigation}
+          {onrelatednavigate}
         />
       </section>
 
@@ -393,7 +492,10 @@
           </div>
           <label>
             <span>{$translation("population-select-city")}</span>
-            <select bind:value={selectedCityId}>
+            <select
+              bind:value={selectedCityId}
+              onchange={() => selectCity(selectedCityId)}
+            >
               {#each dataset?.cities ?? [] as city}
                 <option value={city.scope_id}
                   >{$translation("population-city-neutral-label", {
