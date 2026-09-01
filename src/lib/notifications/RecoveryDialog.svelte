@@ -139,12 +139,16 @@
 
   footer button {
     min-height: 40px;
+    border: 1px solid var(--colour-line);
     padding: 8px 14px;
+    color: var(--colour-text);
+    background: var(--colour-surface-soft);
   }
 
   .primary-action {
     border-color: var(--colour-gold);
     color: var(--colour-gold);
+    background: var(--colour-surface-raised);
   }
 
   .recovery-failure {
