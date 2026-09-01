@@ -141,6 +141,7 @@ pub fn inspect_save_archive(
         coverage: parsed.coverage,
         snapshots: parsed.snapshots,
         market: parsed.market,
+        citizen_status: parsed.citizen_status,
         binary_facts,
     })
 }

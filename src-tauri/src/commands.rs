@@ -11,13 +11,13 @@ use crate::error::{CommandError, ObservatoryError};
 use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguageHandover};
 use crate::model::{
     AnalysisContextResult, ApplicationPreferencesDraft, ApplicationSettingsView, ArchiveComparison,
-    ArchiveOverview, CataloguePage, CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus,
-    CompatibilityUpdate, DefinitionDossier, DiagnosticLogView, DirectoryKind, MarketBasketDraft,
-    MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft, MarketWorkspace,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
-    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    ArchiveOverview, BroadcastIndexingProgress, CataloguePage, CatalogueSearchFilter,
+    CatalogueStatus, CompatibilityStatus, CompatibilityUpdate, DefinitionDossier,
+    DiagnosticLogView, DirectoryKind, MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries,
+    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
+    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
+    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
+    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
@@ -36,6 +36,7 @@ pub struct AppState {
 }
 
 pub const MARKET_INDEXING_PROGRESS_EVENT: &str = "market-indexing-progress";
+pub const BROADCAST_INDEXING_PROGRESS_EVENT: &str = "broadcast-indexing-progress";
 
 async fn run_market_workspace_command(
     application: Arc<ObservatoryApplication>,
@@ -698,6 +699,43 @@ pub async fn refresh_changed_market_data(
         diagnostic: "The Markets refresh worker stopped unexpectedly.".to_owned(),
     })?
     .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_broadcast_indexing_progress(
+    state: State<'_, AppState>,
+) -> Result<BroadcastIndexingProgress, CommandError> {
+    state
+        .application
+        .broadcast_indexing_progress()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn index_available_saves_for_broadcast(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<BroadcastIndexingProgress, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.index_available_saves_for_broadcast(|progress| {
+            let _ = app.emit(BROADCAST_INDEXING_PROGRESS_EVENT, progress);
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "broadcast_indexing_worker_unavailable".to_owned(),
+        diagnostic: "The Broadcast indexing worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn resume_broadcast_indexing(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<BroadcastIndexingProgress, CommandError> {
+    index_available_saves_for_broadcast(app, state).await
 }
 
 #[tauri::command]

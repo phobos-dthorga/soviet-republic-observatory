@@ -1,0 +1,33 @@
+$STATS_FORMAT 1
+$STAT_RECORD 0
+$DATE_DAY 10
+$DATE_YEAR 1980
+$Citizens_EletronicNone 80
+$Citizens_EletrinicRadio 15
+$Citizens_EletronicTV 5
+$Citizens_EletronicComputer 0
+$Citizens_Status 0 0.81
+$Citizens_Status 1 0.92
+$Citizens_Status 2 0.84
+$Citizens_Status 3 0.55
+$Citizens_Status 4 0.22
+$Citizens_Status 5 0.35
+$Citizens_Status 6 0.31
+$Citizens_Status 7 0.44
+$Citizens_Status 8 0.73
+$STAT_RECORD 1
+$DATE_DAY 20
+$DATE_YEAR 1980
+$Citizens_EletronicNone 70
+$Citizens_EletrinicRadio 20
+$Citizens_EletronicTV 8
+$Citizens_EletronicComputer 2
+$Citizens_Status 0 0.82
+$Citizens_Status 1 0.93
+$Citizens_Status 2 0.85
+$Citizens_Status 3 0.56
+$Citizens_Status 4 0.21
+$Citizens_Status 5 0.36
+$Citizens_Status 6 0.32
+$Citizens_Status 7 0.43
+$Citizens_Status 8 0.74

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const PARSER_VERSION: &str = "stats-ini.receiver-history.v1";
+pub const PARSER_VERSION: &str = "stats-ini.observatory-history.v2";
 pub const REPUBLIC_SCOPE: &str = "republic";
 
 pub const RECEIVER_METRICS: [MetricDefinition; 4] = [
@@ -16,6 +16,18 @@ pub const RECEIVER_METRICS: [MetricDefinition; 4] = [
     MetricDefinition {
         id: "core.citizens.electronics.computer",
     },
+];
+
+pub const CITIZEN_STATUS_METRICS: [IndexedMetricDefinition; 9] = [
+    IndexedMetricDefinition::new(0, "core.citizens.status.happiness"),
+    IndexedMetricDefinition::new(1, "core.citizens.status.food_satisfaction"),
+    IndexedMetricDefinition::new(2, "core.citizens.status.health"),
+    IndexedMetricDefinition::new(3, "core.citizens.status.government_loyalty"),
+    IndexedMetricDefinition::new(4, "core.citizens.status.alcohol_addiction"),
+    IndexedMetricDefinition::new(5, "core.citizens.status.culture_enjoyment"),
+    IndexedMetricDefinition::new(6, "core.citizens.status.sports_enjoyment"),
+    IndexedMetricDefinition::new(7, "core.citizens.status.religion_sympathy"),
+    IndexedMetricDefinition::new(8, "core.citizens.status.clothing_quality"),
 ];
 
 pub const SNAPSHOT_FACTS: [SnapshotFactDefinition; 18] = [
@@ -42,6 +54,18 @@ pub const SNAPSHOT_FACTS: [SnapshotFactDefinition; 18] = [
 #[derive(Clone, Copy, Debug)]
 pub struct MetricDefinition {
     pub id: &'static str,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct IndexedMetricDefinition {
+    pub source_index: u8,
+    pub id: &'static str,
+}
+
+impl IndexedMetricDefinition {
+    const fn new(source_index: u8, id: &'static str) -> Self {
+        Self { source_index, id }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -98,6 +122,35 @@ pub struct ReceiverRecord {
     pub classified_total: u64,
     pub source_lines: SourceLineSet,
     pub source_fields: SourceFieldSet,
+}
+
+#[derive(Clone, Debug)]
+pub struct CitizenStatusRecord {
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub values: [f64; 9],
+    pub source_lines: [u64; 9],
+    pub source_fields: [String; 9],
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ParsedCitizenStatusData {
+    pub records: Vec<CitizenStatusRecord>,
+    pub history_records: u32,
+    pub dropped_records: u32,
+    pub warnings: Vec<CoverageWarning>,
+}
+
+impl ParsedCitizenStatusData {
+    pub fn coverage_status(&self) -> CoverageStatus {
+        if self.warnings.is_empty() && self.records.len() == self.history_records as usize {
+            CoverageStatus::Complete
+        } else {
+            CoverageStatus::Partial
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -170,6 +223,7 @@ pub struct ParsedStats {
     pub coverage: CoverageReport,
     pub snapshots: Vec<SaveSnapshot>,
     pub market: ParsedMarketData,
+    pub citizen_status: ParsedCitizenStatusData,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -447,6 +501,7 @@ pub struct SaveInspection {
     pub coverage: CoverageReport,
     pub snapshots: Vec<SaveSnapshot>,
     pub market: ParsedMarketData,
+    pub citizen_status: ParsedCitizenStatusData,
     pub binary_facts: Vec<BinaryMappedFact>,
 }
 
@@ -1193,6 +1248,8 @@ pub struct MarketIndexingProgress {
     pub resume_count: u32,
     pub error_code: Option<String>,
 }
+
+pub type BroadcastIndexingProgress = MarketIndexingProgress;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MarketMetricContext {

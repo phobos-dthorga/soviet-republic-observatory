@@ -7,14 +7,19 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::error::ObservatoryError;
-use crate::model::{CompatibilityProvenance, RECEIVER_METRICS, SNAPSHOT_FACTS};
+use crate::model::{
+    CITIZEN_STATUS_METRICS, CompatibilityProvenance, RECEIVER_METRICS, SNAPSHOT_FACTS,
+};
 
 pub const PARSER_ENGINE_API_VERSION: &str = "1.0.0";
-pub const PARSER_ENGINE_VERSION: &str = "compatibility-profile-engine.v2";
+pub const PARSER_ENGINE_VERSION: &str = "compatibility-profile-engine.v3";
 pub const BUILTIN_PROFILE_ID: &str = "org.republic-observatory.wrsr-1.1.1.9";
-const LEGACY_BUILTIN_PROFILE_VERSION: &str = "1.0.0";
-const LEGACY_BUILTIN_PROFILE_HASH: &str =
+const LEGACY_BASE_PROFILE_VERSION: &str = "1.0.0";
+const LEGACY_BASE_PROFILE_HASH: &str =
     "0f2737d29ddb50aa22a32d6fb1747e7c0ec5aa00227464a38d68b4ae1bac522e";
+const LEGACY_MARKET_PROFILE_VERSION: &str = "1.1.0";
+const LEGACY_MARKET_PROFILE_HASH: &str =
+    "44bcec2f9abba9d2559fd9c283220238f65000e1ef14f010ebebf3dff45053e8";
 
 const BUILTIN_PROFILE_BYTES: &[u8] =
     include_bytes!("../../compatibility/wrsr-1.1.1.9.rocompat.json");
@@ -189,6 +194,8 @@ pub struct StatsFieldMapping {
     pub host_slot: String,
     pub aliases: Vec<String>,
     pub contexts: Vec<StatsContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_index: Option<u8>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -546,25 +553,37 @@ impl ResolvedCompatibilityProfile {
     }
 
     pub fn legacy_reviewed_builtins() -> Result<Vec<Self>, ObservatoryError> {
-        let mut document = CompatibilityProfileDocument::parse(BUILTIN_PROFILE_BYTES)?;
-        document.version = LEGACY_BUILTIN_PROFILE_VERSION.to_owned();
-        document.content_hash = LEGACY_BUILTIN_PROFILE_HASH.to_owned();
-        if let Some(stats_fields) = document.mappings.stats_fields.as_mut() {
+        let current = CompatibilityProfileDocument::parse(BUILTIN_PROFILE_BYTES)?;
+        let mut market = current.clone();
+        market.version = LEGACY_MARKET_PROFILE_VERSION.to_owned();
+        market.content_hash = LEGACY_MARKET_PROFILE_HASH.to_owned();
+        if let Some(stats_fields) = market.mappings.stats_fields.as_mut() {
+            stats_fields.retain(|mapping| mapping.value_index.is_none());
+        }
+        let mut base = market.clone();
+        base.version = LEGACY_BASE_PROFILE_VERSION.to_owned();
+        base.content_hash = LEGACY_BASE_PROFILE_HASH.to_owned();
+        if let Some(stats_fields) = base.mappings.stats_fields.as_mut() {
             stats_fields.retain(|mapping| !mapping.host_slot.starts_with("market."));
         }
-        if document.calculated_content_hash()? != LEGACY_BUILTIN_PROFILE_HASH {
-            return invalid("legacy_builtin_identity");
-        }
-        let mappings = complete_mappings(&document.mappings)?;
-        validate_resolved_mappings(&mappings)?;
-        Ok(vec![Self {
-            resolved_hash: document.content_hash.clone(),
-            document,
-            mappings,
-            source: CompatibilityProfileSource::ReviewedBuiltin,
-            base: None,
-            local_definition_mapping_ids: HashSet::new(),
-        }])
+        [market, base]
+            .into_iter()
+            .map(|document| {
+                if document.calculated_content_hash()? != document.content_hash {
+                    return invalid("legacy_builtin_identity");
+                }
+                let mappings = complete_mappings(&document.mappings)?;
+                validate_resolved_mappings(&mappings)?;
+                Ok(Self {
+                    resolved_hash: document.content_hash.clone(),
+                    document,
+                    mappings,
+                    source: CompatibilityProfileSource::ReviewedBuiltin,
+                    base: None,
+                    local_definition_mapping_ids: HashSet::new(),
+                })
+            })
+            .collect()
     }
 
     pub fn resolve_override(
@@ -683,8 +702,37 @@ impl ResolvedCompatibilityProfile {
     pub fn field_for(&self, directive: &str, context: StatsContext) -> Option<&StatsFieldMapping> {
         self.mappings.stats_fields.iter().find(|mapping| {
             mapping.contexts.contains(&context)
+                && mapping.value_index.is_none()
                 && mapping.aliases.iter().any(|alias| alias == directive)
         })
+    }
+
+    pub fn indexed_field_for(
+        &self,
+        directive: &str,
+        context: StatsContext,
+        value_index: u8,
+    ) -> Option<&StatsFieldMapping> {
+        self.mappings.stats_fields.iter().find(|mapping| {
+            mapping.contexts.contains(&context)
+                && mapping.value_index == Some(value_index)
+                && mapping.aliases.iter().any(|alias| alias == directive)
+        })
+    }
+
+    pub fn has_indexed_field_alias(&self, directive: &str, context: StatsContext) -> bool {
+        self.mappings.stats_fields.iter().any(|mapping| {
+            mapping.contexts.contains(&context)
+                && mapping.value_index.is_some()
+                && mapping.aliases.iter().any(|alias| alias == directive)
+        })
+    }
+
+    pub fn has_indexed_fields(&self, context: StatsContext) -> bool {
+        self.mappings
+            .stats_fields
+            .iter()
+            .any(|mapping| mapping.contexts.contains(&context) && mapping.value_index.is_some())
     }
 
     pub fn expected_snapshot_fields(&self, context: StatsContext) -> u32 {
@@ -907,8 +955,25 @@ fn validate_mappings(mappings: &ProfileMappings) -> Result<(), ObservatoryError>
         for field in fields {
             if !REQUIRED_STATS_SLOTS.contains(&field.host_slot.as_str())
                 && !MARKET_STATS_SLOTS.contains(&field.host_slot.as_str())
+                && !CITIZEN_STATUS_METRICS
+                    .iter()
+                    .any(|metric| metric.id == field.host_slot)
             {
                 return invalid("unknown_host_slot");
+            }
+            if field.value_index.is_some()
+                != CITIZEN_STATUS_METRICS
+                    .iter()
+                    .any(|metric| metric.id == field.host_slot)
+            {
+                return invalid("invalid_indexed_host_slot");
+            }
+            if let Some(index) = field.value_index
+                && !CITIZEN_STATUS_METRICS
+                    .iter()
+                    .any(|metric| metric.id == field.host_slot && metric.source_index == index)
+            {
+                return invalid("invalid_value_index");
             }
             validate_aliases(&field.aliases, true)?;
             if field.contexts.is_empty() || field.contexts.len() > 3 {
@@ -920,7 +985,11 @@ fn validate_mappings(mappings: &ProfileMappings) -> Result<(), ObservatoryError>
                     return invalid("slot_scope_restriction");
                 }
                 for alias in &field.aliases {
-                    if !context_aliases.insert((*context, alias.to_ascii_uppercase())) {
+                    if !context_aliases.insert((
+                        *context,
+                        alias.to_ascii_uppercase(),
+                        field.value_index,
+                    )) {
                         return invalid("duplicate_mapping");
                     }
                 }
@@ -1176,7 +1245,10 @@ fn slot_supports_context(slot: &str, context: StatsContext) -> bool {
         return true;
     }
     if context == StatsContext::History {
-        return RECEIVER_METRICS.iter().any(|metric| metric.id == slot);
+        return RECEIVER_METRICS.iter().any(|metric| metric.id == slot)
+            || CITIZEN_STATUS_METRICS
+                .iter()
+                .any(|metric| metric.id == slot);
     }
     SNAPSHOT_FACTS
         .iter()
@@ -1354,7 +1426,13 @@ mod tests {
     fn reviewed_profile_is_strict_and_complete() {
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("reviewed profile");
         assert_eq!(profile.stats_archive_aliases(), ["stats.ini"]);
-        assert_eq!(profile.mapping_counts(), (6, 50, 35, 0, 0));
+        assert_eq!(profile.mapping_counts(), (6, 59, 35, 0, 0));
+        for index in 0..=8 {
+            let field = profile
+                .indexed_field_for("$Citizens_Status", StatsContext::History, index)
+                .expect("reviewed citizen status mapping");
+            assert_eq!(field.value_index, Some(index));
+        }
     }
 
     #[test]
@@ -1414,6 +1492,7 @@ mod tests {
             host_slot: "core.citizens.electronics.radio".to_owned(),
             aliases: vec!["$Citizens_Radio_NewBuild".to_owned()],
             contexts: vec![StatsContext::History, StatsContext::Republic],
+            value_index: None,
         }]);
         local.content_hash = local.calculated_content_hash().expect("hash");
         local.validate().expect("valid replacement");
@@ -1444,11 +1523,13 @@ mod tests {
                 host_slot: "private.parser.memory".to_owned(),
                 aliases: vec!["$Private".to_owned()],
                 contexts: vec![StatsContext::Republic],
+                value_index: None,
             },
             StatsFieldMapping {
                 host_slot: "source.stats.citizens.car_owners".to_owned(),
                 aliases: vec!["$Citizens_Born".to_owned()],
                 contexts: vec![StatsContext::City],
+                value_index: None,
             },
         ] {
             let mut local = CompatibilityProfileDocument::starter_override(&base);

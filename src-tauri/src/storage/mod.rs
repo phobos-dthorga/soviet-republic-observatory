@@ -2,6 +2,7 @@ mod analysis_context;
 mod analysis_packs;
 mod archive;
 mod attention;
+mod broadcast;
 mod comparison;
 mod compatibility;
 mod connection;

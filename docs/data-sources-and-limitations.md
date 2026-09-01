@@ -155,9 +155,14 @@ The republic snapshot recognises the four receiver spellings above plus:
 - `$Citizens_CarOwners`.
 
 City snapshots currently recognise only the five birth, death, escape, and
-immigration fields. Repeated `$Citizens_Status` fields and other list-valued
-directives remain unsupported until their ordering and semantics are fixture-
-tested independently.
+immigration fields. In global history, compatibility profile 1.2.0 maps the
+repeated `$Citizens_Status` rows by their explicit source index. Indices 0–8
+represent happiness, food satisfaction, health, government loyalty, alcohol
+addiction, culture enjoyment, sports enjoyment, religion sympathy, and clothing
+quality. A record is stored only when all nine finite values are present and in
+the 0–1 range. A missing, duplicate, or invalid status value drops only that
+status record; receiver, population, and Markets evidence from the same save
+remain usable. Other list-valued directives remain unsupported.
 
 The zero-valued date fields found inside these blocks are not treated as the
 observation date. Snapshot scopes inherit the latest supported historical game

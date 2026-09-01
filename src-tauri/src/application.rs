@@ -852,6 +852,17 @@ impl ObservatoryApplication {
         self.run_market_indexing(true, &mut notify)
     }
 
+    pub fn broadcast_indexing_progress(&self) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.market_indexing_progress()
+    }
+
+    pub fn index_available_saves_for_broadcast(
+        &self,
+        mut notify: impl FnMut(MarketIndexingProgress),
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.run_market_indexing(true, &mut notify)
+    }
+
     fn run_market_indexing(
         &self,
         refresh_all: bool,
@@ -987,15 +998,26 @@ impl ObservatoryApplication {
                         profile.resolved_hash(),
                     )
                 })?;
-                if let Some((records, rows)) = cached_counts {
+                let cached_broadcast_records =
+                    self.run_background_storage_step(&mut progress, || {
+                        self.storage.cached_broadcast_variant_count(
+                            &candidate.raw_payload_hash,
+                            profile.resolved_hash(),
+                        )
+                    })?;
+                if let (Some((records, rows)), Some(status_records)) =
+                    (cached_counts, cached_broadcast_records)
+                {
                     match hash_save_stats_payload(&path, &profile) {
                         Ok(payload_hash) if payload_hash == candidate.raw_payload_hash => {
                             progress.records_processed = records;
                             progress.rows_processed = rows;
                             progress.duplicate_archives =
                                 progress.duplicate_archives.saturating_add(1);
-                            progress.cache_records_reused =
-                                progress.cache_records_reused.saturating_add(records);
+                            progress.cache_records_reused = progress
+                                .cache_records_reused
+                                .saturating_add(records)
+                                .saturating_add(status_records);
                             progress.cache_rows_avoided =
                                 progress.cache_rows_avoided.saturating_add(u64::from(rows));
                             self.run_background_storage_step(&mut progress, || {

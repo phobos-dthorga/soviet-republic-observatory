@@ -7,11 +7,11 @@ use sha2::{Digest, Sha256};
 use crate::compatibility_profile::{ResolvedCompatibilityProfile, StatsContext, StatsMarkerSlot};
 use crate::error::ObservatoryError;
 use crate::model::{
-    CoverageReport, CoverageStatus, CoverageWarning, MarketCurrency, MarketFactRows,
-    MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MarketScalarRow, MarketSnapshot,
-    MarketTradeChannel, MarketTradeDirection, MarketTradeRow, ParsedMarketData, ParsedStats,
-    ReceiverRecord, SNAPSHOT_FACTS, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet,
-    SourceLineSet,
+    CitizenStatusRecord, CoverageReport, CoverageStatus, CoverageWarning, MarketCurrency,
+    MarketFactRows, MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MarketScalarRow,
+    MarketSnapshot, MarketTradeChannel, MarketTradeDirection, MarketTradeRow,
+    ParsedCitizenStatusData, ParsedMarketData, ParsedStats, ReceiverRecord, SNAPSHOT_FACTS,
+    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
 };
 
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
@@ -36,6 +36,9 @@ struct RecordDraft {
     radio: Option<FieldValue<u64>>,
     television: Option<FieldValue<u64>>,
     computer: Option<FieldValue<u64>>,
+    citizen_status: [Option<FieldValue<f64>>; 9],
+    citizen_status_seen: bool,
+    citizen_status_malformed: bool,
     market: MarketFactRows,
     malformed: bool,
 }
@@ -110,6 +113,9 @@ impl RecordDraft {
             radio: None,
             television: None,
             computer: None,
+            citizen_status: std::array::from_fn(|_| None),
+            citizen_status_seen: false,
+            citizen_status_malformed: false,
             market: MarketFactRows::default(),
             malformed: false,
         }
@@ -137,6 +143,11 @@ pub fn parse_stats<R: BufRead>(
     let mut chartable_records = 0_u32;
     let mut market = MarketCollector::default();
     let mut active_market_block: Option<ActiveMarketBlock> = None;
+    let status_enabled = profile.has_indexed_fields(StatsContext::History);
+    let mut citizen_status_records = Vec::new();
+    let mut citizen_status_warnings = BTreeMap::<String, u32>::new();
+    let mut citizen_status_history_records = 0_u32;
+    let mut citizen_status_dropped_records = 0_u32;
 
     loop {
         line_buffer.clear();
@@ -217,6 +228,11 @@ pub fn parse_stats<R: BufRead>(
                 &mut history_records,
                 &mut dropped_records,
                 &mut chartable_records,
+                status_enabled,
+                &mut citizen_status_records,
+                &mut citizen_status_warnings,
+                &mut citizen_status_history_records,
+                &mut citizen_status_dropped_records,
             )?;
             let record_id: u32 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedReceiverHistory("invalid record identifier"),
@@ -245,6 +261,11 @@ pub fn parse_stats<R: BufRead>(
                 &mut history_records,
                 &mut dropped_records,
                 &mut chartable_records,
+                status_enabled,
+                &mut citizen_status_records,
+                &mut citizen_status_warnings,
+                &mut citizen_status_history_records,
+                &mut citizen_status_dropped_records,
             )?;
             finalise_snapshot(
                 profile,
@@ -265,6 +286,11 @@ pub fn parse_stats<R: BufRead>(
                 &mut history_records,
                 &mut dropped_records,
                 &mut chartable_records,
+                status_enabled,
+                &mut citizen_status_records,
+                &mut citizen_status_warnings,
+                &mut citizen_status_history_records,
+                &mut citizen_status_dropped_records,
             )?;
             finalise_snapshot(
                 profile,
@@ -347,6 +373,55 @@ pub fn parse_stats<R: BufRead>(
             )?,
             _ => {
                 let Some(directive) = directive else { continue };
+                if profile.has_indexed_field_alias(directive, StatsContext::History) {
+                    record.citizen_status_seen = true;
+                    match parse_indexed_value::<u8, f64>(line) {
+                        Some((index, value))
+                            if value.is_finite()
+                                && (0.0..=1.0).contains(&value)
+                                && profile
+                                    .indexed_field_for(directive, StatsContext::History, index)
+                                    .is_some() =>
+                        {
+                            let slot = &mut record.citizen_status[index as usize];
+                            if slot.is_some() {
+                                record.citizen_status_malformed = true;
+                                add_warning(
+                                    &mut citizen_status_warnings,
+                                    "duplicate_citizen_status_index",
+                                );
+                            } else {
+                                *slot = Some(FieldValue {
+                                    value,
+                                    line: line_number,
+                                    source_field: directive.to_owned(),
+                                });
+                            }
+                        }
+                        Some((index, value)) if index > 8 || !value.is_finite() => {
+                            record.citizen_status_malformed = true;
+                            add_warning(
+                                &mut citizen_status_warnings,
+                                "invalid_citizen_status_value",
+                            );
+                        }
+                        Some((_index, _value)) => {
+                            record.citizen_status_malformed = true;
+                            add_warning(
+                                &mut citizen_status_warnings,
+                                "out_of_range_citizen_status_value",
+                            );
+                        }
+                        None => {
+                            record.citizen_status_malformed = true;
+                            add_warning(
+                                &mut citizen_status_warnings,
+                                "malformed_citizen_status_row",
+                            );
+                        }
+                    }
+                    continue;
+                }
                 let Some(field) = profile.field_for(directive, StatsContext::History) else {
                     continue;
                 };
@@ -393,6 +468,11 @@ pub fn parse_stats<R: BufRead>(
         &mut history_records,
         &mut dropped_records,
         &mut chartable_records,
+        status_enabled,
+        &mut citizen_status_records,
+        &mut citizen_status_warnings,
+        &mut citizen_status_history_records,
+        &mut citizen_status_dropped_records,
     )?;
     if active_market_block.is_some() {
         add_warning(&mut market.warnings, "unterminated_market_block");
@@ -443,6 +523,15 @@ pub fn parse_stats<R: BufRead>(
             row_count: market.row_count,
             warnings: market
                 .warnings
+                .into_iter()
+                .map(|(code, count)| CoverageWarning { code, count })
+                .collect(),
+        },
+        citizen_status: ParsedCitizenStatusData {
+            records: citizen_status_records,
+            history_records: citizen_status_history_records,
+            dropped_records: citizen_status_dropped_records,
+            warnings: citizen_status_warnings
                 .into_iter()
                 .map(|(code, count)| CoverageWarning { code, count })
                 .collect(),
@@ -754,11 +843,26 @@ fn finalise_record(
     history_records: &mut u32,
     dropped_records: &mut u32,
     chartable_records: &mut u32,
+    status_enabled: bool,
+    citizen_status_records: &mut Vec<CitizenStatusRecord>,
+    citizen_status_warnings: &mut BTreeMap<String, u32>,
+    citizen_status_history_records: &mut u32,
+    citizen_status_dropped_records: &mut u32,
 ) -> Result<(), ObservatoryError> {
     let Some(draft) = draft else {
         return Ok(());
     };
     *history_records += 1;
+
+    if status_enabled {
+        *citizen_status_history_records += 1;
+        finalise_citizen_status_record(
+            &draft,
+            citizen_status_records,
+            citizen_status_warnings,
+            citizen_status_dropped_records,
+        );
+    }
 
     if (!draft.market.prices.is_empty()
         || !draft.market.trades.is_empty()
@@ -836,6 +940,60 @@ fn finalise_record(
     Ok(())
 }
 
+fn finalise_citizen_status_record(
+    draft: &RecordDraft,
+    records: &mut Vec<CitizenStatusRecord>,
+    warnings: &mut BTreeMap<String, u32>,
+    dropped_records: &mut u32,
+) {
+    let Some(year) = draft.year.as_ref() else {
+        *dropped_records += 1;
+        add_warning(warnings, "citizen_status_date_unavailable");
+        return;
+    };
+    let Some(day) = draft.day.as_ref() else {
+        *dropped_records += 1;
+        add_warning(warnings, "citizen_status_date_unavailable");
+        return;
+    };
+    if !draft.citizen_status_seen
+        || draft.citizen_status_malformed
+        || draft.citizen_status.iter().any(Option::is_none)
+    {
+        *dropped_records += 1;
+        add_warning(warnings, "incomplete_citizen_status_record");
+        return;
+    }
+    let values = std::array::from_fn(|index| {
+        draft.citizen_status[index]
+            .as_ref()
+            .expect("completeness checked")
+            .value
+    });
+    let source_lines = std::array::from_fn(|index| {
+        draft.citizen_status[index]
+            .as_ref()
+            .expect("completeness checked")
+            .line
+    });
+    let source_fields = std::array::from_fn(|index| {
+        draft.citizen_status[index]
+            .as_ref()
+            .expect("completeness checked")
+            .source_field
+            .clone()
+    });
+    records.push(CitizenStatusRecord {
+        record_id: draft.record_id,
+        year: year.value,
+        day: day.value,
+        game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
+        values,
+        source_lines,
+        source_fields,
+    });
+}
+
 fn assign_field<T: Copy>(
     target: &mut Option<FieldValue<T>>,
     value: Option<T>,
@@ -874,6 +1032,14 @@ fn parse_single_value<T: std::str::FromStr>(line: &str) -> Option<T> {
     parts.next().is_none().then_some(value)
 }
 
+fn parse_indexed_value<I: std::str::FromStr, T: std::str::FromStr>(line: &str) -> Option<(I, T)> {
+    let mut parts = line.split_ascii_whitespace();
+    parts.next()?;
+    let index = parts.next()?.parse().ok()?;
+    let value = parts.next()?.parse().ok()?;
+    parts.next().is_none().then_some((index, value))
+}
+
 fn add_warning(warnings: &mut BTreeMap<String, u32>, code: &str) {
     *warnings.entry(code.to_owned()).or_default() += 1;
 }
@@ -906,6 +1072,74 @@ mod tests {
         assert_eq!(parsed.snapshots[0].scope_kind, SnapshotScopeKind::Republic);
         assert_eq!(parsed.snapshots[0].facts.len(), 4);
         assert_eq!(parsed.snapshots[0].coverage, CoverageStatus::Partial);
+    }
+
+    #[test]
+    fn parses_complete_indexed_citizen_status_history() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let parsed = parse_stats(
+            Cursor::new(include_bytes!("../fixtures/citizen-status.stats.txt")),
+            &profile,
+        )
+        .expect("valid citizen status fixture");
+
+        assert_eq!(parsed.citizen_status.records.len(), 2);
+        assert_eq!(parsed.citizen_status.history_records, 2);
+        assert_eq!(parsed.citizen_status.dropped_records, 0);
+        assert!(parsed.citizen_status.warnings.is_empty());
+        assert_eq!(parsed.citizen_status.records[0].values[0], 0.81);
+        assert_eq!(parsed.citizen_status.records[1].values[8], 0.74);
+        assert_eq!(parsed.citizen_status.records[0].source_lines.len(), 9);
+    }
+
+    #[test]
+    fn isolates_incomplete_and_invalid_status_rows_from_receivers() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let source = include_str!("../fixtures/citizen-status.stats.txt")
+            .replace("$Citizens_Status 8 0.74", "$Citizens_Status 8 1.25")
+            .replace("$Citizens_Status 7 0.43\n", "");
+        let parsed = parse_stats(Cursor::new(source.as_bytes()), &profile)
+            .expect("receiver evidence remains usable");
+
+        assert_eq!(parsed.records.len(), 2);
+        assert_eq!(parsed.records[1].classified_total, 100);
+        assert_eq!(parsed.citizen_status.records.len(), 1);
+        assert_eq!(parsed.citizen_status.dropped_records, 1);
+        assert!(
+            parsed
+                .citizen_status
+                .warnings
+                .iter()
+                .any(|warning| { warning.code == "out_of_range_citizen_status_value" })
+        );
+        assert!(
+            parsed
+                .citizen_status
+                .warnings
+                .iter()
+                .any(|warning| { warning.code == "incomplete_citizen_status_record" })
+        );
+    }
+
+    #[test]
+    fn isolates_duplicate_status_indices_from_receivers() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let source = include_str!("../fixtures/citizen-status.stats.txt").replace(
+            "$Citizens_Status 8 0.74",
+            "$Citizens_Status 8 0.74\n$Citizens_Status 8 0.75",
+        );
+        let parsed = parse_stats(Cursor::new(source.as_bytes()), &profile)
+            .expect("receiver evidence remains usable");
+
+        assert_eq!(parsed.records.len(), 2);
+        assert_eq!(parsed.citizen_status.records.len(), 1);
+        assert!(
+            parsed
+                .citizen_status
+                .warnings
+                .iter()
+                .any(|warning| { warning.code == "duplicate_citizen_status_index" })
+        );
     }
 
     #[test]

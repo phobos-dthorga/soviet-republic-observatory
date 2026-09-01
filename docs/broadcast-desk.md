@@ -62,7 +62,11 @@ The reviewed citizen-status ordering is:
 |     8 | Clothing quality   |
 
 Index order is compatibility evidence, not a public identifier. Stable metric
-names and fixture-tested version mappings must sit between it and analytics.
+names and fixture-tested version mappings sit between it and analytics. The
+reviewed profile now validates exactly one finite 0–1 value for each index in a
+history record. Incomplete status records are excluded without invalidating
+receiver or Markets evidence from that save. Records are stored append-only and
+reused across matching save-history prefixes and interpretation variants.
 
 ## Game-definition facts
 

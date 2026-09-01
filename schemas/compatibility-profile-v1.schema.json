@@ -181,6 +181,7 @@
       "properties": {
         "host_slot": { "$ref": "#/$defs/hostSlot" },
         "aliases": { "$ref": "#/$defs/aliases" },
+        "value_index": { "type": "integer", "minimum": 0, "maximum": 8 },
         "contexts": {
           "type": "array",
           "minItems": 1,
@@ -419,6 +420,15 @@
         "core.citizens.electronics.radio",
         "core.citizens.electronics.television",
         "core.citizens.electronics.computer",
+        "core.citizens.status.happiness",
+        "core.citizens.status.food_satisfaction",
+        "core.citizens.status.health",
+        "core.citizens.status.government_loyalty",
+        "core.citizens.status.alcohol_addiction",
+        "core.citizens.status.culture_enjoyment",
+        "core.citizens.status.sports_enjoyment",
+        "core.citizens.status.religion_sympathy",
+        "core.citizens.status.clothing_quality",
         "source.stats.citizens.born",
         "source.stats.citizens.dead",
         "source.stats.citizens.escaped",

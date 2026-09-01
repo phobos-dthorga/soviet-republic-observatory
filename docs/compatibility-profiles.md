@@ -18,6 +18,8 @@ Profiles may declare only:
 
 - exact save-archive entry aliases;
 - stats format, record, state, city, and date marker aliases;
+- bounded source indices for reviewed repeated history fields such as
+  `$Citizens_Status`;
 - source-field aliases assigned to allowlisted stable host fact slots;
 - definition directives assigned to allowlisted host parsing operations; and
 - fixed bounded binary layouts with an exact entry name, byte order, base,

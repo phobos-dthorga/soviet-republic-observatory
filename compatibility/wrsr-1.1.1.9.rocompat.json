@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "org.republic-observatory.wrsr-1.1.1.9",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "parser_engine_api_version": "1.0.0",
   "author": "Republic Observatory contributors",
   "description": "Reviewed compatibility mappings preserving the parser behaviour verified for Workers & Resources: Soviet Republic 1.1.1.9.",
@@ -10,7 +10,7 @@
     "build_ids": [],
     "stats_formats": [1]
   },
-  "content_hash": "44bcec2f9abba9d2559fd9c283220238f65000e1ef14f010ebebf3dff45053e8",
+  "content_hash": "df95d3c543b7bd932180894ebf192aa934bc5e78dd4246b44b2d836671eda5b4",
   "mappings": {
     "catalogue_scopes": [],
     "archive_entries": [{ "slot": "stats", "aliases": ["stats.ini"] }],
@@ -46,6 +46,60 @@
         "host_slot": "core.citizens.electronics.computer",
         "aliases": ["$Citizens_EletronicComputer"],
         "contexts": ["history", "republic"]
+      },
+      {
+        "host_slot": "core.citizens.status.happiness",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 0
+      },
+      {
+        "host_slot": "core.citizens.status.food_satisfaction",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 1
+      },
+      {
+        "host_slot": "core.citizens.status.health",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 2
+      },
+      {
+        "host_slot": "core.citizens.status.government_loyalty",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 3
+      },
+      {
+        "host_slot": "core.citizens.status.alcohol_addiction",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 4
+      },
+      {
+        "host_slot": "core.citizens.status.culture_enjoyment",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 5
+      },
+      {
+        "host_slot": "core.citizens.status.sports_enjoyment",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 6
+      },
+      {
+        "host_slot": "core.citizens.status.religion_sympathy",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 7
+      },
+      {
+        "host_slot": "core.citizens.status.clothing_quality",
+        "aliases": ["$Citizens_Status"],
+        "contexts": ["history"],
+        "value_index": 8
       },
       {
         "host_slot": "source.stats.citizens.born",

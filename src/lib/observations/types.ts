@@ -1139,6 +1139,8 @@ export type MarketIndexingProgress = {
   error_code: string | null;
 };
 
+export type BroadcastIndexingProgress = MarketIndexingProgress;
+
 export type MarketMetricContext = {
   metric_id: string;
   formula: string;

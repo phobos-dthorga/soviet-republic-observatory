@@ -38,6 +38,7 @@ import type {
   RepublicPlanDraft,
   RepublicPlanWorkspace,
   MarketBasketDraft,
+  BroadcastIndexingProgress,
   MarketIndexingProgress,
   MarketPriceSeries,
   MarketScenarioDraft,
@@ -120,6 +121,29 @@ export function listenForMarketIndexingProgress(
 ): Promise<UnlistenFn> {
   return listen<MarketIndexingProgress>("market-indexing-progress", (event) =>
     accept(event.payload),
+  );
+}
+
+export function getBroadcastIndexingProgress(): Promise<BroadcastIndexingProgress> {
+  return invoke<BroadcastIndexingProgress>("get_broadcast_indexing_progress");
+}
+
+export function indexAvailableSavesForBroadcast(): Promise<BroadcastIndexingProgress> {
+  return invoke<BroadcastIndexingProgress>(
+    "index_available_saves_for_broadcast",
+  );
+}
+
+export function resumeBroadcastIndexing(): Promise<BroadcastIndexingProgress> {
+  return invoke<BroadcastIndexingProgress>("resume_broadcast_indexing");
+}
+
+export function listenForBroadcastIndexingProgress(
+  accept: (progress: BroadcastIndexingProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<BroadcastIndexingProgress>(
+    "broadcast-indexing-progress",
+    (event) => accept(event.payload),
   );
 }
 

@@ -99,6 +99,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "reviewed research source origin",
         include_str!("../../migrations/0019_research_source_origin.sql"),
     ),
+    (
+        20,
+        "content-addressed citizen status history",
+        include_str!("../../migrations/0020_broadcast_status_history.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

@@ -5,11 +5,11 @@ use super::ObservatoryStorage;
 use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
     AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
-    BackgroundWorkPriority, CoverageReport, CoverageStatus, MarketCurrency, MarketFactRows,
-    MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference, ParsedMarketData,
-    ReceiverRecord, RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS,
-    SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
-    StoragePatiencePreset, WordingMode,
+    BackgroundWorkPriority, CitizenStatusRecord, CoverageReport, CoverageStatus, MarketCurrency,
+    MarketFactRows, MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference,
+    ParsedCitizenStatusData, ParsedMarketData, ReceiverRecord, RecorderCandidateStatus,
+    RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
+    SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset, WordingMode,
 };
 
 #[test]
@@ -496,6 +496,63 @@ fn market_record_cache_reuses_shared_prefix_rows_across_interpretations() {
         })
         .expect("price count");
     assert_eq!(price_rows, 1);
+}
+
+#[test]
+fn citizen_status_records_are_content_addressed_across_interpretations() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("broadcast-cache.sqlite3"))
+        .expect("storage");
+    let mut reviewed = inspection("broadcast-raw-save", "broadcast.zip", &[1, 2, 3]);
+    reviewed.citizen_status = ParsedCitizenStatusData {
+        records: vec![CitizenStatusRecord {
+            record_id: 7,
+            year: 2017,
+            day: 93,
+            game_day: 93,
+            values: [0.81, 0.76, 0.85, 0.62, 0.11, 0.57, 0.49, 0.31, 0.88],
+            source_lines: std::array::from_fn(|index| 20 + index as u64),
+            source_fields: std::array::from_fn(|_| "$Citizens_Status".to_owned()),
+        }],
+        history_records: 1,
+        dropped_records: 0,
+        warnings: Vec::new(),
+    };
+    storage
+        .save_inspection(&reviewed)
+        .expect("reviewed broadcast evidence");
+
+    let mut alternate = reviewed.clone();
+    alternate.interpretation_id = "broadcast-alternate-interpretation".to_owned();
+    alternate.compatibility.profile_id = "local.broadcast.profile".to_owned();
+    alternate.compatibility.profile_content_hash = "f".repeat(64);
+    alternate.compatibility.resolved_profile_hash = "1".repeat(64);
+    alternate.compatibility.profile_source = "local_override".to_owned();
+    storage
+        .save_reinterpretation(&alternate)
+        .expect("alternate broadcast interpretation");
+
+    let connection = storage.connect().expect("connection");
+    let records = connection
+        .query_row("SELECT COUNT(*) FROM citizen_status_records", [], |row| {
+            row.get::<_, u32>(0)
+        })
+        .expect("record count");
+    let facts = connection
+        .query_row("SELECT COUNT(*) FROM citizen_status_facts", [], |row| {
+            row.get::<_, u32>(0)
+        })
+        .expect("fact count");
+    let memberships = connection
+        .query_row(
+            "SELECT COUNT(*) FROM broadcast_status_observation_records",
+            [],
+            |row| row.get::<_, u32>(0),
+        )
+        .expect("membership count");
+    assert_eq!(records, 1);
+    assert_eq!(facts, 9);
+    assert_eq!(memberships, 2);
 }
 
 #[test]
@@ -1353,6 +1410,7 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         },
         records,
         snapshots: Vec::new(),
+        citizen_status: crate::model::ParsedCitizenStatusData::default(),
         market: crate::model::ParsedMarketData::default(),
         binary_facts: Vec::new(),
     }

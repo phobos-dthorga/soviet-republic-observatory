@@ -1,6 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::archive::{persist_history_signature, persist_resolution, resolve_branch};
+use super::broadcast::persist_citizen_status_data;
 use super::history::{load_history, persist_compacted_history, persist_latest_metric_evidence};
 use super::markets::MarketPersistenceStats;
 use super::snapshots::persist_snapshots;
@@ -113,6 +114,7 @@ impl ObservatoryStorage {
                 &inspection.snapshots,
                 &inspection.records,
             )?;
+            persist_citizen_status_data(&transaction, &storage_key, inspection)?;
             market = super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
             for fact in &inspection.binary_facts {
                 transaction.execute(
@@ -189,6 +191,18 @@ impl ObservatoryStorage {
                     &inspection.interpretation_id,
                     now_ms(),
                 )?;
+            }
+            let citizen_status_exists = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM broadcast_status_observation_coverage \
+                 WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
+                params![
+                    &storage_key,
+                    super::broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION,
+                ],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !citizen_status_exists {
+                persist_citizen_status_data(&transaction, &storage_key, inspection)?;
             }
         }
 
