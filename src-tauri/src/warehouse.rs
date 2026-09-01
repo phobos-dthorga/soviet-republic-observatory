@@ -3099,6 +3099,7 @@ fn next_occurrence(facts: &BTreeMap<(String, u32), DefinitionFact>, field_id: &s
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
     use std::time::{Duration, Instant};
 
     use super::*;
@@ -3108,6 +3109,11 @@ mod tests {
     use crate::model::{CoverageReport, CoverageStatus, ReceiverHistoryPoint};
     use crate::planning_overlay::{OverlayOperation, OverlayOperationKind, OverlaySupplement};
     use tempfile::tempdir;
+
+    // These two regression checks deliberately exercise sizeable DuckDB writes.
+    // Running them together measures test-runner contention instead of either
+    // operation, so keep their reference timings independent and repeatable.
+    static BULK_PROJECTION_TIMING_LOCK: Mutex<()> = Mutex::new(());
 
     fn observation_dataset(point_count: u32) -> ReceiverDataset {
         ReceiverDataset {
@@ -3431,6 +3437,9 @@ mod tests {
 
     #[test]
     fn realistic_observation_projection_completes_as_one_bounded_batch() {
+        let _timing_guard = BULK_PROJECTION_TIMING_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let directory = tempdir().expect("temporary directory");
         let warehouse =
             AnalyticalWarehouse::initialise(directory.path().join("observations.duckdb"))
@@ -4065,6 +4074,9 @@ mod tests {
 
     #[test]
     fn maximum_overlay_projection_uses_one_bounded_bulk_merge() {
+        let _timing_guard = BULK_PROJECTION_TIMING_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let directory = tempdir().expect("temporary directory");
         let warehouse = AnalyticalWarehouse::initialise(directory.path().join("overlay.duckdb"))
             .expect("warehouse");

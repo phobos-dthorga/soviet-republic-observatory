@@ -151,6 +151,20 @@ Inline validation remains beside the affected field or operation. Critical
 task progress remains in the shared task-progress system. Notifications report
 an outcome; they do not replace durable diagnostics, evidence, or progress.
 
+Failure messages use the same player-first order everywhere:
+
+1. what happened;
+2. what remained safe;
+3. what the player can do next; and
+4. expandable technical details when a code or operation name helps with
+   troubleshooting.
+
+Raw `snake_case` codes never lead an ordinary notification, task panel, dialog,
+or inspector. The shared `TechnicalDetails` component keeps those values
+keyboard-accessible without making them look like controls. Diagnostics uses a
+plain summary for each entry and places its exact code, operation, and original
+message inside the same disclosure.
+
 Analysis Pack actions and language-pack installation/selection are the first
 consumers. New workspaces should reuse this service when an outcome must remain
 visible after attention moves away from the initiating control.

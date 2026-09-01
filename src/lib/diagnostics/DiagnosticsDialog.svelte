@@ -2,6 +2,7 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatDate } from "../i18n/format";
   import type { DiagnosticLogView } from "../observations/types";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import { modalFocus } from "../ui/modalFocus";
 
   let {
@@ -23,6 +24,12 @@
   } = $props();
 
   const newestEntries = $derived([...(log?.entries ?? [])].reverse());
+
+  function entrySummaryKey(level: string) {
+    if (level === "error") return "diagnostics-entry-error";
+    if (level === "warning") return "diagnostics-entry-warning";
+    return "diagnostics-entry-information";
+  }
 </script>
 
 {#if open}
@@ -74,7 +81,7 @@
           {#each newestEntries as entry}
             <article data-level={entry.level}>
               <div>
-                <strong>{entry.code}</strong>
+                <strong>{$translation(entrySummaryKey(entry.level))}</strong>
                 <time datetime={new Date(entry.occurred_at_ms).toISOString()}>
                   {formatDate(entry.occurred_at_ms, $activeLocale, {
                     dateStyle: "short",
@@ -82,8 +89,11 @@
                   })}
                 </time>
               </div>
-              <p>{entry.message}</p>
-              <small>{entry.level} · {entry.operation}</small>
+              <TechnicalDetails
+                code={entry.code}
+                operation={entry.operation}
+                detail={entry.message}
+              />
             </article>
           {/each}
         {/if}
@@ -206,21 +216,15 @@
     border-inline-start-color: var(--colour-gold);
   }
   article strong,
-  article time,
-  article small {
+  article time {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: var(--type-caption);
   }
   article strong {
     color: var(--colour-observed);
   }
-  article time,
-  article small {
+  article time {
     color: var(--colour-muted);
-  }
-  article p {
-    margin: 7px 0;
-    font-size: var(--type-caption);
   }
   .diagnostics-error {
     padding: 9px;

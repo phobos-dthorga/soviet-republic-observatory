@@ -75,9 +75,11 @@ export function researchBuildProgressView(
       progress.state === "failed"
         ? {
             tone: "error",
-            text: translate("research-setup-progress-error", {
+            text: translate("research-setup-progress-error-summary"),
+            technicalDetails: {
               code: progress.error_code ?? "unknown",
-            }),
+              operation: "research_probe_build",
+            },
           }
         : null,
   };

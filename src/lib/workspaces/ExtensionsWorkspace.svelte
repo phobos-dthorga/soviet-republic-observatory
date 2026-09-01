@@ -11,7 +11,11 @@
   } from "../extensions/runtime";
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
-  import { notify, type NotificationTone } from "../notifications/service";
+  import {
+    notify,
+    type NotificationTone,
+    type TechnicalDetailsView,
+  } from "../notifications/service";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import FilePicker from "../ui/FilePicker.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
@@ -115,11 +119,16 @@
     }
   }
 
-  function reportAction(message: string, tone: NotificationTone): void {
+  function reportAction(
+    message: string,
+    tone: NotificationTone,
+    technicalDetails?: TechnicalDetailsView,
+  ): void {
     notify({
       title: $translation("extensions-local-manager"),
       message,
       tone,
+      technicalDetails,
     });
   }
 
@@ -130,10 +139,14 @@
       reportAction(
         inspection.valid
           ? $translation("extensions-inspection-valid")
-          : $translation("extensions-inspection-invalid", {
-              code: inspection.code ?? "invalid_analysis_pack",
-            }),
+          : $translation("extensions-inspection-invalid-summary"),
         inspection.valid ? "success" : "warning",
+        inspection.valid
+          ? undefined
+          : {
+              code: inspection.code ?? "invalid_analysis_pack",
+              operation: "analysis_pack_inspection",
+            },
       );
     });
   }

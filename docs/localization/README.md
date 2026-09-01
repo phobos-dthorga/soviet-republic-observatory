@@ -5,7 +5,7 @@ WyrmGrid, with several debt-reduction changes made before save parsing begins.
 English (Australia), `en-AU`, is the canonical source catalogue. Every current
 workspace, chart label, textual chart summary, provenance sentence, dialog, and
 locale-sensitive number passes through the same host-owned boundary.
-The current source contract is compatibility version 1, additive revision 32.
+The current source contract is compatibility version 1, additive revision 46.
 
 ## What is implemented
 
@@ -20,6 +20,19 @@ The current source contract is compatibility version 1, additive revision 32.
 - focus-managed keyboard access to the language dialog;
 - expanded and RTL pseudo-language generators used by tests; and
 - a localisation audit in `npm run check`.
+
+Built-in English has two presentation styles. **Player-friendly** is the
+default and canonical `en-AU` catalogue. **Technical** is a validated partial
+overlay containing only messages that benefit from formal terminology. The
+wording preference changes presentation only. A community language pack uses
+its own ordinary wording in both modes; Observatory never fills it with English
+technical phrases.
+
+The player-language audit also runs in `npm run check`. It rejects discouraged
+specialist phrases, implementation names, raw error codes in ordinary copy,
+overlong sentences, technical-overlay variable drift, and workspace wording
+above the documented readability target. Exact exceptions require one message
+key, a reason, and an expiry.
 
 Desktop builds store installed community catalogues and the selected ID in the
 app-local `republic-observatory.sqlite3` database. Rust is the authoritative
@@ -153,4 +166,6 @@ Constructed keys such as ``translate(`status-${state}`)`` are forbidden. They
 hide catalogue coverage from static checking and make later changes brittle.
 
 See [ADR-0006](../architecture/decisions/0006-versioned-community-localisation.md)
-for the decision record.
+for the language-pack decision and
+[ADR-0027](../architecture/decisions/0027-player-first-language.md) for the
+wording contract.

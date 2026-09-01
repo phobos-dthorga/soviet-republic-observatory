@@ -366,7 +366,7 @@
       return $translation("markets-action-warehouse-unavailable");
     if (code === "storage_unavailable")
       return $translation("markets-action-storage-unavailable");
-    return $translation("markets-action-failed", { code });
+    return $translation("markets-action-failed-summary");
   }
 
   function indexingRecovery(error: unknown): RecoveryProposal | undefined {
@@ -438,6 +438,10 @@
         message: actionFailureMessage(error),
         tone: "error",
         recovery: indexingRecovery(error),
+        technicalDetails: {
+          code: errorCode(error),
+          operation: "market_indexing",
+        },
       });
     } finally {
       busy = false;
@@ -485,6 +489,10 @@
         title: $translation("markets-baskets-title"),
         message: actionFailureMessage(error),
         tone: "error",
+        technicalDetails: {
+          code: errorCode(error),
+          operation: "market_basket_save",
+        },
       });
     } finally {
       busy = false;
@@ -529,6 +537,10 @@
         title: $translation("markets-scenarios-title"),
         message: actionFailureMessage(error),
         tone: "error",
+        technicalDetails: {
+          code: errorCode(error),
+          operation: "market_scenario_save",
+        },
       });
     } finally {
       busy = false;
@@ -563,6 +575,10 @@
         title: $translation("nav-markets"),
         message: actionFailureMessage(error),
         tone: "error",
+        technicalDetails: {
+          code: errorCode(error),
+          operation: `market_${kind}_${action}`,
+        },
       });
     } finally {
       busy = false;

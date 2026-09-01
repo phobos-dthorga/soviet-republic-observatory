@@ -69,6 +69,25 @@ describe("application notifications", () => {
     expect(get(notifications)[0]?.message).toBe("Compile stopped");
   });
 
+  it("keeps exact troubleshooting details separate from the plain message", () => {
+    notify({
+      message: "The market action stopped safely.",
+      tone: "error",
+      technicalDetails: {
+        code: "storage_busy",
+        operation: "market_indexing",
+      },
+    });
+
+    expect(get(notifications)[0]).toMatchObject({
+      message: "The market action stopped safely.",
+      technicalDetails: {
+        code: "storage_busy",
+        operation: "market_indexing",
+      },
+    });
+  });
+
   it("keeps a bounded recovery proposal behind an explicit review action", () => {
     const run = vi.fn();
     notify({

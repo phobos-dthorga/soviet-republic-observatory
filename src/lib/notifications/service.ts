@@ -2,16 +2,18 @@ import { writable } from "svelte/store";
 
 export type NotificationTone = "info" | "success" | "warning" | "error";
 
+export type TechnicalDetailsView = {
+  code?: string;
+  operation?: string;
+  detail?: string;
+};
+
 export type RecoveryProposal = {
   title: string;
   message: string;
   consequence?: string;
   actionLabel: string;
-  technicalDetails?: {
-    code?: string;
-    operation?: string;
-    detail?: string;
-  };
+  technicalDetails?: TechnicalDetailsView;
   run: () => void | Promise<void>;
 };
 
@@ -24,6 +26,7 @@ export type AppNotification = {
   timeoutMs: number;
   dedupeKey?: string;
   recovery?: RecoveryProposal;
+  technicalDetails?: TechnicalDetailsView;
 };
 
 export type NotificationRequest = {
@@ -33,6 +36,7 @@ export type NotificationRequest = {
   timeoutMs?: number;
   dedupeKey?: string;
   recovery?: RecoveryProposal;
+  technicalDetails?: TechnicalDetailsView;
 };
 
 const MAX_VISIBLE_NOTIFICATIONS = 5;
@@ -74,6 +78,7 @@ export function notify(request: NotificationRequest): string {
       timeoutMs: request.timeoutMs ?? DEFAULT_TIMEOUTS[tone],
       dedupeKey: request.dedupeKey,
       recovery: request.recovery,
+      technicalDetails: request.technicalDetails,
     };
     const withoutDuplicate = existing
       ? current.filter((item) => item.id !== existing.id)

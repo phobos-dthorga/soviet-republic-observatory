@@ -7,6 +7,7 @@
   import { notify } from "../notifications/service";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { observeLatestTaskProgress } from "../tasks/progress";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import { modalFocus } from "../ui/modalFocus";
   import {
     buildResearchProbe,
@@ -37,6 +38,7 @@
   let progress = $state<ResearchBuildProgress | null>(null);
   let busy = $state(false);
   let errorMessage = $state("");
+  let errorCode = $state("");
   let stopProgress: (() => void) | null = null;
   let researchContent = $state<HTMLDivElement>();
   let researchResults = $state<HTMLDivElement>();
@@ -64,6 +66,7 @@
 
   async function initialise(): Promise<void> {
     errorMessage = "";
+    errorCode = "";
     stopProgress?.();
     stopProgress = await observeLatestTaskProgress(
       {
@@ -85,12 +88,11 @@
 
   function describeError(error: unknown): string {
     if (typeof error === "object" && error && "code" in error) {
-      return $translation("research-setup-error", {
-        code: String((error as { code: unknown }).code),
-      });
+      errorCode = String((error as { code: unknown }).code);
+    } else {
+      errorCode = "unknown";
     }
-    if (error instanceof Error && error.message) return error.message;
-    return $translation("research-setup-error", { code: "unknown" });
+    return $translation("research-setup-error-summary");
   }
 
   function describeBuildFailure(value: ResearchBuildProgress): {
@@ -144,6 +146,7 @@
   async function acceptNotice(accepted: boolean): Promise<void> {
     busy = true;
     errorMessage = "";
+    errorCode = "";
     try {
       status = await setResearchNoticeAccepted(accepted);
     } catch (error) {
@@ -160,6 +163,7 @@
     if (!selected) return;
     busy = true;
     errorMessage = "";
+    errorCode = "";
     try {
       status = await configureResearchCheckout(selected);
       notify({
@@ -175,6 +179,10 @@
         message: errorMessage,
         tone: "error",
         dedupeKey: "research.checkout.result",
+        technicalDetails: {
+          code: errorCode,
+          operation: "research_checkout",
+        },
       });
     } finally {
       busy = false;
@@ -184,6 +192,7 @@
   async function build(): Promise<void> {
     busy = true;
     errorMessage = "";
+    errorCode = "";
     try {
       status = await buildResearchProbe();
       progress = status.progress;
@@ -200,11 +209,16 @@
         progress?.state === "failed"
           ? describeBuildFailure(progress).detail
           : describeError(error);
+      errorCode = (progress?.error_code ?? errorCode) || "unknown";
       notify({
         title: $translation("research-setup-title"),
         message: errorMessage,
         tone: "error",
         dedupeKey: "research.build.failure",
+        technicalDetails: {
+          code: errorCode,
+          operation: "research_probe_build",
+        },
       });
     } finally {
       busy = false;
@@ -302,7 +316,10 @@
       </p>
 
       {#if errorMessage && !buildFailure}
-        <p class="research-error" role="alert">{errorMessage}</p>
+        <div class="research-error" role="alert">
+          <p>{errorMessage}</p>
+          <TechnicalDetails code={errorCode} operation="research_setup" />
+        </div>
       {/if}
 
       <div class="research-content" bind:this={researchContent}>
@@ -466,17 +483,14 @@
                   <dt>{$translation("research-setup-failure-stage")}</dt>
                   <dd>{failureStageLabel(progress?.failed_stage)}</dd>
                 </div>
-                <div>
-                  <dt>{$translation("research-setup-failure-code")}</dt>
-                  <dd><code>{progress?.error_code ?? "unknown"}</code></dd>
-                </div>
-                {#if progress?.compiler_exit_code != null}
-                  <div>
-                    <dt>{$translation("research-setup-failure-exit-code")}</dt>
-                    <dd>{progress?.compiler_exit_code}</dd>
-                  </div>
-                {/if}
               </dl>
+              <TechnicalDetails
+                code={progress?.error_code ?? "unknown"}
+                operation="research_probe_build"
+                detail={progress?.compiler_exit_code == null
+                  ? undefined
+                  : `${$translation("research-setup-failure-exit-code")}: ${progress.compiler_exit_code}`}
+              />
               <button type="button" onclick={openDiagnostics}>
                 {$translation("research-setup-open-diagnostics")}
               </button>

@@ -29,6 +29,11 @@ export type TaskProgressMeter = {
 export type TaskProgressNotice = {
   tone: "warning" | "error";
   text: string;
+  technicalDetails?: {
+    code?: string;
+    operation?: string;
+    detail?: string;
+  };
 };
 
 export type TaskProgressView = {

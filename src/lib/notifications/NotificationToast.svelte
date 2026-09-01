@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import {
     dismissNotification,
     openRecoveryProposal,
@@ -51,6 +52,9 @@
         $translation(toneLabels[notification.tone])}</strong
     >
     <p>{notification.message}</p>
+    {#if notification.technicalDetails}
+      <TechnicalDetails {...notification.technicalDetails} />
+    {/if}
     {#if notification.recovery}
       <button
         class="notification-recovery"

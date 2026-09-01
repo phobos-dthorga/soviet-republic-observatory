@@ -9,6 +9,12 @@ national signal to its material or regional evidence in one or two actions.
 The default view is useful without interaction. Filters refine a question; they
 do not rescue an otherwise empty dashboard.
 
+Player-friendly language is part of the interface contract. Titles and
+explanations lead with the gameplay question, use familiar words, and leave
+formal data or storage terms to the optional Technical wording mode. Exact game
+and mod identifiers remain visible in labelled source details. Changing wording
+never changes a value, state, or available action.
+
 ## Workspace anatomy
 
 The desktop foundation uses five persistent bands:

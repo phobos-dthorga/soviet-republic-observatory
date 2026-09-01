@@ -10,6 +10,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import type {
     ArchiveComparison,
     ArchiveOverview,
@@ -545,13 +546,15 @@
               latestEntry.discovered_at_ms,
           )}</small
         >
-        <p>
-          {latestEntry.error_code
-            ? $translation("monitor-error-code", {
-                code: latestEntry.error_code,
-              })
-            : $translation("monitor-candidate-safe-detail")}
-        </p>
+        {#if latestEntry.error_code}
+          <p>{$translation("monitor-error-summary")}</p>
+          <TechnicalDetails
+            code={latestEntry.error_code}
+            operation="save_recording"
+          />
+        {:else}
+          <p>{$translation("monitor-candidate-safe-detail")}</p>
+        {/if}
       </div>
       <div class="fact-grid">
         <article>

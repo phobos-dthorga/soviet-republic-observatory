@@ -16,6 +16,16 @@ accessibility, security, provenance, progress, or failure-isolation rule are
 signals to extract the smallest reusable service. Do not generalise solely for
 hypothetical use.
 
+Write ordinary interface copy for W&R players, not for the implementation
+team. Lead with what happened or what the player can do, prefer familiar words,
+and keep one idea per sentence. Put formulas, diagnostic codes, operation
+names, and specialist storage terms in the shared technical-details surface.
+Exact game and mod identifiers remain unchanged in labelled source details.
+Technical English belongs in the validated partial overlay; community language
+packs must never receive English technical wording. The player-language audit
+blocks terminology, readability, sentence-length, and raw-code regressions.
+See [ADR-0027](docs/architecture/decisions/0027-player-first-language.md).
+
 Rust/domain services own parsing, lineage, persistence, validation, evidence,
 analytics, recommendations, and lifecycle decisions. `desktopClient.ts` is the
 only Tauri boundary. TypeScript presentation adapters may map bounded host

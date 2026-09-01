@@ -1,4 +1,6 @@
 import { get } from "svelte/store";
+import { applyWordingMode } from "../i18n/runtime";
+import type { WordingMode } from "../settings/types";
 import {
   applyReviewTextScale,
   applyTheme,
@@ -24,6 +26,7 @@ export type UiReviewController = {
   selectScenario(scenario: UiReviewScenarioId): Promise<void>;
   selectTheme(theme: UiReviewThemeId): Promise<void>;
   setTextScale(percent: number): Promise<void>;
+  setWordingMode(mode: WordingMode): Promise<void>;
   settle(): Promise<void>;
 };
 
@@ -86,6 +89,13 @@ export async function initialiseUiReview(
       }
       applyReviewTextScale(percent);
       document.documentElement.dataset.uiReviewTextScale = String(percent);
+      await settleInterface();
+    },
+    setWordingMode: async (mode) => {
+      if (mode !== "player_friendly" && mode !== "technical") {
+        throw new Error("ui_review_invalid_wording_mode");
+      }
+      applyWordingMode(mode);
       await settleInterface();
     },
     settle: settleInterface,

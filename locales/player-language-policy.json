@@ -33,5 +33,28 @@
     "USD": "Recorded game currency",
     "Sankey": "May appear only when introduced as a production-flow diagram"
   },
-  "exceptions": []
+  "formal_terms_reserved_for_details": ["HHI", "Laspeyres"],
+  "technical_detail_keys": [
+    "markets-action-failed",
+    "monitor-error-code",
+    "briefing-finding-unknown-detail",
+    "extensions-inspection-invalid",
+    "catalogue-progress-error-code",
+    "research-setup-progress-error",
+    "research-setup-error"
+  ],
+  "exceptions": [
+    {
+      "message_key": "observer-game-folder-detail",
+      "rule": "snake_case",
+      "reason": "media_soviet is the exact folder name the player must select.",
+      "expires": "2027-09-01"
+    },
+    {
+      "message_key": "error-observer-invalid-game-directory",
+      "rule": "snake_case",
+      "reason": "media_soviet is the exact missing folder name needed to fix this error.",
+      "expires": "2027-09-01"
+    }
+  ]
 }

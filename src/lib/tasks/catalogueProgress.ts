@@ -150,9 +150,11 @@ export function catalogueProgressView(
       : progress.phase === "failed"
         ? {
             tone: "error",
-            text: translate("catalogue-progress-error-code", {
+            text: translate("catalogue-progress-error-summary"),
+            technicalDetails: {
               code: progress.error_code ?? "unknown",
-            }),
+              operation: "catalogue_refresh",
+            },
           }
         : null,
   };

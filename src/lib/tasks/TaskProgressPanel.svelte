@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TaskProgressView } from "./progress";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
 
   let { view, headingId } = $props<{
     view: TaskProgressView;
@@ -87,6 +88,9 @@
     >
       {view.notice.text}
     </p>
+    {#if view.notice.technicalDetails}
+      <TechnicalDetails {...view.notice.technicalDetails} />
+    {/if}
   {/if}
 </section>
 

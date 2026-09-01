@@ -57,6 +57,12 @@ describe("research build progress presentation", () => {
       "complete",
       "failed",
     ]);
-    expect(view.notice?.text).toContain("research_artifact_invalid");
+    expect(view.notice?.text).toBe(
+      "The build stopped safely. No probe was installed or run.",
+    );
+    expect(view.notice?.technicalDetails).toEqual({
+      code: "research_artifact_invalid",
+      operation: "research_probe_build",
+    });
   });
 });

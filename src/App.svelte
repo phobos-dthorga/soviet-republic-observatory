@@ -582,7 +582,14 @@
           tone: "error",
         });
       });
-    if (!desktopAvailable) return () => stopUiReview?.();
+    if (!desktopAvailable) {
+      void themeReady.then(() =>
+        initialiseUiReview(applyUiReviewScenario).then((dispose) => {
+          stopUiReview = dispose;
+        }),
+      );
+      return () => stopUiReview?.();
+    }
     let disposed = false;
     let stopListening: (() => void) | undefined;
     let stopCatalogueListening: (() => void) | undefined;

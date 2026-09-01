@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 45,
+  "source_catalog_revision": 46,
   "messages": {
     "settings-introduction": "Configure Observatory's private local sources, accessible presentation, and bounded background-work behaviour.",
     "settings-recorder-priority-detail": "These preferences change how patiently and quickly resumable maintenance runs. They cannot weaken evidence checks, database limits, or recorder priority.",
@@ -377,6 +377,25 @@
     "briefing-finding-unknown-detail": "The host returned finding code { $code }. Update Republic Observatory before interpreting it.",
     "briefing-dispatch-unknown": "The host returned an unfamiliar dispatch condition. Inspect Diagnostics before interpreting it.",
     "catalogue-progress-publishing": "Writing the analytical catalogue",
-    "research-setup-build-detail": "The host runs one fixed repository build recipe, bounds its output, redacts private paths from the log, and records the resulting content hash."
+    "research-setup-build-detail": "The host runs one fixed repository build recipe, bounds its output, redacts private paths from the log, and records the resulting content hash.",
+    "legal-loader-configuration-detail": "TesmioLoader is a general modding platform and its normal defaults are not the Observatory's read-only profile. Research use requires save manifests, virtual-file redirection, built-in probes, menu changes, and version bypass to remain off, with the Observatory probe as the only plugin DLL. A supplied verifier must pass before launch.",
+    "markets-export-hhi": "Positive-export HHI",
+    "monitor-near-live-label": "SAVE-SAMPLED NEAR-LIVE MONITORING",
+    "chart-material-flow-takeaway": "Domestic output supplies most of the illustrative demand, while imports support the shared pool and 6 units remain explicitly unaccounted rather than being labelled as waste or loss.",
+    "broadcast-evidence-desk-detail": "This workspace displays recorded receiver facts and explicit research boundaries. It no longer fills unsupported broadcast panels with illustrative values.",
+    "broadcast-audience-unavailable-detail": "Supported saves expose receiver ownership, not verified station reach, active listeners, or active viewers. The optional binary research track may test this boundary without changing saves.",
+    "broadcast-programme-mix-boundary-detail": "No validated save or station contract currently exposes the six intended-influence allocations at the selected head.",
+    "broadcast-outcomes-unavailable-detail": "Citizen outcomes can be observed elsewhere, but this workspace cannot attribute them to radio or television without verified interventions, exposure, lags, and comparison windows.",
+    "broadcast-bulletin-evidence-body": "The selected save classifies { $count } citizens across no receiver, radio, television, and computer. This is ownership evidence—not proof of reach, listening, viewing, or broadcast influence.",
+    "broadcast-heading-description": "Treat radio and television as measurable public institutions—without mistaking a handsome correlation for a confession.",
+    "broadcast-evening-service": "RO · Evening service",
+    "extensions-host-api": "Host API",
+    "extensions-pack-schema-host-api": "Pack schema ≠ host API",
+    "security-process-not-sandbox": "Process ≠ OS sandbox",
+    "catalogue-setup-description": "The catalogue will discover local base-game, DLC, Workshop, and WIP definitions without uploading or copying game assets.",
+    "catalogue-repair-unavailable": "Repair and maintenance planning is unavailable because no explicit source field or verified rule was found for this definition.",
+    "catalogue-overlay-description": "Profiles preserve installed facts and add explicit player assumptions with reasons and revision preconditions.",
+    "catalogue-valid-overlay": "Valid inert overlay. Import remains separate from activation.",
+    "compatibility-no-editor": "Edit the JSON file with your preferred text editor. It cannot contain scripts, SQL, paths, URLs, expressions, callbacks, or rendering options."
   }
 }

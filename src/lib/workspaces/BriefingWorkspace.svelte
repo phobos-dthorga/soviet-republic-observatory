@@ -25,6 +25,7 @@
   } from "../presentation/metricContext";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import MetricContextHelp from "../ui/MetricContextHelp.svelte";
+  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
 
   type LinkedWorkspace =
     "monitor" | "materials" | "population" | "archive" | "plan";
@@ -211,12 +212,16 @@
     if (!keys)
       return [
         $translation("briefing-finding-unknown-title"),
-        $translation("briefing-finding-unknown-detail", { code: finding.code }),
+        $translation("briefing-finding-unknown-summary"),
       ];
     return [
       $translation(keys[0]),
       $translation(keys[1], { count: finding.value ?? 0 }),
     ];
+  }
+
+  function isKnownFinding(finding: BriefFinding): boolean {
+    return finding.code in findingKeys;
   }
 
   function dispatchCopy(code: string): string {
@@ -622,6 +627,12 @@
           <span>{$translation(severityKeys[finding.severity])}</span>
           <strong>{copy[0]}</strong>
           <p>{copy[1]}</p>
+          {#if !isKnownFinding(finding)}
+            <TechnicalDetails
+              code={finding.code}
+              operation="republic_brief_finding"
+            />
+          {/if}
         </article>
       {:else}
         <GuidanceSurface kind="boundary" layout="compact">
