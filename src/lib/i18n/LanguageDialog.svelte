@@ -18,7 +18,17 @@
     exportLanguagePack,
   } from "./service";
 
-  let { open, onclose }: { open: boolean; onclose: () => void } = $props();
+  let {
+    open,
+    active = true,
+    layer = 0,
+    onclose,
+  }: {
+    open: boolean;
+    active?: boolean;
+    layer?: number;
+    onclose: () => void;
+  } = $props();
   let busy = $state(false);
   let errorMessage = $state("");
   const MAX_MANIFEST_READ_BYTES = 256 * 1024 + 1;
@@ -145,12 +155,18 @@
 </script>
 
 {#if open}
-  <div class="language-backdrop">
+  <div
+    class="language-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose, closeDisabled: busy }}
+      use:modalFocus={{ onclose, closeDisabled: busy, active }}
       open
       class="language-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="language-title"
       aria-describedby="language-introduction"
     >

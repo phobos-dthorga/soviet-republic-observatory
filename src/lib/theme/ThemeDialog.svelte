@@ -20,7 +20,17 @@
     ThemeManifest,
   } from "./types";
 
-  let { open, onclose }: { open: boolean; onclose: () => void } = $props();
+  let {
+    open,
+    active = true,
+    layer = 0,
+    onclose,
+  }: {
+    open: boolean;
+    active?: boolean;
+    layer?: number;
+    onclose: () => void;
+  } = $props();
   let busy = $state(false);
   let errorMessage = $state("");
   let inspection = $state<ThemeInspection | null>(null);
@@ -245,12 +255,18 @@
 </script>
 
 {#if open}
-  <div class="theme-backdrop">
+  <div
+    class="theme-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose, closeDisabled: busy }}
+      use:modalFocus={{ onclose, closeDisabled: busy, active }}
       open
       class="theme-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="theme-title"
       aria-describedby="theme-introduction"
     >

@@ -24,11 +24,15 @@
 
   let {
     open,
+    active = true,
+    layer = 0,
     onclose,
     onopenlegal,
     onopendiagnostics,
   }: {
     open: boolean;
+    active?: boolean;
+    layer?: number;
     onclose: () => void;
     onopenlegal: () => void;
     onopendiagnostics: () => void;
@@ -266,23 +270,27 @@
   }
 
   function openLegal(): void {
-    onclose();
     onopenlegal();
   }
 
   function openDiagnostics(): void {
-    onclose();
     onopendiagnostics();
   }
 </script>
 
 {#if open}
-  <div class="research-backdrop">
+  <div
+    class="research-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose }}
+      use:modalFocus={{ onclose, closeDisabled: busy, active }}
       open
       class="research-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="research-setup-title"
       aria-describedby="research-setup-introduction"
     >

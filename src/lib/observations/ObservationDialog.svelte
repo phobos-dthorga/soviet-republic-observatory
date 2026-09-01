@@ -23,6 +23,8 @@
 
   let {
     open,
+    active = true,
+    layer = 0,
     desktopAvailable,
     setup,
     dataset,
@@ -33,6 +35,8 @@
     onopensettings,
   }: {
     open: boolean;
+    active?: boolean;
+    layer?: number;
     desktopAvailable: boolean;
     setup: SetupState | null;
     dataset: ReceiverDataset | null;
@@ -239,12 +243,18 @@
 </script>
 
 {#if open}
-  <div class="language-backdrop observer-backdrop">
+  <div
+    class="language-backdrop observer-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose, closeDisabled: busy }}
+      use:modalFocus={{ onclose, closeDisabled: busy, active }}
       open
       class="language-dialog observer-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="observer-title"
       aria-describedby="observer-introduction"
     >
@@ -289,7 +299,6 @@
               type="button"
               disabled={busy}
               onclick={() => {
-                onclose();
                 onopensettings();
               }}>{$translation("observer-open-settings")}</button
             >

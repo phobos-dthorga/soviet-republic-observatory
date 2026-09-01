@@ -4,10 +4,14 @@
 
   let {
     open,
+    active = true,
+    layer = 0,
     onclose,
     onopenresearch,
   }: {
     open: boolean;
+    active?: boolean;
+    layer?: number;
     onclose: () => void;
     onopenresearch: () => void;
   } = $props();
@@ -17,12 +21,18 @@
 </script>
 
 {#if open}
-  <div class="legal-backdrop">
+  <div
+    class="legal-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose }}
+      use:modalFocus={{ onclose, active }}
       open
       class="legal-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="legal-title"
       aria-describedby="legal-introduction"
     >
@@ -127,10 +137,7 @@
             <button
               type="button"
               class="research-setup-link"
-              onclick={() => {
-                onclose();
-                onopenresearch();
-              }}
+              onclick={onopenresearch}
             >
               {$translation("research-setup-open")}
             </button>

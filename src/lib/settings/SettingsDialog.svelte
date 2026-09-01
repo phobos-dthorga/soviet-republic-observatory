@@ -6,7 +6,7 @@
     translation,
   } from "../i18n/runtime";
   import { activeTheme } from "../theme/runtime";
-  import { notify } from "../notifications/service";
+  import { notify, openRecoveryProposal } from "../notifications/service";
   import {
     chooseDirectory,
     configureDirectory,
@@ -32,6 +32,8 @@
 
   let {
     open,
+    active = true,
+    layer = 0,
     setup,
     onclose,
     onsetupchange,
@@ -42,6 +44,8 @@
     onopendiagnostics,
   }: {
     open: boolean;
+    active?: boolean;
+    layer?: number;
     setup: SetupState | null;
     onclose: () => void;
     onsetupchange: (setup: SetupState) => void;
@@ -248,12 +252,37 @@
     }
   }
 
-  function openRelated(action: () => void): void {
+  function discardDraft(): void {
+    if (view) draft = draftFrom(view.preferences);
+  }
+
+  function confirmDiscard(run: () => void): void {
+    openRecoveryProposal({
+      title: $translation("settings-discard-title"),
+      message: $translation("settings-discard-message"),
+      consequence: $translation("settings-discard-safety"),
+      actionLabel: $translation("settings-discard-action"),
+      run: () => {
+        discardDraft();
+        run();
+      },
+    });
+  }
+
+  function requestClose(): void {
+    if (busy) return;
     if (hasUnsavedChanges) {
-      errorMessage = $translation("settings-save-before-leaving");
+      confirmDiscard(onclose);
       return;
     }
     onclose();
+  }
+
+  function openRelated(action: () => void): void {
+    if (hasUnsavedChanges) {
+      confirmDiscard(action);
+      return;
+    }
     action();
   }
 
@@ -268,12 +297,18 @@
 </script>
 
 {#if open}
-  <div class="settings-backdrop">
+  <div
+    class="settings-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose, closeDisabled: busy }}
+      use:modalFocus={{ onclose: requestClose, closeDisabled: busy, active }}
       open
       class="settings-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="settings-title"
       aria-describedby="settings-introduction"
     >
@@ -290,7 +325,7 @@
           type="button"
           disabled={busy}
           aria-label={$translation("action-close")}
-          onclick={onclose}>×</button
+          onclick={requestClose}>×</button
         >
       </header>
 

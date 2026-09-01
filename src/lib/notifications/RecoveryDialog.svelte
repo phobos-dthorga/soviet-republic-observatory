@@ -5,6 +5,14 @@
   import { modalFocus } from "../ui/modalFocus";
   import { dismissRecoveryProposal, recoveryProposal } from "./service";
 
+  let {
+    active = true,
+    layer = 0,
+  }: {
+    active?: boolean;
+    layer?: number;
+  } = $props();
+
   let busy = $state(false);
   let failure = $state("");
 
@@ -33,12 +41,18 @@
 </script>
 
 {#if $recoveryProposal}
-  <div class="recovery-backdrop">
+  <div
+    class="recovery-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose: close, closeDisabled: busy }}
+      use:modalFocus={{ onclose: close, closeDisabled: busy, active }}
       open
       class="recovery-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="recovery-title"
       aria-describedby="recovery-description"
     >

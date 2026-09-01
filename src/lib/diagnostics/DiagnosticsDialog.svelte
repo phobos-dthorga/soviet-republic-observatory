@@ -7,6 +7,8 @@
 
   let {
     open,
+    active = true,
+    layer = 0,
     busy,
     log,
     errorMessage,
@@ -15,6 +17,8 @@
     onclear,
   }: {
     open: boolean;
+    active?: boolean;
+    layer?: number;
     busy: boolean;
     log: DiagnosticLogView | null;
     errorMessage: string;
@@ -33,12 +37,18 @@
 </script>
 
 {#if open}
-  <div class="diagnostics-backdrop">
+  <div
+    class="diagnostics-backdrop"
+    inert={!active}
+    aria-hidden={!active}
+    data-dialog-active={active}
+    style:z-index={300 + layer}
+  >
     <dialog
-      use:modalFocus={{ onclose, closeDisabled: busy }}
+      use:modalFocus={{ onclose, closeDisabled: busy, active }}
       open
       class="diagnostics-dialog"
-      aria-modal="true"
+      aria-modal={active}
       aria-labelledby="diagnostics-title"
       aria-describedby="diagnostics-introduction"
     >

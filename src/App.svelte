@@ -26,9 +26,18 @@
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
   import {
     clearNotifications,
+    dismissRecoveryProposal,
     notify,
     openRecoveryProposal,
+    recoveryProposal,
   } from "./lib/notifications/service";
+  import {
+    dialogLayer,
+    pushDialogRoute,
+    removeDialogRoute,
+    topDialogRoute,
+    type DialogRoute,
+  } from "./lib/navigation/dialogStack";
   import { replayAttentionCue } from "./lib/attention/service";
   import { observeLatestTaskProgress } from "./lib/tasks/progress";
   import { reinterpretationProgressView } from "./lib/tasks/reinterpretationProgress";
@@ -139,13 +148,8 @@
   ];
 
   let activeWorkspace = $state<WorkspaceName>("briefing");
-  let languageDialogOpen = $state(false);
-  let themeDialogOpen = $state(false);
-  let settingsDialogOpen = $state(false);
-  let observationDialogOpen = $state(false);
-  let diagnosticsDialogOpen = $state(false);
-  let legalDialogOpen = $state(false);
-  let researchSetupDialogOpen = $state(false);
+  let dialogStack = $state<DialogRoute[]>([]);
+  const activeDialog = $derived(topDialogRoute(dialogStack));
   let diagnosticsBusy = $state(false);
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
@@ -167,6 +171,59 @@
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
+
+  function openDialog(route: DialogRoute): void {
+    dialogStack = pushDialogRoute(dialogStack, route);
+  }
+
+  function closeDialog(route: DialogRoute): void {
+    if (route === "recovery") {
+      dismissRecoveryProposal();
+      return;
+    }
+    dialogStack = removeDialogRoute(dialogStack, route);
+  }
+
+  function dialogOpen(route: DialogRoute): boolean {
+    return dialogStack.includes(route);
+  }
+
+  function appShortcut(event: KeyboardEvent): void {
+    if (event.defaultPrevented || event.isComposing) return;
+    if (
+      event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey &&
+      event.key === ","
+    ) {
+      event.preventDefault();
+      openDialog("settings");
+      return;
+    }
+    if (
+      event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      event.key === "ArrowLeft" &&
+      activeDialog
+    ) {
+      event.preventDefault();
+      document
+        .querySelector<HTMLElement>('[data-dialog-active="true"] dialog')
+        ?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+    }
+  }
+
+  $effect(() => {
+    const recoveryOpen = $recoveryProposal !== null;
+    const recoveryInStack = dialogStack.includes("recovery");
+    if (recoveryOpen && !recoveryInStack) openDialog("recovery");
+    else if (!recoveryOpen && recoveryInStack)
+      dialogStack = removeDialogRoute(dialogStack, "recovery");
+  });
 
   function warehouseActivityLabel(activity: WarehouseWriteActivity): string {
     switch (activity.kind) {
@@ -374,7 +431,7 @@
   }
 
   function openDiagnostics(): void {
-    diagnosticsDialogOpen = true;
+    openDialog("diagnostics");
     void refreshDiagnostics();
   }
 
@@ -382,13 +439,7 @@
     request: UiReviewScenarioRequest,
   ): Promise<void> {
     clearNotifications();
-    languageDialogOpen = false;
-    themeDialogOpen = false;
-    settingsDialogOpen = false;
-    observationDialogOpen = false;
-    diagnosticsDialogOpen = false;
-    legalDialogOpen = false;
-    researchSetupDialogOpen = false;
+    dialogStack = [];
     catalogueProgress = null;
     warehouseStatus = null;
     reinterpretationProgress = null;
@@ -485,25 +536,25 @@
         catalogueProgress = reviewCatalogueProgress(true);
         break;
       case "dialog-language":
-        languageDialogOpen = true;
+        openDialog("language");
         break;
       case "dialog-theme":
-        themeDialogOpen = true;
+        openDialog("theme");
         break;
       case "dialog-settings":
-        settingsDialogOpen = true;
+        openDialog("settings");
         break;
       case "dialog-observation":
-        observationDialogOpen = true;
+        openDialog("observation");
         break;
       case "dialog-diagnostics":
-        diagnosticsDialogOpen = true;
+        openDialog("diagnostics");
         break;
       case "dialog-legal":
-        legalDialogOpen = true;
+        openDialog("legal");
         break;
       case "dialog-research":
-        researchSetupDialogOpen = true;
+        openDialog("research");
         break;
       case "dialog-recovery":
         activeWorkspace = "markets";
@@ -564,6 +615,7 @@
   }
 
   onMount(() => {
+    window.addEventListener("keydown", appShortcut);
     let stopUiReview: (() => void) | undefined;
     const themeReady = initialiseThemes()
       .then((status) => {
@@ -588,7 +640,10 @@
           stopUiReview = dispose;
         }),
       );
-      return () => stopUiReview?.();
+      return () => {
+        window.removeEventListener("keydown", appShortcut);
+        stopUiReview?.();
+      };
     }
     let disposed = false;
     let stopListening: (() => void) | undefined;
@@ -726,6 +781,7 @@
       stopResearchBuildListening?.();
       stopWarehouseListening?.();
       stopUiReview?.();
+      window.removeEventListener("keydown", appShortcut);
     };
   });
 
@@ -844,7 +900,7 @@
           percent={view.progressPercent}
           failed={view.state === "failed"}
           currentItem={view.currentItem}
-          onclick={() => (observationDialogOpen = true)}
+          onclick={() => openDialog("observation")}
         />
       {/if}
       {#if researchBuildProgress && ["running", "failed"].includes(researchBuildProgress.state)}
@@ -858,7 +914,7 @@
           percent={view.progressPercent}
           failed={view.state === "failed"}
           currentItem={view.currentItem}
-          onclick={() => (researchSetupDialogOpen = true)}
+          onclick={() => openDialog("research")}
         />
       {/if}
       {#if marketIndexingProgress && ["discovering", "matching", "reading_archive", "parsing_records", "persisting", "queueing_warehouse", "failed"].includes(marketIndexingProgress.phase)}
@@ -878,7 +934,7 @@
       <button
         type="button"
         class="legal-button"
-        onclick={() => (legalDialogOpen = true)}
+        onclick={() => openDialog("legal")}
       >
         {$translation("legal-open")}
       </button>
@@ -893,7 +949,7 @@
       <button
         type="button"
         class="settings-button"
-        onclick={() => (settingsDialogOpen = true)}
+        onclick={() => openDialog("settings")}
       >
         {$translation("settings-open")}
       </button>
@@ -902,7 +958,7 @@
         class="scanner-state"
         aria-label={$translation("scanner-status-label")}
         title={$translation("observer-open")}
-        onclick={() => (observationDialogOpen = true)}
+        onclick={() => openDialog("observation")}
       >
         <span class="state-dot" aria-hidden="true"></span>
         <div>
@@ -1015,7 +1071,7 @@
       dataset={populationDataset}
       metricContexts={publishedMetricContexts}
       {desktopAvailable}
-      onopenresearch={() => (researchSetupDialogOpen = true)}
+      onopenresearch={() => openDialog("research")}
     />
   {:else if activeWorkspace === "markets"}
     <MarketsWorkspace
@@ -1048,58 +1104,78 @@
   </footer>
 </main>
 
-<NotificationCenter />
-
-<LanguageDialog
-  open={languageDialogOpen}
-  onclose={() => (languageDialogOpen = false)}
+<NotificationCenter
+  recoveryActive={activeDialog === "recovery"}
+  recoveryLayer={dialogLayer(dialogStack, "recovery")}
 />
 
-<ThemeDialog open={themeDialogOpen} onclose={() => (themeDialogOpen = false)} />
+<LanguageDialog
+  open={dialogOpen("language")}
+  active={activeDialog === "language"}
+  layer={dialogLayer(dialogStack, "language")}
+  onclose={() => closeDialog("language")}
+/>
+
+<ThemeDialog
+  open={dialogOpen("theme")}
+  active={activeDialog === "theme"}
+  layer={dialogLayer(dialogStack, "theme")}
+  onclose={() => closeDialog("theme")}
+/>
 
 <SettingsDialog
-  open={settingsDialogOpen}
+  open={dialogOpen("settings")}
+  active={activeDialog === "settings"}
+  layer={dialogLayer(dialogStack, "settings")}
   setup={setupState}
-  onclose={() => (settingsDialogOpen = false)}
+  onclose={() => closeDialog("settings")}
   onsetupchange={acceptSetupChange}
-  onopenlanguage={() => (languageDialogOpen = true)}
-  onopentheme={() => (themeDialogOpen = true)}
-  onopenobserver={() => (observationDialogOpen = true)}
-  onopenlegal={() => (legalDialogOpen = true)}
+  onopenlanguage={() => openDialog("language")}
+  onopentheme={() => openDialog("theme")}
+  onopenobserver={() => openDialog("observation")}
+  onopenlegal={() => openDialog("legal")}
   onopendiagnostics={openDiagnostics}
 />
 
 <ObservationDialog
-  open={observationDialogOpen}
+  open={dialogOpen("observation")}
+  active={activeDialog === "observation"}
+  layer={dialogLayer(dialogStack, "observation")}
   {desktopAvailable}
   setup={setupState}
   dataset={receiverDataset}
   {reinterpretationProgress}
-  onclose={() => (observationDialogOpen = false)}
+  onclose={() => closeDialog("observation")}
   onsetupchange={acceptSetupChange}
   onobservation={acceptObservation}
-  onopensettings={() => (settingsDialogOpen = true)}
+  onopensettings={() => openDialog("settings")}
 />
 
 <DiagnosticsDialog
-  open={diagnosticsDialogOpen}
+  open={dialogOpen("diagnostics")}
+  active={activeDialog === "diagnostics"}
+  layer={dialogLayer(dialogStack, "diagnostics")}
   busy={diagnosticsBusy}
   log={diagnosticLog}
   errorMessage={diagnosticsError}
-  onclose={() => (diagnosticsDialogOpen = false)}
+  onclose={() => closeDialog("diagnostics")}
   onrefresh={() => void refreshDiagnostics()}
   onclear={() => void clearDiagnostics()}
 />
 
 <LegalDialog
-  open={legalDialogOpen}
-  onclose={() => (legalDialogOpen = false)}
-  onopenresearch={() => (researchSetupDialogOpen = true)}
+  open={dialogOpen("legal")}
+  active={activeDialog === "legal"}
+  layer={dialogLayer(dialogStack, "legal")}
+  onclose={() => closeDialog("legal")}
+  onopenresearch={() => openDialog("research")}
 />
 
 <ResearchSetupDialog
-  open={researchSetupDialogOpen}
-  onclose={() => (researchSetupDialogOpen = false)}
-  onopenlegal={() => (legalDialogOpen = true)}
+  open={dialogOpen("research")}
+  active={activeDialog === "research"}
+  layer={dialogLayer(dialogStack, "research")}
+  onclose={() => closeDialog("research")}
+  onopenlegal={() => openDialog("legal")}
   onopendiagnostics={openDiagnostics}
 />
