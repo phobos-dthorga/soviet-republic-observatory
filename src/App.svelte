@@ -69,6 +69,9 @@
   } from "./lib/ui-review/runtime";
   import {
     reviewArchiveOverview,
+    reviewBroadcastIndexingProgress,
+    reviewBroadcastOutcome,
+    reviewBroadcastWorkspace,
     reviewCatalogueProgress,
     reviewMarketIndexingProgress,
     reviewMarketWorkspace,
@@ -86,6 +89,9 @@
     createTimelineContinuation,
     desktopHostAvailable,
     getArchiveOverview,
+    getBroadcastIndexingProgress,
+    getBroadcastOutcome,
+    getBroadcastWorkspace,
     getCatalogueStatus,
     getDiagnosticLog,
     getLatestReceiverDataset,
@@ -99,18 +105,25 @@
     getRecorderHealth,
     getSetupState,
     inspectArchiveObservation,
+    indexAvailableSavesForBroadcast,
     listenForRecorderUpdates,
     listenForCatalogueProgress,
+    listenForBroadcastIndexingProgress,
     listenForCompatibilityUpdates,
     listenForReinterpretationProgress,
     listenForMarketIndexingProgress,
     listenForWarehouseUpdates,
+    resumeBroadcastIndexing,
     selectTimelineBranch,
     returnToBranchTip,
     setTimelineBranchLabel,
   } from "./lib/observations/desktopClient";
   import type {
     ArchiveOverview,
+    BroadcastIndexingProgress,
+    BroadcastOutcomeModel,
+    BroadcastOutcomeRequest,
+    BroadcastWorkspaceModel,
     CatalogueRefreshProgress,
     CatalogueStatus,
     CompatibilityUpdate,
@@ -172,6 +185,9 @@
   let reinterpretationProgress = $state<ReinterpretationProgress | null>(null);
   let researchBuildProgress = $state<ResearchBuildProgress | null>(null);
   let marketIndexingProgress = $state<MarketIndexingProgress | null>(null);
+  let broadcastIndexingProgress = $state<BroadcastIndexingProgress | null>(
+    null,
+  );
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -181,6 +197,8 @@
   let republicBrief = $state<RepublicBrief | null>(null);
   let republicPlan = $state<RepublicPlanWorkspace | null>(null);
   let marketWorkspace = $state<MarketWorkspace | null>(null);
+  let broadcastWorkspace = $state<BroadcastWorkspaceModel | null>(null);
+  let broadcastOutcome = $state<BroadcastOutcomeModel | null>(null);
   let publishedMetricContexts = $state<PublishedMetricContext[]>([]);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
@@ -500,6 +518,7 @@
       refreshRepublicBrief(),
       refreshRepublicPlan(),
       refreshMarketWorkspace(),
+      refreshBroadcastWorkspace(),
     ]);
   }
 
@@ -536,6 +555,51 @@
       marketWorkspace = await getMarketWorkspace();
     } catch {
       marketWorkspace = null;
+    }
+  }
+
+  async function refreshBroadcastWorkspace(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      broadcastWorkspace = await getBroadcastWorkspace();
+      broadcastOutcome = null;
+    } catch {
+      broadcastWorkspace = null;
+      broadcastOutcome = null;
+    }
+  }
+
+  async function requestBroadcastOutcome(
+    request: BroadcastOutcomeRequest,
+  ): Promise<BroadcastOutcomeModel | null> {
+    if (!desktopAvailable) return null;
+    try {
+      broadcastOutcome = await getBroadcastOutcome(request);
+      return broadcastOutcome;
+    } catch {
+      notify({
+        title: $translation("broadcast-outcome-failed-title"),
+        message: $translation("broadcast-outcome-failed-message"),
+        tone: "error",
+      });
+      return null;
+    }
+  }
+
+  async function runBroadcastIndexing(resume: boolean): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      broadcastIndexingProgress = resume
+        ? await resumeBroadcastIndexing()
+        : await indexAvailableSavesForBroadcast();
+    } catch {
+      notify({
+        title: $translation("broadcast-index-failed-title"),
+        message: $translation("broadcast-index-failed-message"),
+        tone: "error",
+      });
+    } finally {
+      await refreshBroadcastWorkspace();
     }
   }
 
@@ -580,6 +644,7 @@
     void refreshRepublicBrief();
     void refreshRepublicPlan();
     void refreshMarketWorkspace();
+    void refreshBroadcastWorkspace();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -649,7 +714,10 @@
     reinterpretationProgress = null;
     researchBuildProgress = null;
     marketIndexingProgress = null;
+    broadcastIndexingProgress = null;
     marketWorkspace = null;
+    broadcastWorkspace = null;
+    broadcastOutcome = null;
     reviewRouteFixture = null;
     reviewPathwayFixture = null;
     receiverDataset = null;
@@ -665,7 +733,43 @@
         break;
       case "workspace-broadcast":
         openWorkspace("broadcast");
-        receiverDataset = reviewReceiverDataset();
+        broadcastWorkspace = reviewBroadcastWorkspace("ready");
+        broadcastOutcome = reviewBroadcastOutcome();
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-indexing":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("ready");
+        broadcastOutcome = reviewBroadcastOutcome();
+        broadcastIndexingProgress = reviewBroadcastIndexingProgress("running");
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-paused":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("ready");
+        broadcastIndexingProgress = reviewBroadcastIndexingProgress("paused");
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-partial":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("partial");
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-empty":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("empty");
+        break;
+      case "broadcast-lagging":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("lagging");
+        broadcastOutcome = reviewBroadcastOutcome();
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-failed":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("partial");
+        broadcastIndexingProgress = reviewBroadcastIndexingProgress("failed");
+        receiverDataset = broadcastWorkspace.receiver;
         break;
       case "workspace-extensions":
         openWorkspace("extensions");
@@ -858,6 +962,7 @@
     let stopCompatibilityListening: (() => void) | undefined;
     let stopReinterpretationListening: (() => void) | undefined;
     let stopMarketIndexingListening: (() => void) | undefined;
+    let stopBroadcastIndexingListening: (() => void) | undefined;
     let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
     const initialDataReady = Promise.all([
@@ -869,6 +974,8 @@
       getRepublicBrief().catch(() => null),
       getRepublicPlanWorkspace().catch(() => null),
       getMarketWorkspace().catch(() => null),
+      getBroadcastWorkspace().catch(() => null),
+      getBroadcastIndexingProgress().catch(() => null),
       getPublishedMetricContexts().catch(() => []),
     ]).then(
       ([
@@ -880,6 +987,8 @@
         brief,
         plan,
         markets,
+        broadcast,
+        broadcastIndexing,
         metricContexts,
       ]) => {
         if (disposed) return;
@@ -892,6 +1001,8 @@
         republicBrief = brief;
         republicPlan = plan;
         marketWorkspace = markets;
+        broadcastWorkspace = broadcast;
+        broadcastIndexingProgress = broadcastIndexing;
         publishedMetricContexts = metricContexts;
       },
     );
@@ -918,6 +1029,7 @@
         void refreshRepublicBrief();
         void refreshRepublicPlan();
         void refreshMarketWorkspace();
+        void refreshBroadcastWorkspace();
       }
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -978,6 +1090,21 @@
       if (disposed) unlisten();
       else stopMarketIndexingListening = unlisten;
     });
+    void observeLatestTaskProgress(
+      {
+        listen: listenForBroadcastIndexingProgress,
+        read: getBroadcastIndexingProgress,
+      },
+      (progress) => {
+        if (!disposed) {
+          broadcastIndexingProgress = progress;
+          if (progress.phase === "complete") void refreshBroadcastWorkspace();
+        }
+      },
+    ).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopBroadcastIndexingListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
@@ -985,6 +1112,7 @@
       stopCompatibilityListening?.();
       stopReinterpretationListening?.();
       stopMarketIndexingListening?.();
+      stopBroadcastIndexingListening?.();
       stopResearchBuildListening?.();
       stopWarehouseListening?.();
       stopUiReview?.();
@@ -1259,11 +1387,16 @@
     />
   {:else if activeWorkspace === "broadcast"}
     <BroadcastWorkspace
-      {receiverDataset}
+      workspace={broadcastWorkspace}
+      outcome={broadcastOutcome}
+      indexingProgress={broadcastIndexingProgress}
+      {desktopAvailable}
       metricContexts={publishedMetricContexts}
       location={activeLocation}
       onlocationchange={updateActiveFilters}
       onrelatednavigate={requestRelatedNavigation}
+      onoutcomerequest={requestBroadcastOutcome}
+      onindexrequest={runBroadcastIndexing}
     />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace

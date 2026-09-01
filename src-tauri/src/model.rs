@@ -655,10 +655,14 @@ pub enum BroadcastOutcomeAvailability {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct BroadcastOutcomePair {
+    pub receiver_record_id: u32,
     pub receiver_year: i32,
     pub receiver_day: u16,
+    pub receiver_game_day: i64,
+    pub status_record_id: u32,
     pub status_year: i32,
     pub status_day: u16,
+    pub status_game_day: i64,
     pub elapsed_game_days: i64,
     pub receiver_share_change: f64,
     pub status_change: f64,

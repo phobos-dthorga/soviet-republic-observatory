@@ -1,5 +1,8 @@
 import type {
   ArchiveOverview,
+  BroadcastIndexingProgress,
+  BroadcastOutcomeModel,
+  BroadcastWorkspaceModel,
   CatalogueRefreshProgress,
   CatalogueStatus,
   MarketIndexingProgress,
@@ -438,6 +441,221 @@ const reviewContext = {
   catalogue_generation_id: "review-catalogue-generation",
   overlay_revision: null,
 };
+
+export function reviewBroadcastWorkspace(
+  state: "ready" | "partial" | "empty" | "lagging" = "ready",
+): BroadcastWorkspaceModel {
+  const baseReceiver = reviewReceiverDataset();
+  const receiver =
+    state === "empty"
+      ? null
+      : {
+          ...baseReceiver,
+          coverage: {
+            ...baseReceiver.coverage,
+            history_records: 18,
+            chartable_records: 18,
+          },
+          points: Array.from({ length: 18 }, (_, index) => {
+            const day = 7 + index * 4;
+            const none = 34_100 - index * 155;
+            const radio = 23_800 + index * 88;
+            const television = 8_400 + index * 105;
+            const computer = 1_700 + index * 46;
+            return {
+              record_id: index + 1,
+              year: 2015,
+              day,
+              game_day: 2015 * 365 + day,
+              none,
+              radio,
+              television,
+              computer,
+              classified_total: none + radio + television + computer,
+              exact_observation: {
+                interpretation_id: `review-broadcast-${day}`,
+                branch_id: "main",
+                year: 2015,
+                day,
+              },
+            };
+          }),
+        };
+  const latest = receiver?.points.at(-1);
+  const previous = receiver?.points.at(-2);
+  const receiverClasses = latest
+    ? [
+        ["core.citizens.electronics.none", "none"],
+        ["core.citizens.electronics.radio", "radio"],
+        ["core.citizens.electronics.television", "television"],
+        ["core.citizens.electronics.computer", "computer"],
+      ].map(([metricId, field]) => {
+        const count = latest[field as "none"];
+        return {
+          metric_id: metricId,
+          count,
+          share_percent: (count / latest.classified_total) * 100,
+          change_from_previous: previous
+            ? count - previous[field as "none"]
+            : null,
+        };
+      })
+    : [];
+  const statusMetrics = [
+    "happiness",
+    "food_satisfaction",
+    "health",
+    "government_loyalty",
+    "alcohol_addiction",
+    "culture_enjoyment",
+    "sports_enjoyment",
+    "religion_sympathy",
+    "clothing_quality",
+  ].map((name, sourceIndex) => ({
+    metric_id: `core.citizens.status.${name}`,
+    source_index: sourceIndex,
+  }));
+
+  return {
+    analysis_context: { ...reviewContext },
+    receiver,
+    pulse: latest
+      ? {
+          year: latest.year,
+          day: latest.day,
+          classified_population: latest.classified_total,
+          classes: receiverClasses,
+        }
+      : null,
+    status_metrics: statusMetrics,
+    status_coverage:
+      state === "empty"
+        ? null
+        : {
+            status: state === "partial" ? "partial" : "complete",
+            history_records: 18,
+            chartable_records: state === "partial" ? 14 : 18,
+            dropped_records: state === "partial" ? 4 : 0,
+            warnings:
+              state === "partial"
+                ? [{ code: "incomplete_status_record", count: 4 }]
+                : [],
+          },
+    citizen_status_points:
+      state === "empty"
+        ? []
+        : Array.from({ length: 18 }, (_, index) => {
+            const day = 7 + index * 4;
+            return {
+              ordinal: index,
+              record_id: index + 1,
+              year: 2015,
+              day,
+              game_day: 2015 * 365 + day,
+              values: Array.from(
+                { length: 9 },
+                (_unused, statusIndex) =>
+                  0.48 + statusIndex * 0.025 + index * 0.003,
+              ),
+              source_fields: ["$Citizens_Status"],
+              source_lines: [1_720_000 + index],
+              exact_observation: {
+                interpretation_id: `review-broadcast-${day}`,
+                branch_id: "main",
+                year: 2015,
+                day,
+              },
+            };
+          }),
+    station_requirements:
+      state === "empty"
+        ? []
+        : [
+            {
+              station_kind: "radio",
+              catalogue_entity_id: "building::radio-station",
+              workers: 100,
+              professors: 50,
+            },
+            {
+              station_kind: "television",
+              catalogue_entity_id: "building::television-station",
+              workers: 120,
+              professors: 70,
+            },
+          ],
+    availability: {
+      potential_audience: false,
+      current_audience: false,
+      programme_settings: false,
+      demographic_receiver_join: false,
+    },
+    warehouse_projection_available: state !== "lagging",
+  };
+}
+
+export function reviewBroadcastOutcome(): BroadcastOutcomeModel {
+  const pairs = Array.from({ length: 14 }, (_, index) => {
+    const recordId = index < 8 ? index + 2 : index + 3;
+    const day = 11 + index * 4;
+    return {
+      receiver_record_id: recordId,
+      receiver_year: 2015,
+      receiver_day: day,
+      receiver_game_day: 2015 * 365 + day,
+      status_record_id: recordId,
+      status_year: 2015,
+      status_day: day,
+      status_game_day: 2015 * 365 + day,
+      elapsed_game_days: 0,
+      receiver_share_change: 0.11 + index * 0.018,
+      status_change: 0.0012 + index * 0.00022,
+      exact_observation: {
+        interpretation_id: `review-broadcast-${day}`,
+        branch_id: "main",
+        year: 2015,
+        day,
+      },
+    };
+  });
+  return {
+    availability: "available",
+    receiver_metric_id: "core.citizens.electronics.radio",
+    status_metric_id: "core.citizens.status.happiness",
+    lag_confirmed_records: 0,
+    coefficient: 0.72,
+    pair_count: pairs.length,
+    start_year: 2015,
+    start_day: pairs[0].status_day,
+    end_year: 2015,
+    end_day: pairs.at(-1)?.status_day ?? null,
+    elapsed_days_median: 4,
+    elapsed_days_min: 4,
+    elapsed_days_max: 8,
+    pairs,
+  };
+}
+
+export function reviewBroadcastIndexingProgress(
+  state: "running" | "paused" | "failed" = "running",
+): BroadcastIndexingProgress {
+  return {
+    ...reviewMarketIndexingProgress(state === "failed"),
+    job_id: "review-broadcast-index",
+    phase:
+      state === "paused"
+        ? "paused"
+        : state === "failed"
+          ? "failed"
+          : "parsing_records",
+    error_code:
+      state === "paused"
+        ? "storage_occupied"
+        : state === "failed"
+          ? "invalid_archive"
+          : null,
+  };
+}
 
 export function reviewRepublicBrief(): RepublicBrief {
   const source = (source_field: string, source_line: number) => [

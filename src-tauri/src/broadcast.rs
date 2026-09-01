@@ -136,10 +136,14 @@ pub(crate) fn calculate_outcome(
             continue;
         };
         pairs.push(BroadcastOutcomePair {
+            receiver_record_id: receiver_delta.receiver.record_id,
             receiver_year: receiver_delta.receiver.year,
             receiver_day: receiver_delta.receiver.day,
+            receiver_game_day: receiver_delta.receiver.game_day,
+            status_record_id: status_delta.status.record_id,
             status_year: status_delta.status.year,
             status_day: status_delta.status.day,
+            status_game_day: status_delta.status.game_day,
             elapsed_game_days: status_delta.status.game_day - receiver_delta.receiver.game_day,
             receiver_share_change: receiver_delta.receiver_change,
             status_change: status_delta.status_change,

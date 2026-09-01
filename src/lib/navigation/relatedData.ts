@@ -4,7 +4,14 @@ import type { ExactObservationReference } from "../observations/types";
 export const workspaceSections = {
   briefing: ["briefing", "assays", "capabilities", "dispatch"],
   monitor: ["monitor-health", "monitor-pulse", "monitor-ledger"],
-  broadcast: ["receivers", "audience", "programme", "outcomes", "bulletin"],
+  broadcast: [
+    "pulse",
+    "receivers",
+    "audience",
+    "programme",
+    "outcomes",
+    "bulletin",
+  ],
   extensions: [
     "pack-inspection",
     "pack-library",

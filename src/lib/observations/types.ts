@@ -128,10 +128,14 @@ export type BroadcastOutcomeAvailability =
   | "constant_status_changes";
 
 export type BroadcastOutcomePair = {
+  receiver_record_id: number;
   receiver_year: number;
   receiver_day: number;
+  receiver_game_day: number;
+  status_record_id: number;
   status_year: number;
   status_day: number;
+  status_game_day: number;
   elapsed_game_days: number;
   receiver_share_change: number;
   status_change: number;
