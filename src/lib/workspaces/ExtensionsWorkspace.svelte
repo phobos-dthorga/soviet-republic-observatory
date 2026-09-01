@@ -11,6 +11,7 @@
   } from "../extensions/runtime";
   import type { TranslationKey } from "../i18n/catalog";
   import { translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import {
     notify,
     type NotificationTone,
@@ -310,7 +311,7 @@
     </div>
     <div class="section-list">
       {#each sections as section}
-        <a href={section.href}
+        <a href={section.href} use:containedSectionNavigation
           ><span>{section.marker}</span>{$translation(section.label)}</a
         >
       {/each}

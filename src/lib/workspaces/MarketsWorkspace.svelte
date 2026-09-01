@@ -2,6 +2,7 @@
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import { notify, type RecoveryProposal } from "../notifications/service";
   import {
     clearMarketSelection,
@@ -677,19 +678,19 @@
       </div>
     </div>
     <div class="section-list">
-      <a href="#markets-pulse"
+      <a href="#markets-pulse" use:containedSectionNavigation
         ><span>01</span>{$translation("markets-section-pulse")}</a
       >
-      <a href="#markets-trade"
+      <a href="#markets-trade" use:containedSectionNavigation
         ><span>02</span>{$translation("markets-section-trade")}</a
       >
-      <a href="#markets-prices"
+      <a href="#markets-prices" use:containedSectionNavigation
         ><span>03</span>{$translation("markets-section-prices")}</a
       >
-      <a href="#markets-cities"
+      <a href="#markets-cities" use:containedSectionNavigation
         ><span>04</span>{$translation("markets-section-cities")}</a
       >
-      <a href="#markets-labs"
+      <a href="#markets-labs" use:containedSectionNavigation
         ><span>05</span>{$translation("markets-section-labs")}</a
       >
     </div>

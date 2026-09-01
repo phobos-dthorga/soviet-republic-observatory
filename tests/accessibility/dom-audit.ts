@@ -50,6 +50,19 @@ export function auditInterfaceDom(): InterfaceAuditFailure[] {
     });
   }
 
+  const rootScrollTop = Math.max(
+    window.scrollY,
+    document.documentElement.scrollTop,
+    document.body.scrollTop,
+  );
+  if (rootScrollTop > tolerance) {
+    result.push({
+      kind: "root-document-scroll",
+      selector: "html",
+      detail: `the application shell moved ${rootScrollTop.toFixed(1)}px above the viewport`,
+    });
+  }
+
   for (const element of document.querySelectorAll(
     ".shell, .command-bar, .observation-bar, .workspace, .status-bar, [role='dialog']",
   )) {

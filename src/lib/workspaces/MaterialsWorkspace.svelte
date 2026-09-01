@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import ProductionRouteLaboratory from "./ProductionRouteLaboratory.svelte";
   import {
@@ -417,16 +418,16 @@
       </div>
     </div>
     <div class="section-list">
-      <a href="#material-flow-laboratory"
+      <a href="#material-flow-laboratory" use:containedSectionNavigation
         ><span>01</span>{$translation("catalogue-flow-laboratory")}</a
       >
-      <a href="#catalogue-browser"
+      <a href="#catalogue-browser" use:containedSectionNavigation
         ><span>02</span>{$translation("catalogue-browser")}</a
       >
-      <a href="#definition-dossier"
+      <a href="#definition-dossier" use:containedSectionNavigation
         ><span>03</span>{$translation("catalogue-dossier")}</a
       >
-      <a href="#overlay-laboratory"
+      <a href="#overlay-laboratory" use:containedSectionNavigation
         ><span>04</span>{$translation("catalogue-overlays")}</a
       >
     </div>

@@ -7,6 +7,7 @@
   } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
   import type { TranslationKey } from "../i18n/catalog";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import { notify } from "../notifications/service";
   import {
     activateRepublicPlan,
@@ -399,16 +400,16 @@
       </div>
     </div>
     <div class="section-list">
-      <a href="#plan-status"
+      <a href="#plan-status" use:containedSectionNavigation
         ><span>01</span>{$translation("plan-section-status")}</a
       >
-      <a href="#plan-trajectory"
+      <a href="#plan-trajectory" use:containedSectionNavigation
         ><span>02</span>{$translation("plan-section-trajectory")}</a
       >
-      <a href="#plan-editor"
+      <a href="#plan-editor" use:containedSectionNavigation
         ><span>03</span>{$translation("plan-section-editor")}</a
       >
-      <a href="#plan-revisions"
+      <a href="#plan-revisions" use:containedSectionNavigation
         ><span>04</span>{$translation("plan-section-revisions")}</a
       >
     </div>

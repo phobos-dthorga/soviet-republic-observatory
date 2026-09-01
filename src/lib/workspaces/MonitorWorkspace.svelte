@@ -9,6 +9,7 @@
   import { formatDate, formatNumber } from "../i18n/format";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import type {
@@ -187,7 +188,7 @@
 
     <div class="section-list">
       {#each sections as section}
-        <a href={section.href}
+        <a href={section.href} use:containedSectionNavigation
           ><span>{section.marker}</span>{$translation(section.label)}</a
         >
       {/each}

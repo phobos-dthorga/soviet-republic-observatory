@@ -7,6 +7,7 @@
     formatSignedNumber,
   } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import type {
     BriefFinding,
     BriefMetric,
@@ -286,7 +287,7 @@
 
     <div class="section-list">
       {#each sections as section}
-        <a href={section.href}
+        <a href={section.href} use:containedSectionNavigation
           ><span>{section.marker}</span>{$translation(section.label)}</a
         >
       {/each}

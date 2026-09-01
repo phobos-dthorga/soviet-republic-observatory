@@ -117,7 +117,7 @@ export async function runNativeReview(
   await runController(client, "selectScenario", "native-dropdown");
   const nativeSelect = await client.$("select:not(:disabled)");
   await nativeSelect.waitForDisplayed();
-  await nativeSelect.scrollIntoView({ block: "center", inline: "center" });
+  await scrollWithinInterface(client, "select:not(:disabled)");
   await nativeSelect.click();
   await client.keys(["ArrowDown", "Enter", "Tab"]);
   const focusVisible = await client.execute(() => {
@@ -132,12 +132,43 @@ async function prepareInteractiveScenario(
   client: WebdriverIO.Browser,
   scenario: UiReviewScenarioId,
 ): Promise<void> {
-  if (scenario === "tooltip-contextual") {
+  if (scenario === "workspace-briefing") {
+    const sectionLink = await client.$(".workspace .section-list a:last-child");
+    await sectionLink.waitForDisplayed();
+    await sectionLink.click();
+    const shellPosition = await client.execute(() => ({
+      rootScroll: Math.max(
+        window.scrollY,
+        document.documentElement.scrollTop,
+        document.body.scrollTop,
+      ),
+      commandTop:
+        document
+          .querySelector<HTMLElement>(".command-bar")
+          ?.getBoundingClientRect().top ?? -1,
+      saveTop:
+        document
+          .querySelector<HTMLElement>(".observation-bar")
+          ?.getBoundingClientRect().top ?? -1,
+    }));
+    if (
+      shellPosition.rootScroll !== 0 ||
+      shellPosition.commandTop !== 0 ||
+      shellPosition.saveTop < 69
+    ) {
+      throw new Error(
+        "A workspace section link moved the global navigation bars off-screen.",
+      );
+    }
+  } else if (scenario === "tooltip-contextual") {
     const trigger = await client.$(
       "[data-help-topic='metric-context-source-stats-citizens-adults'] button",
     );
     await trigger.waitForDisplayed();
-    await trigger.scrollIntoView({ block: "center", inline: "center" });
+    await scrollWithinInterface(
+      client,
+      "[data-help-topic='metric-context-source-stats-citizens-adults'] button",
+    );
     await trigger.click();
     const tooltip = await client.$("[role='tooltip']");
     await tooltip.waitForDisplayed();
@@ -155,7 +186,7 @@ async function prepareInteractiveScenario(
   } else if (scenario === "native-dropdown") {
     const nativeSelect = await client.$("select:not(:disabled)");
     await nativeSelect.waitForDisplayed();
-    await nativeSelect.scrollIntoView({ block: "center", inline: "center" });
+    await scrollWithinInterface(client, "select:not(:disabled)");
     await nativeSelect.click();
     await client.keys(["ArrowDown", "Enter"]);
   } else if (scenario === "attention-cue") {
@@ -169,23 +200,42 @@ async function prepareInteractiveScenario(
   } else if (scenario === "production-pathway") {
     const pathway = await client.$(".pathway-laboratory");
     await pathway.waitForDisplayed();
-    await pathway.scrollIntoView({ block: "start", inline: "nearest" });
-    await client.execute(() => {
-      const element = document.querySelector<HTMLElement>(
-        ".pathway-laboratory",
-      );
-      const canvas = element?.closest<HTMLElement>(".canvas");
-      if (!element || !canvas) return;
-      canvas.scrollTo({
-        top:
-          element.getBoundingClientRect().top -
-          canvas.getBoundingClientRect().top +
-          canvas.scrollTop,
-        left: 0,
-        behavior: "instant",
-      });
-    });
+    await scrollWithinInterface(client, ".pathway-laboratory");
   }
+}
+
+async function scrollWithinInterface(
+  client: WebdriverIO.Browser,
+  selector: string,
+): Promise<void> {
+  await client.execute((requestedSelector) => {
+    const element = document.querySelector<HTMLElement>(requestedSelector);
+    if (!element) return;
+
+    let container = element.parentElement;
+    while (container && container !== document.body) {
+      const style = getComputedStyle(container);
+      const scrollable =
+        /(auto|scroll)/.test(style.overflowY) &&
+        container.scrollHeight > container.clientHeight;
+      if (scrollable) break;
+      container = container.parentElement;
+    }
+    if (!container || container === document.body) return;
+
+    const elementBox = element.getBoundingClientRect();
+    const containerBox = container.getBoundingClientRect();
+    const centredTop =
+      container.scrollTop +
+      elementBox.top -
+      containerBox.top -
+      (container.clientHeight - elementBox.height) / 2;
+    container.scrollTo({
+      top: Math.max(0, centredTop),
+      left: 0,
+      behavior: "instant",
+    });
+  }, selector);
 }
 
 async function proveAuditorRejectsCollapsedGuidance(

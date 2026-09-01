@@ -3,6 +3,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import ReceiverEvidence from "../observations/ReceiverEvidence.svelte";
   import type {
     PublishedMetricContext,
@@ -109,7 +110,7 @@
     </div>
     <div class="section-list">
       {#each sections as section}
-        <a href={section.href}
+        <a href={section.href} use:containedSectionNavigation
           ><span>{section.marker}</span>{$translation(section.label)}</a
         >
       {/each}
@@ -256,10 +257,12 @@
               : $translation("broadcast-bulletin-unavailable-body")}
           </p>
           <div class="dispatch-links">
-            <a href="#receivers"
+            <a href="#receivers" use:containedSectionNavigation
               >{$translation("broadcast-receiver-evidence")}</a
             >
-            <a href="#outcomes">{$translation("broadcast-outcome-caveats")}</a>
+            <a href="#outcomes" use:containedSectionNavigation
+              >{$translation("broadcast-outcome-caveats")}</a
+            >
           </div>
         </div>
       </div>

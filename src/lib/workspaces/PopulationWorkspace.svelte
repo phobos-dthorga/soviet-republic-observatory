@@ -6,6 +6,7 @@
   import MetricContextHelp from "../ui/MetricContextHelp.svelte";
   import { formatNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import type {
     PopulationDataset,
     PublishedMetricContext,
@@ -216,16 +217,16 @@
     </div>
 
     <div class="section-list">
-      <a href="#population-status"
+      <a href="#population-status" use:containedSectionNavigation
         ><span>01</span>{$translation("population-section-status")}</a
       >
-      <a href="#population-movement"
+      <a href="#population-movement" use:containedSectionNavigation
         ><span>02</span>{$translation("population-section-movement")}</a
       >
-      <a href="#population-cities"
+      <a href="#population-cities" use:containedSectionNavigation
         ><span>03</span>{$translation("population-section-cities")}</a
       >
-      <a href="#population-identity"
+      <a href="#population-identity" use:containedSectionNavigation
         ><span>04</span>{$translation("population-section-lives")}</a
       >
     </div>
