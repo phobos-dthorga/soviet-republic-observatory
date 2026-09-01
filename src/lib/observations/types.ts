@@ -913,6 +913,7 @@ export type DiagnosticLogView = {
 
 export type CatalogueSearchFilter = {
   query?: string;
+  output_resource_id?: string;
   entity_kind?: "resource" | "building" | "vehicle" | "recipe";
   source_kind?: string;
   package_query?: string;

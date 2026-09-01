@@ -946,7 +946,7 @@
       </section>
     {/if}
 
-    {#if !desktopAvailable}
+    {#if !desktopAvailable && !workspace}
       <section class="archive-empty-state">
         <span class="eyebrow">{$translation("archive-desktop-required")}</span>
         <h3>{$translation("markets-desktop-required")}</h3>

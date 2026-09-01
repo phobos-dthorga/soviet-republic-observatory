@@ -735,6 +735,7 @@
         openWorkspace("broadcast");
         broadcastWorkspace = reviewBroadcastWorkspace("ready");
         broadcastOutcome = reviewBroadcastOutcome();
+        marketWorkspace = reviewMarketWorkspace("ready");
         receiverDataset = broadcastWorkspace.receiver;
         break;
       case "broadcast-indexing":

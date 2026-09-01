@@ -55,9 +55,9 @@ questions:
 - **Advanced Visual Grammar** — specialist forms such as Sankey are admitted
   only when they clarify a real planning relationship and include strict data,
   evidence, accessibility, and performance contracts.
-- **Broadcast Desk** — receiver adoption, audience research, programme
-  formulation, influence assays, intervention notes, and a deterministic
-  Evening Bulletin.
+- **Broadcast Desk** — save-backed receiver uptake, exploratory citizen-status
+  comparisons, electronics-economy links, honest audience/programme limits,
+  and a deterministic Evening Bulletin.
 - **Community Extensions** — inert Analysis Packs over normalised metrics first,
   with isolated executable models deferred until a demonstrated need and
   security review.

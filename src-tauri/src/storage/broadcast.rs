@@ -18,6 +18,13 @@ pub(crate) struct BroadcastPersistenceStats {
     pub records_reused: u32,
 }
 
+#[derive(Debug, Default)]
+struct LoadedStatusHistory {
+    coverage: Option<CoverageReport>,
+    points: Vec<CitizenStatusPoint>,
+    projection: Option<BroadcastWarehouseProjection>,
+}
+
 pub(crate) fn persist_citizen_status_data(
     transaction: &Transaction<'_>,
     storage_key: &str,
@@ -125,13 +132,12 @@ impl ObservatoryStorage {
             .branch_id
             .clone_from(&analysis_context.selected_branch_id);
         receiver.analysis_context_id = Some(analysis_context.context_id.clone());
-        let (status_coverage, citizen_status_points, _) =
-            load_status_history(&connection, interpretation_id, &receiver)?;
+        let status_history = load_status_history(&connection, interpretation_id, &receiver)?;
         Ok(BroadcastEvidenceDataset {
             analysis_context,
             receiver: Some(receiver),
-            status_coverage,
-            citizen_status_points,
+            status_coverage: status_history.coverage,
+            citizen_status_points: status_history.points,
         })
     }
 
@@ -141,8 +147,7 @@ impl ObservatoryStorage {
     ) -> Result<Option<BroadcastWarehouseProjection>, ObservatoryError> {
         let connection = self.connect()?;
         let receiver = self.load_dataset_with_connection(&connection, interpretation_id)?;
-        let (_, _, projection) = load_status_history(&connection, interpretation_id, &receiver)?;
-        Ok(projection)
+        Ok(load_status_history(&connection, interpretation_id, &receiver)?.projection)
     }
 
     pub(crate) fn cached_broadcast_variant_count(
@@ -152,13 +157,14 @@ impl ObservatoryStorage {
     ) -> Result<Option<u32>, ObservatoryError> {
         self.connect()?
             .query_row(
-                "SELECT coverage.stored_records\
-                 FROM observation_sources source\
-                 JOIN broadcast_status_observation_coverage coverage\
-                   ON coverage.payload_hash = source.payload_hash\
-                 WHERE source.raw_payload_hash = ?1 AND source.resolved_profile_hash = ?2\
-                   AND coverage.storage_contract_version = ?3\
-                 LIMIT 1",
+                r#"SELECT coverage.stored_records
+                   FROM observation_sources source
+                   JOIN broadcast_status_observation_coverage coverage
+                     ON coverage.payload_hash = source.payload_hash
+                  WHERE source.raw_payload_hash = ?1
+                    AND source.resolved_profile_hash = ?2
+                    AND coverage.storage_contract_version = ?3
+                  LIMIT 1"#,
                 params![
                     raw_payload_hash,
                     resolved_profile_hash,
@@ -175,14 +181,7 @@ fn load_status_history(
     connection: &Connection,
     interpretation_id: &str,
     receiver: &crate::model::ReceiverDataset,
-) -> Result<
-    (
-        Option<CoverageReport>,
-        Vec<CitizenStatusPoint>,
-        Option<BroadcastWarehouseProjection>,
-    ),
-    ObservatoryError,
-> {
+) -> Result<LoadedStatusHistory, ObservatoryError> {
     let source = connection
         .query_row(
             r#"SELECT source.payload_hash, source.raw_payload_hash, source.branch_id,
@@ -217,7 +216,7 @@ fn load_status_history(
         .optional()?
         .ok_or(ObservatoryError::UnknownObservation)?;
     let Some(contract_version) = source.7 else {
-        return Ok((None, Vec::new(), None));
+        return Ok(LoadedStatusHistory::default());
     };
     if contract_version != BROADCAST_STATUS_STORAGE_CONTRACT_VERSION {
         return Err(ObservatoryError::StorageContractViolation);
@@ -357,7 +356,11 @@ fn load_status_history(
         records: warehouse_records,
         facts: warehouse_facts,
     };
-    Ok((Some(coverage), points, Some(projection)))
+    Ok(LoadedStatusHistory {
+        coverage: Some(coverage),
+        points,
+        projection: Some(projection),
+    })
 }
 
 fn citizen_status_record_hash(record: &crate::model::CitizenStatusRecord) -> String {

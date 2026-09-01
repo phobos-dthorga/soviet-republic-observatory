@@ -217,29 +217,7 @@ export function destinationsForSubject(
         ),
       ];
     case "resource":
-      return [
-        withRelationship(
-          workspaceDestination("markets", "markets-trade", {
-            resourceToken: subject.resourceToken,
-            currency: subject.currency,
-            channel: subject.channel,
-          }),
-          "details",
-        ),
-        withRelationship(
-          workspaceDestination("markets", "markets-prices", {
-            resourceToken: subject.resourceToken,
-            currency: subject.currency,
-          }),
-          "history",
-        ),
-        withRelationship(
-          workspaceDestination("materials", "definition-dossier", {
-            catalogueEntityId: subject.resourceToken,
-          }),
-          "source",
-        ),
-      ];
+      return resourceDestinations(subject);
     case "city":
       return [
         workspaceDestination("population", "population-cities", {
@@ -272,6 +250,114 @@ export function destinationsForSubject(
         ),
       ];
   }
+}
+
+function resourceDestinations(
+  subject: Extract<RelatedDataSubject, { kind: "resource" }>,
+): RelatedDataDestination[] {
+  const sourceToken = sourceResourceToken(subject.resourceToken);
+  const definitionId = definitionResourceId(sourceToken);
+  const destinations = [
+    withRelationship(
+      workspaceDestination("markets", "markets-trade", {
+        resourceToken: sourceToken,
+        currency: subject.currency,
+        channel: subject.channel,
+      }),
+      "details",
+    ),
+    withRelationship(
+      workspaceDestination("markets", "markets-prices", {
+        resourceToken: sourceToken,
+        currency: subject.currency,
+      }),
+      "history",
+    ),
+    withRelationship(
+      workspaceDestination("materials", "material-flow-laboratory", {
+        resourceToken: definitionId,
+      }),
+      "source",
+    ),
+  ];
+  if (isElectronicsEconomyResource(sourceToken)) {
+    destinations.push(
+      withRelationship(
+        workspaceDestination("broadcast", "receivers", {
+          metricId: "core.citizens.electronics.classified_total",
+        }),
+        "history",
+      ),
+    );
+  }
+  return destinations;
+}
+
+export function electronicsEconomyDestinations(
+  resourceToken: "eletronics" | "ecomponents",
+): RelatedDataDestination[] {
+  const sourceToken = sourceResourceToken(resourceToken);
+  const tradeLabels = {
+    rub: {
+      standard: "related-nav-market-trade-rub-standard",
+      international: "related-nav-market-trade-rub-international",
+    },
+    usd: {
+      standard: "related-nav-market-trade-usd-standard",
+      international: "related-nav-market-trade-usd-international",
+    },
+  } as const satisfies Record<
+    "rub" | "usd",
+    Record<"standard" | "international", TranslationKey>
+  >;
+  const priceLabels = {
+    rub: "related-nav-market-price-rub",
+    usd: "related-nav-market-price-usd",
+  } as const satisfies Record<"rub" | "usd", TranslationKey>;
+  const tradeChoices = (["rub", "usd"] as const).flatMap((currency) =>
+    (["standard", "international"] as const).map((channel) => ({
+      ...workspaceDestination("markets", "markets-trade", {
+        resourceToken: sourceToken,
+        currency,
+        channel,
+      }),
+      labelKey: tradeLabels[currency][channel],
+      relationship: "details" as const,
+    })),
+  );
+  const priceChoices = (["rub", "usd"] as const).map((currency) => ({
+    ...workspaceDestination("markets", "markets-prices", {
+      resourceToken: sourceToken,
+      currency,
+    }),
+    labelKey: priceLabels[currency],
+    relationship: "history" as const,
+  }));
+  return [
+    ...tradeChoices,
+    ...priceChoices,
+    {
+      ...workspaceDestination("materials", "material-flow-laboratory", {
+        resourceToken: definitionResourceId(sourceToken),
+      }),
+      labelKey: "related-nav-production-routes",
+      relationship: "source",
+    },
+  ];
+}
+
+function sourceResourceToken(value: string): string {
+  return value.startsWith("resource::")
+    ? value.slice("resource::".length)
+    : value;
+}
+
+function definitionResourceId(value: string): string {
+  return `resource::${sourceResourceToken(value)}`;
+}
+
+function isElectronicsEconomyResource(value: string): boolean {
+  return value === "eletronics" || value === "ecomponents";
 }
 
 function exactWorkspaceDestination(

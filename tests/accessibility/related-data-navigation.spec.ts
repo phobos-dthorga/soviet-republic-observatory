@@ -47,7 +47,46 @@ test("clickable chart marks have the same action in the chart data table", async
   const action = chart.locator(".chart-data-ledger .table-link").first();
   await expect(action).toBeVisible();
   await action.click();
+  const chooser = page.getByRole("dialog", { name: "Choose what to open" });
+  await expect(chooser).toBeVisible();
+  await chooser.getByRole("button", { name: /Archive/ }).click();
   await expect(page.locator(".related-breadcrumb")).toBeVisible();
+});
+
+test("Broadcast electronics links preserve explicit market choices and Back", async ({
+  page,
+}) => {
+  await openFixture(page, "workspace-broadcast");
+  const origin = page.getByRole("button", { name: "Electronics", exact: true });
+  await origin.click();
+  const chooser = page.getByRole("dialog", { name: "Choose what to open" });
+  await expect(chooser.getByRole("button")).toHaveCount(8);
+  await chooser.getByRole("button", { name: /RUB standard trade/ }).click();
+
+  await expect(
+    page.getByRole("navigation").getByRole("button", { name: "Markets" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByLabel("Filter resource tokens")).toHaveValue(
+    "eletronics",
+  );
+
+  await page.keyboard.press("Alt+ArrowLeft");
+  await expect(origin).toBeFocused();
+});
+
+test("electronics market rows link back to receiver uptake", async ({
+  page,
+}) => {
+  await openFixture(page, "workspace-markets");
+  const rowLink = page.getByRole("button", { name: "eletronics" }).first();
+  await rowLink.click();
+  const chooser = page.getByRole("dialog", { name: "Choose what to open" });
+  await chooser.getByRole("button", { name: /Broadcast/ }).click();
+
+  await expect(
+    page.getByRole("navigation").getByRole("button", { name: "Broadcast" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#receivers")).toBeVisible();
 });
 
 async function openFixture(page: Page, scenario: string): Promise<void> {

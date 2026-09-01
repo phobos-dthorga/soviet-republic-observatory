@@ -534,6 +534,7 @@
           null}
         overlayProfileName={status?.active_overlay?.display_name ?? null}
         overlayRevision={status?.active_overlay?.active_revision ?? null}
+        requestedResourceToken={location.filters.resourceToken}
         {onlocationchange}
         {onrelatednavigate}
         {reviewRoute}

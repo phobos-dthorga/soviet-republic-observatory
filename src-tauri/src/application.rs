@@ -2429,10 +2429,10 @@ mod tests {
         application.setup_state().expect("setup state");
         let status = application.catalogue_status().expect("catalogue status");
 
-        // This guards against waiting on the held DuckDB writer lock. A one-second
-        // ceiling remains far below a blocked writer while tolerating parallel
-        // filesystem-heavy tests on slower Windows hosts.
-        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+        // This guards against waiting on the held DuckDB writer lock. Three seconds
+        // remains below the five-second SQLite safety wait while tolerating the
+        // release suite's parallel filesystem-heavy tests on slower Windows hosts.
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
         assert_eq!(status.warehouse.phase, WarehousePhase::Lagging);
     }
 

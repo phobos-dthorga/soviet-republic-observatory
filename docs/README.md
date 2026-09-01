@@ -32,6 +32,9 @@ an engineering requirement.
 - [TesmioLoader reverse-engineering assessment](research/tesmioloader-reverse-engineering.md)
   — live instrumentation, binary-serializer research, upstream citizen-field
   candidates, safety boundaries, and the proposed read-only research bridge
+- [Broadcast telemetry research findings](research/broadcast-telemetry-findings.md)
+  — positive and negative station-field findings, experiment protocol, and the
+  promotion gate for audience and programme data
 - [Legal and third-party notices](legal-and-third-party-notices.md) — project
   independence, local data, licensing, read-only native risk, and evidence limits
 - [Dependency decisions](dependencies.md) — current libraries, licences, and

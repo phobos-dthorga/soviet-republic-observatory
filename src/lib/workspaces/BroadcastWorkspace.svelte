@@ -7,6 +7,9 @@
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import {
     defaultWorkspaceLocation,
+    destinationsForSubject,
+    electronicsEconomyDestinations,
+    type ChartNavigationBinding,
     type RelatedDataDestination,
     type WorkspaceFilters,
     type WorkspaceLocation,
@@ -80,6 +83,16 @@
     "core.citizens.electronics.computer",
   ];
   const lags = [0, 1, 2, 4, 8] as const;
+  const electronicsResources = [
+    {
+      token: "eletronics" as const,
+      label: "broadcast-related-electronics" as const,
+    },
+    {
+      token: "ecomponents" as const,
+      label: "broadcast-related-electronic-components" as const,
+    },
+  ];
   let selectedStation = $state<(typeof stationIds)[number]>("radio");
   let selectedReceiverMetric = $state(receiverMetricIds[1]);
   let selectedStatusMetric = $state("core.citizens.status.happiness");
@@ -96,10 +109,12 @@
   );
   const receiverNavigation = $derived(
     receiverDataset && receiverLadder
-      ? exactObservationChartBindings(
-          receiverLadder,
-          receiverDataset.points,
-          defaultWorkspaceLocation("broadcast"),
+      ? expandExactNavigation(
+          exactObservationChartBindings(
+            receiverLadder,
+            receiverDataset.points,
+            defaultWorkspaceLocation("broadcast"),
+          ),
         )
       : [],
   );
@@ -125,16 +140,18 @@
   );
   const outcomeNavigation = $derived(
     localOutcome && outcomeChart
-      ? exactObservationChartBindings(
-          outcomeChart,
-          localOutcome.pairs.map((pair) => ({
-            game_day: pair.status_game_day,
-            exact_observation: pair.exact_observation,
-          })),
-          {
-            ...defaultWorkspaceLocation("broadcast"),
-            section: "outcomes",
-          },
+      ? expandExactNavigation(
+          exactObservationChartBindings(
+            outcomeChart,
+            localOutcome.pairs.map((pair) => ({
+              game_day: pair.status_game_day,
+              exact_observation: pair.exact_observation,
+            })),
+            {
+              ...defaultWorkspaceLocation("broadcast"),
+              section: "outcomes",
+            },
+          ),
         )
       : [],
   );
@@ -184,6 +201,33 @@
   function selectStation(stationId: (typeof stationIds)[number]): void {
     selectedStation = stationId;
     onlocationchange?.({ stationId });
+  }
+
+  function expandExactNavigation(
+    bindings: ChartNavigationBinding[],
+  ): ChartNavigationBinding[] {
+    return bindings.map((binding) => {
+      const reference = binding.destinations[0]?.exactObservation;
+      if (!reference) return binding;
+      return {
+        ...binding,
+        destinations: destinationsForSubject({
+          kind: "observation",
+          reference,
+        }).filter(
+          (destination) =>
+            destination.location.workspace === "broadcast" ||
+            destination.location.workspace === "archive",
+        ),
+      };
+    });
+  }
+
+  function openElectronicsContext(
+    resourceToken: "eletronics" | "ecomponents",
+    origin: HTMLElement,
+  ): void {
+    onrelatednavigate?.(electronicsEconomyDestinations(resourceToken), origin);
   }
 
   function stationName(station: (typeof stationIds)[number]): string {
@@ -360,6 +404,25 @@
           {onrelatednavigate}
         />
         <ReceiverEvidence dataset={receiverDataset} />
+        <GuidanceSurface kind="help" layout="block" class="related-economy">
+          <div>
+            <strong>{$translation("broadcast-related-economy-title")}</strong>
+            <span>{$translation("broadcast-related-economy-detail")}</span>
+            <small>{$translation("broadcast-related-economy-boundary")}</small>
+          </div>
+          <div class="related-economy-actions">
+            {#each electronicsResources as resource}
+              <button
+                id={`broadcast-related-${resource.token}`}
+                type="button"
+                class="related-data-link"
+                onclick={(event) =>
+                  openElectronicsContext(resource.token, event.currentTarget)}
+                >{$translation(resource.label)}</button
+              >
+            {/each}
+          </div>
+        </GuidanceSurface>
       {:else}
         <GuidanceSurface kind="help" layout="block">
           <strong>{$translation("broadcast-no-receiver-title")}</strong>
@@ -855,12 +918,37 @@
     margin: 10px 0;
   }
 
+  :global(.related-economy) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    margin-top: 8px;
+  }
+
+  :global(.related-economy > div:first-child) {
+    display: grid;
+    gap: 4px;
+  }
+
+  :global(.related-economy small) {
+    color: var(--colour-muted);
+  }
+
+  .related-economy-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   @media (max-width: 1180px) {
     .pulse-grid,
     .outcome-summary {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .index-panel,
+    :global(.related-economy),
     .outcome-controls {
       grid-template-columns: 1fr 1fr;
     }
@@ -872,8 +960,13 @@
     .station-requirements,
     .boundary-grid,
     .index-panel,
+    :global(.related-economy),
     .outcome-controls {
       grid-template-columns: 1fr;
+    }
+
+    .related-economy-actions {
+      justify-content: flex-start;
     }
   }
 </style>

@@ -83,6 +83,19 @@ struct MarketCollector {
     warnings: BTreeMap<String, u32>,
 }
 
+#[derive(Debug, Default)]
+struct RecordCollector {
+    records: Vec<ReceiverRecord>,
+    warnings: BTreeMap<String, u32>,
+    history_records: u32,
+    dropped_records: u32,
+    chartable_records: u32,
+    citizen_status_records: Vec<CitizenStatusRecord>,
+    citizen_status_warnings: BTreeMap<String, u32>,
+    citizen_status_history_records: u32,
+    citizen_status_dropped_records: u32,
+}
+
 impl SnapshotDraft {
     fn republic() -> Self {
         Self {
@@ -132,22 +145,14 @@ pub fn parse_stats<R: BufRead>(
     let mut line_buffer = Vec::new();
     let mut current: Option<RecordDraft> = None;
     let mut current_snapshot: Option<SnapshotDraft> = None;
-    let mut records = Vec::new();
+    let mut record_collector = RecordCollector::default();
     let mut snapshots = Vec::new();
     let mut seen_city_ids = HashSet::new();
-    let mut warnings = BTreeMap::<String, u32>::new();
     let mut seen_record_ids = HashSet::new();
     let mut last_record_id = None;
-    let mut history_records = 0_u32;
-    let mut dropped_records = 0_u32;
-    let mut chartable_records = 0_u32;
     let mut market = MarketCollector::default();
     let mut active_market_block: Option<ActiveMarketBlock> = None;
     let status_enabled = profile.has_indexed_fields(StatsContext::History);
-    let mut citizen_status_records = Vec::new();
-    let mut citizen_status_warnings = BTreeMap::<String, u32>::new();
-    let mut citizen_status_history_records = 0_u32;
-    let mut citizen_status_dropped_records = 0_u32;
 
     loop {
         line_buffer.clear();
@@ -222,17 +227,9 @@ pub fn parse_stats<R: BufRead>(
             );
             finalise_record(
                 current.take(),
-                &mut records,
-                &mut market.records,
-                &mut warnings,
-                &mut history_records,
-                &mut dropped_records,
-                &mut chartable_records,
+                &mut record_collector,
+                &mut market,
                 status_enabled,
-                &mut citizen_status_records,
-                &mut citizen_status_warnings,
-                &mut citizen_status_history_records,
-                &mut citizen_status_dropped_records,
             )?;
             let record_id: u32 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedReceiverHistory("invalid record identifier"),
@@ -255,17 +252,9 @@ pub fn parse_stats<R: BufRead>(
         if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::CurrentState) {
             finalise_record(
                 current.take(),
-                &mut records,
-                &mut market.records,
-                &mut warnings,
-                &mut history_records,
-                &mut dropped_records,
-                &mut chartable_records,
+                &mut record_collector,
+                &mut market,
                 status_enabled,
-                &mut citizen_status_records,
-                &mut citizen_status_warnings,
-                &mut citizen_status_history_records,
-                &mut citizen_status_dropped_records,
             )?;
             finalise_snapshot(
                 profile,
@@ -280,17 +269,9 @@ pub fn parse_stats<R: BufRead>(
         if marker.is_some_and(|marker| marker.slot == StatsMarkerSlot::City) {
             finalise_record(
                 current.take(),
-                &mut records,
-                &mut market.records,
-                &mut warnings,
-                &mut history_records,
-                &mut dropped_records,
-                &mut chartable_records,
+                &mut record_collector,
+                &mut market,
                 status_enabled,
-                &mut citizen_status_records,
-                &mut citizen_status_warnings,
-                &mut citizen_status_history_records,
-                &mut citizen_status_dropped_records,
             )?;
             finalise_snapshot(
                 profile,
@@ -387,7 +368,7 @@ pub fn parse_stats<R: BufRead>(
                             if slot.is_some() {
                                 record.citizen_status_malformed = true;
                                 add_warning(
-                                    &mut citizen_status_warnings,
+                                    &mut record_collector.citizen_status_warnings,
                                     "duplicate_citizen_status_index",
                                 );
                             } else {
@@ -401,21 +382,21 @@ pub fn parse_stats<R: BufRead>(
                         Some((index, value)) if index > 8 || !value.is_finite() => {
                             record.citizen_status_malformed = true;
                             add_warning(
-                                &mut citizen_status_warnings,
+                                &mut record_collector.citizen_status_warnings,
                                 "invalid_citizen_status_value",
                             );
                         }
                         Some((_index, _value)) => {
                             record.citizen_status_malformed = true;
                             add_warning(
-                                &mut citizen_status_warnings,
+                                &mut record_collector.citizen_status_warnings,
                                 "out_of_range_citizen_status_value",
                             );
                         }
                         None => {
                             record.citizen_status_malformed = true;
                             add_warning(
-                                &mut citizen_status_warnings,
+                                &mut record_collector.citizen_status_warnings,
                                 "malformed_citizen_status_row",
                             );
                         }
@@ -460,20 +441,7 @@ pub fn parse_stats<R: BufRead>(
         }
     }
 
-    finalise_record(
-        current,
-        &mut records,
-        &mut market.records,
-        &mut warnings,
-        &mut history_records,
-        &mut dropped_records,
-        &mut chartable_records,
-        status_enabled,
-        &mut citizen_status_records,
-        &mut citizen_status_warnings,
-        &mut citizen_status_history_records,
-        &mut citizen_status_dropped_records,
-    )?;
+    finalise_record(current, &mut record_collector, &mut market, status_enabled)?;
     if active_market_block.is_some() {
         add_warning(&mut market.warnings, "unterminated_market_block");
     }
@@ -484,11 +452,12 @@ pub fn parse_stats<R: BufRead>(
         &mut market.snapshots,
     );
 
-    if records.is_empty() {
+    if record_collector.records.is_empty() {
         return Err(ObservatoryError::ReceiverHistoryUnavailable);
     }
 
-    let warnings = warnings
+    let warnings = record_collector
+        .warnings
         .into_iter()
         .map(|(code, count)| CoverageWarning { code, count })
         .collect::<Vec<_>>();
@@ -506,12 +475,12 @@ pub fn parse_stats<R: BufRead>(
 
     Ok(ParsedStats {
         payload_hash,
-        records,
+        records: record_collector.records,
         coverage: CoverageReport {
             status,
-            history_records,
-            chartable_records,
-            dropped_records,
+            history_records: record_collector.history_records,
+            chartable_records: record_collector.chartable_records,
+            dropped_records: record_collector.dropped_records,
             warnings,
         },
         snapshots,
@@ -528,10 +497,11 @@ pub fn parse_stats<R: BufRead>(
                 .collect(),
         },
         citizen_status: ParsedCitizenStatusData {
-            records: citizen_status_records,
-            history_records: citizen_status_history_records,
-            dropped_records: citizen_status_dropped_records,
-            warnings: citizen_status_warnings
+            records: record_collector.citizen_status_records,
+            history_records: record_collector.citizen_status_history_records,
+            dropped_records: record_collector.citizen_status_dropped_records,
+            warnings: record_collector
+                .citizen_status_warnings
                 .into_iter()
                 .map(|(code, count)| CoverageWarning { code, count })
                 .collect(),
@@ -837,30 +807,22 @@ fn finalise_snapshot(
 
 fn finalise_record(
     draft: Option<RecordDraft>,
-    records: &mut Vec<ReceiverRecord>,
-    market_records: &mut Vec<MarketHistoryRecord>,
-    warnings: &mut BTreeMap<String, u32>,
-    history_records: &mut u32,
-    dropped_records: &mut u32,
-    chartable_records: &mut u32,
+    collector: &mut RecordCollector,
+    market: &mut MarketCollector,
     status_enabled: bool,
-    citizen_status_records: &mut Vec<CitizenStatusRecord>,
-    citizen_status_warnings: &mut BTreeMap<String, u32>,
-    citizen_status_history_records: &mut u32,
-    citizen_status_dropped_records: &mut u32,
 ) -> Result<(), ObservatoryError> {
     let Some(draft) = draft else {
         return Ok(());
     };
-    *history_records += 1;
+    collector.history_records += 1;
 
     if status_enabled {
-        *citizen_status_history_records += 1;
+        collector.citizen_status_history_records += 1;
         finalise_citizen_status_record(
             &draft,
-            citizen_status_records,
-            citizen_status_warnings,
-            citizen_status_dropped_records,
+            &mut collector.citizen_status_records,
+            &mut collector.citizen_status_warnings,
+            &mut collector.citizen_status_dropped_records,
         );
     }
 
@@ -869,7 +831,7 @@ fn finalise_record(
         || !draft.market.scalars.is_empty())
         && let (Some(year), Some(day)) = (&draft.year, &draft.day)
     {
-        market_records.push(MarketHistoryRecord {
+        market.records.push(MarketHistoryRecord {
             record_id: draft.record_id,
             year: year.value,
             day: day.value,
@@ -879,8 +841,8 @@ fn finalise_record(
     }
 
     if draft.malformed {
-        add_warning(warnings, "malformed_record");
-        *dropped_records += 1;
+        add_warning(&mut collector.warnings, "malformed_record");
+        collector.dropped_records += 1;
         return Ok(());
     }
 
@@ -892,8 +854,8 @@ fn finalise_record(
         draft.television,
         draft.computer,
     ) else {
-        add_warning(warnings, "incomplete_record");
-        *dropped_records += 1;
+        add_warning(&mut collector.warnings, "incomplete_record");
+        collector.dropped_records += 1;
         return Ok(());
     };
 
@@ -903,18 +865,18 @@ fn finalise_record(
         .and_then(|value| value.checked_add(television.value))
         .and_then(|value| value.checked_add(computer.value));
     let Some(classified_total) = classified_total else {
-        add_warning(warnings, "classified_total_overflow");
-        *dropped_records += 1;
+        add_warning(&mut collector.warnings, "classified_total_overflow");
+        collector.dropped_records += 1;
         return Ok(());
     };
 
     if classified_total == 0 {
-        add_warning(warnings, "zero_classified_population");
+        add_warning(&mut collector.warnings, "zero_classified_population");
     } else {
-        *chartable_records += 1;
+        collector.chartable_records += 1;
     }
 
-    records.push(ReceiverRecord {
+    collector.records.push(ReceiverRecord {
         record_id: draft.record_id,
         year: year.value,
         day: day.value,

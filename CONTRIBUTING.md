@@ -180,6 +180,14 @@ Pull requests should explain the player question being improved, the provenance
 of any new field, the behaviour when that field is unavailable, and the tests
 or visual checks performed.
 
+Broadcast relationships must use stable source identities. Only the exact
+`eletronics` and `ecomponents` resources currently link receiver uptake with
+Markets and Materials. Preserve currency, trade channel, timeline, and selected
+save in every destination. Describe these as related economic context, never as
+evidence of cause. Do not add receiver links to age, education, city, household,
+or person views until a direct joined source and stable identity have passed the
+documented research gate.
+
 Recorder changes must keep folder events advisory and periodic reconciliation
 authoritative. The native service owns liveness; a Svelte timer, open dialog, or
 selected workspace must never be required to notice a save. Candidate lifecycle

@@ -48,6 +48,13 @@ export function productionResourceLabel(
       return boundedPlainText(t("production-resource-oil"), 100);
     case "resource::chemicals":
       return boundedPlainText(t("production-resource-chemicals"), 100);
+    case "resource::eletronics":
+      return boundedPlainText(t("production-resource-electronics"), 100);
+    case "resource::ecomponents":
+      return boundedPlainText(
+        t("production-resource-electronic-components"),
+        100,
+      );
     default:
       return boundedPlainText(fallback, 100);
   }

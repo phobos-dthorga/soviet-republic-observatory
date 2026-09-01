@@ -1845,6 +1845,16 @@ impl AnalyticalWarehouse {
         if query.len() > 120 {
             return Err(ObservatoryError::InvalidCatalogueRequest);
         }
+        let output_resource_id = filter.output_resource_id.as_deref().unwrap_or("");
+        if !output_resource_id.is_empty()
+            && (output_resource_id.len() > 160
+                || !output_resource_id.starts_with("resource::")
+                || !output_resource_id.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-' | '.')
+                }))
+        {
+            return Err(ObservatoryError::InvalidCatalogueRequest);
+        }
         let kind = filter.entity_kind.as_deref().unwrap_or("");
         if !kind.is_empty() && !matches!(kind, "resource" | "building" | "vehicle" | "recipe") {
             return Err(ObservatoryError::InvalidCatalogueRequest);
@@ -1890,7 +1900,12 @@ impl AnalyticalWarehouse {
                           AND EXISTS(SELECT 1 FROM definition_properties available_to \
                             WHERE available_to.revision_hash = revisions.revision_hash \
                               AND available_to.field_id = 'definition.available.to_year' \
-                              AND available_to.value_number >= ?6)))";
+                              AND available_to.value_number >= ?6))) \
+                      AND (?7 = '' OR EXISTS( \
+                          SELECT 1 FROM definition_relations output_relation \
+                           WHERE output_relation.revision_hash = revisions.revision_hash \
+                             AND output_relation.relation_kind = 'production_output' \
+                             AND output_relation.target_id = ?7))";
         let total = connection.query_row(
             &format!("SELECT COUNT(*){base}"),
             params![
@@ -1899,7 +1914,8 @@ impl AnalyticalWarehouse {
                 source_kind,
                 package_query,
                 coverage,
-                available_year
+                available_year,
+                output_resource_id
             ],
             |row| row.get::<_, u32>(0),
         )?;
@@ -1909,7 +1925,7 @@ impl AnalyticalWarehouse {
                     revisions.display_name, revisions.coverage, \
                     (SELECT COUNT(*) FROM definition_properties properties WHERE properties.revision_hash = revisions.revision_hash), \
                     (SELECT COUNT(*) FROM definition_relations relations WHERE relations.revision_hash = revisions.revision_hash) \
-             {base} ORDER BY revisions.display_name, membership.entity_id LIMIT ?7 OFFSET ?8"
+             {base} ORDER BY revisions.display_name, membership.entity_id LIMIT ?8 OFFSET ?9"
         ))?;
         let items = statement
             .query_map(
@@ -1920,6 +1936,7 @@ impl AnalyticalWarehouse {
                     package_query,
                     coverage,
                     available_year,
+                    output_resource_id,
                     limit,
                     offset
                 ],
@@ -4207,6 +4224,25 @@ mod tests {
             ],
         };
         assert!(warehouse.publish_catalogue(&generation).expect("publish"));
+
+        let chemical_routes = warehouse
+            .search(&CatalogueSearchFilter {
+                query: None,
+                output_resource_id: Some("resource::chemicals".to_owned()),
+                entity_kind: Some("recipe".to_owned()),
+                source_kind: None,
+                package_query: None,
+                coverage: None,
+                available_year: None,
+                limit: Some(10),
+                offset: None,
+            })
+            .expect("routes filtered by exact output resource");
+        assert_eq!(chemical_routes.total, 1);
+        assert_eq!(
+            chemical_routes.items[0].entity_id,
+            "base::recipe::chemical-plant"
+        );
 
         let route = warehouse
             .production_route(&ProductionRouteRequest {

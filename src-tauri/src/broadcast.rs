@@ -336,7 +336,7 @@ fn pearson(left: &[f64], right: &[f64]) -> Option<f64> {
 
 fn median(values: &[i64]) -> Option<f64> {
     let middle = values.len().checked_sub(1)? / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         Some((values[middle] as f64 + values[middle + 1] as f64) / 2.0)
     } else {
         Some(values[middle] as f64)

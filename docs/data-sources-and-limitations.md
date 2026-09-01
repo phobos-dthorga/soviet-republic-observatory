@@ -244,6 +244,13 @@ of 100 workers and 50 professors, and television capacity of 120 workers and 70
 professors. These are game-definition facts, not evidence of staffing in a
 particular republic.
 
+The Markets resource tokens `eletronics` and `ecomponents` are related to the
+receiver workspace only through their exact source identities. The interface
+uses the friendly labels **Electronics** and **Electronic components** while
+preserving the original tokens in source details. Links to Markets and
+production recipes are economic context only. They do not establish a cause of
+receiver uptake.
+
 ## Known limitations
 
 ### Production coverage
@@ -296,6 +303,11 @@ Broadcast station identity, intended influence, potential reach, current
 listeners or viewers, rating, recording budget, and actual staffing remain
 binary-research candidates. Synthetic interface values must never be presented
 as decoded telemetry.
+
+Receiver classes are aggregate republic counts. They cannot be joined to age,
+education, household, city, or individual citizen records. Demographic
+receiver drill-down remains unavailable until a direct person-level join and a
+stable identity pass the separate research gate.
 
 ### Optional live research telemetry
 

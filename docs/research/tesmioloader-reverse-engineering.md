@@ -173,6 +173,9 @@ publish only independently reproduced fields.
 
 ## Implemented bounded research bridge
 
+The current Broadcast-specific evidence register and promotion gate are kept in
+[Broadcast telemetry research findings](broadcast-telemetry-findings.md).
+
 The first bridge is now implemented as an optional, separately built
 **Observatory Research Probe**. It is not part of the normal desktop application
 and is not required to view any save-derived feature. No loader or DLL is

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { validateSankeySpec } from "../charts/sankey";
 import type { Translator } from "../i18n/runtime";
 import type { ProductionRouteModel } from "../observations/types";
-import { createProductionRouteChart } from "./productionRoute";
+import {
+  createProductionRouteChart,
+  productionResourceLabel,
+} from "./productionRoute";
 
 const t = ((key: string, values: Record<string, unknown> = {}) => {
   if (key === "production-route-unit-source-rate")
@@ -114,6 +117,15 @@ const route: ProductionRouteModel = {
 };
 
 describe("production route Sankey transformation", () => {
+  it("presents the exact electronics source tokens with player-friendly labels", () => {
+    expect(
+      productionResourceLabel("resource::eletronics", "eletronics", t),
+    ).toBe("production-resource-electronics");
+    expect(
+      productionResourceLabel("resource::ecomponents", "ecomponents", t),
+    ).toBe("production-resource-electronic-components");
+  });
+
   it("renders compatible definition coefficients as an open-boundary flow", () => {
     const chart = createProductionRouteChart(route, t, "en-AU");
 

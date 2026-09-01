@@ -41,3 +41,10 @@ shell. A failure preserves the source screen and context.
 - New destinations require registry, localisation, focus-target, context, and
   accessible-equivalent tests.
 - External operating-system links remain out of scope.
+
+For Broadcast, only the exact resource identities `eletronics` and
+`ecomponents` admit electronics-economy links. Currency and trade channel are
+explicit chooser options. Markets and Materials may link back to receiver
+uptake for those identities. These links state related context, never
+causation. Receiver-to-demographic navigation is forbidden until a direct join
+contract exists.

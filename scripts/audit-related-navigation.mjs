@@ -15,6 +15,14 @@ const analysisSchema = readFileSync(
   "utf8",
 );
 const appCss = readFileSync("src/app.css", "utf8");
+const broadcastWorkspace = readFileSync(
+  "src/lib/workspaces/BroadcastWorkspace.svelte",
+  "utf8",
+);
+const productionRoute = readFileSync(
+  "src/lib/workspaces/ProductionRouteLaboratory.svelte",
+  "utf8",
+);
 
 for (const token of [
   "http://",
@@ -62,6 +70,42 @@ if (!analysisSchema.includes('"additionalProperties": false')) {
   fail(
     "schemas/analysis-pack-v1.schema.json",
     "The Analysis Pack schema must continue to reject unknown fields.",
+  );
+}
+
+for (const required of [
+  'value === "eletronics"',
+  'value === "ecomponents"',
+  "electronicsEconomyDestinations",
+  'workspaceDestination("broadcast", "receivers"',
+]) {
+  if (!registry.includes(required)) {
+    fail(
+      registryPath,
+      `Electronics-economy navigation is missing '${required}'.`,
+    );
+  }
+}
+if (
+  registry
+    .match(/export function electronicsEconomyDestinations[\s\S]*?\n\}/)?.[0]
+    ?.includes('workspaceDestination("population"')
+) {
+  fail(
+    registryPath,
+    "Receiver ownership cannot link to demographics without a direct join.",
+  );
+}
+if (!broadcastWorkspace.includes("electronicsEconomyDestinations")) {
+  fail(
+    "src/lib/workspaces/BroadcastWorkspace.svelte",
+    "Broadcast must use the typed electronics-economy registry.",
+  );
+}
+if (!productionRoute.includes("output_resource_id: outputResourceId")) {
+  fail(
+    "src/lib/workspaces/ProductionRouteLaboratory.svelte",
+    "Related Materials navigation must filter recipes by exact output resource.",
   );
 }
 

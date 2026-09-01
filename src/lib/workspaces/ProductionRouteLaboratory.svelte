@@ -35,6 +35,7 @@
     generationId,
     overlayProfileName,
     overlayRevision,
+    requestedResourceToken,
     onlocationchange,
     onrelatednavigate,
     reviewRoute = null,
@@ -45,6 +46,7 @@
     generationId: string | null;
     overlayProfileName: string | null;
     overlayRevision: number | null;
+    requestedResourceToken?: string;
     onlocationchange?: (filters: WorkspaceFilters) => void;
     onrelatednavigate?: (
       destinations: RelatedDataDestination[],
@@ -65,6 +67,7 @@
   let error = $state(false);
   let loadedSnapshot = $state<string | null>(null);
   let requestSequence = 0;
+  let appliedResourceToken = "";
   const chart = $derived(
     route
       ? createProductionRouteChart(route, $translation, $activeLocale)
@@ -126,6 +129,28 @@
       void loadRecipes(snapshotIdentity);
     }
   });
+
+  $effect(() => {
+    const requested = requestedResourceToken ?? "";
+    const snapshotIdentity = currentSnapshotIdentity();
+    if (
+      !requested ||
+      requested === appliedResourceToken ||
+      !desktopAvailable ||
+      !gameConfigured ||
+      !snapshotIdentity
+    )
+      return;
+    appliedResourceToken = requested;
+    query = "";
+    void loadRecipes(snapshotIdentity, normaliseResourceId(requested));
+  });
+
+  function normaliseResourceId(resourceToken: string): string {
+    return resourceToken.startsWith("resource::")
+      ? resourceToken
+      : `resource::${resourceToken}`;
+  }
 
   function currentSnapshotIdentity(): string | null {
     return generationId
@@ -208,6 +233,7 @@
 
   async function loadRecipes(
     expectedSnapshot = currentSnapshotIdentity(),
+    outputResourceId?: string,
   ): Promise<void> {
     if (!desktopAvailable || !generationId || !expectedSnapshot) return;
     const request = ++requestSequence;
@@ -217,6 +243,7 @@
       const [page, nextCoverage] = await Promise.all([
         searchCatalogue({
           query: query || undefined,
+          output_resource_id: outputResourceId,
           entity_kind: "recipe",
           limit: 100,
         }),
@@ -228,8 +255,10 @@
       if (!recipes.some((item) => item.entity_id === selectedRouteId)) {
         selectedRouteId = recipes[0]?.entity_id ?? "";
       }
-      if (selectedRouteId) await loadRoute(false, expectedSnapshot);
-      else route = null;
+      if (selectedRouteId) {
+        selectedOutputId = outputResourceId ?? "";
+        await loadRoute(Boolean(outputResourceId), expectedSnapshot);
+      } else route = null;
     } catch {
       if (requestIsCurrent(request, expectedSnapshot)) error = true;
     } finally {

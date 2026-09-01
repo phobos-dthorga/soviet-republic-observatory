@@ -10,11 +10,11 @@ in the locally reviewed game version **1.1.1.9** and the official
 and [Citizens](https://wiki.hoodedhorse.com/Workers_Resources_Soviet_Republic/Citizens)
 references. Compatibility must be rechecked for later game versions.
 
-The desktop interface can now fill the Receiver Ladder with parsed save facts.
-Every other Broadcast panel states its missing source contract and remains
-unavailable; ordinary application mode does not substitute illustrative station,
-audience, programme, outcome, notebook, or bulletin values. The application does
-not claim that binary station telemetry has been decoded.
+The desktop interface now fills receiver uptake and nine citizen-status
+histories from parsed save facts. It can compare changes in those histories as
+an exploratory pattern. Potential audience, current audience, programme
+settings, station state, and demographic receiver ownership remain unavailable.
+Ordinary application mode never substitutes illustrative values for them.
 
 ## Implemented receiver slice
 
@@ -122,9 +122,22 @@ If \(C\) is missing, non-finite, or zero, all shares are unavailable. The view
 must not divide by total population unless a separately defined penetration
 metric calls for that denominator.
 
-Useful companions include adoption transitions between observations,
-radio-to-television substitution, cohort or city composition when supported,
-and receiver concentration.
+Useful companions include changes between confirmed saves and receiver
+composition. Age, education, and city splits remain hidden because the save
+does not join those groups to receiver ownership.
+
+### Related electronics economy
+
+The source resources `eletronics` and `ecomponents` are shown to players as
+**Electronics** and **Electronic components**. Their exact source spellings
+remain the storage and navigation identities. Receiver uptake links to
+currency- and channel-specific Markets histories and to exact production
+routes from the active game-definition catalogue. Those rows link back to
+receiver uptake.
+
+These links provide related context, not a causal model. Observatory never
+claims that a price, trade flow, or recipe caused receiver ownership to change.
+It does not merge currencies, channels, republic and city scopes, or timelines.
 
 ### Audience utilisation
 
@@ -155,12 +168,18 @@ Candidate measures include worker and professor fill rate, audience per staffed
 position, rating per recording-budget unit, and current-to-potential reach. All
 retain station type, date, staffing denominator, cost unit, and coverage.
 
-### Lagged outcomes
+### Outcome Laboratory
 
-Citizen-status trends can be aligned around a programme annotation with several
-candidate lags. The result is exploratory association. Confounding changes,
-autocorrelation, seasonality, save cadence, and multiple testing must be shown
-before stronger language is considered.
+The implemented comparison aligns first differences in a receiver-class share
+with first differences in one citizen-status history. Players choose a lag of
+0, 1, 2, 4, or 8 confirmed records. Observatory uses Spearman rank association
+only when at least 12 valid pairs exist and neither input is constant. It shows
+the pair count, date span, lag, and elapsed-day cadence.
+
+Records are matched by exact timeline and compatibility context. Missing
+records remain gaps; no nearest-date match or interpolation is allowed. The
+score is an exploratory association. It is never labelled a programme effect,
+and Observatory does not choose the strongest lag automatically.
 
 ### City exposure and concentration
 
@@ -188,7 +207,7 @@ Observatory explore schedules under player-selected objectives and guardrails.
 Optimisation remains a recommendation, includes uncertainty, and cannot claim
 to have discovered the game's hidden formula from correlation alone.
 
-## Broadcast Notebook
+## Future Broadcast Notebook
 
 The Notebook is an audit trail, not a free-form causal-story generator. A note
 contains:
@@ -209,10 +228,9 @@ an observation.
 The Bulletin is earnest with a wink and deterministic by construction. It:
 
 1. selects only eligible findings with explicit evidence and coverage;
-2. leads with the largest administratively meaningful receiver or audience
-   change;
-3. may name a programme annotation but uses “coincided with” rather than causal
-   language;
+2. leads with the largest supported receiver group or change;
+3. may report a selected exploratory pattern but never calls it a programme
+   effect;
 4. includes one material caveat when evidence is partial or experimental;
 5. links every sentence to its chart or note; and
 6. emits no story when the thresholds or evidence requirements are not met.

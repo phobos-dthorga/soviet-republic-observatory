@@ -726,7 +726,7 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
         .expect("request rebuild");
     let retry = storage.projection_queue_status().expect("retry health");
     assert_eq!(retry.failed_jobs, 0);
-    assert_eq!(retry.pending_jobs, 4);
+    assert_eq!(retry.pending_jobs, 5);
     assert!(retry.oldest_unresolved_at_ms.is_some());
     assert_eq!(
         storage
@@ -1160,7 +1160,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        19
+        21
     );
     assert_eq!(
         migrated
@@ -1192,6 +1192,15 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
     connection
         .execute("DELETE FROM schema_migrations WHERE version >= 16", [])
         .expect("remove current migration markers");
+    connection
+        .execute_batch(
+            "DROP TABLE broadcast_status_interpretation_variants;
+             DROP TABLE broadcast_status_observation_coverage;
+             DROP TABLE broadcast_status_observation_records;
+             DROP TABLE citizen_status_facts;
+             DROP TABLE citizen_status_records;",
+        )
+        .expect("restore version fifteen Broadcast schema");
     connection
         .execute(
             "ALTER TABLE research_setup_state DROP COLUMN tesmio_source_origin",
@@ -1260,7 +1269,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        19
+        21
     );
     assert_eq!(
         connection
@@ -1281,6 +1290,14 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
             [],
         )
         .expect("market projection after migration");
+    connection
+        .execute(
+            "INSERT INTO warehouse_projection_jobs(\
+                 projection_id, projection_kind, source_identity, status, requested_at_ms\
+             ) VALUES('broadcast:accepted', 'broadcast_observation', 'accepted', 'pending', 4)",
+            [],
+        )
+        .expect("Broadcast projection after migration");
 }
 
 #[test]

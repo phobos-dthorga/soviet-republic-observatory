@@ -2148,6 +2148,7 @@ pub struct DiagnosticLogView {
 #[derive(Clone, Debug, Deserialize)]
 pub struct CatalogueSearchFilter {
     pub query: Option<String>,
+    pub output_resource_id: Option<String>,
     pub entity_kind: Option<String>,
     pub source_kind: Option<String>,
     pub package_query: Option<String>,

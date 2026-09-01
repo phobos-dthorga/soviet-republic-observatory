@@ -253,6 +253,35 @@ A zero, missing, or non-finite denominator yields unavailable. The four shares
 may form a 100% stacked view only when all inputs share branch, observation
 date, and geographic scope.
 
+### Citizen-status history
+
+The reviewed profile publishes these indexed histories:
+
+- `core.citizens.status.happiness`
+- `core.citizens.status.food_satisfaction`
+- `core.citizens.status.health`
+- `core.citizens.status.government_loyalty`
+- `core.citizens.status.alcohol_addiction`
+- `core.citizens.status.culture_enjoyment`
+- `core.citizens.status.sports_enjoyment`
+- `core.citizens.status.religion_sympathy`
+- `core.citizens.status.clothing_quality`
+
+Each record requires exactly one finite value from 0 through 1 for source
+indices 0–8. An incomplete status record is excluded without discarding valid
+receiver or Markets evidence from the same save.
+
+### Exploratory receiver/status association
+
+For one receiver share and one citizen-status series, Observatory calculates
+first differences at a player-selected lag of 0, 1, 2, 4, or 8 confirmed
+records. It then calculates Spearman rank association over the aligned changes.
+At least 12 pairs and non-constant inputs are required.
+
+No records are interpolated or matched to a nearby date. The result includes
+the pair count, date span, and elapsed-day range and median. It is an
+exploratory pattern, not a significance test, forecast, or programme effect.
+
 ### Audience utilisation
 
 After binary station telemetry is independently validated:
