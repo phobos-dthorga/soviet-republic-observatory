@@ -148,6 +148,11 @@
       ? marketIndexingProgressView(indexingProgress, $translation)
       : null,
   );
+  const indexActionKey = $derived(
+    indexingProgress?.phase === "paused"
+      ? "markets-index-resume-action"
+      : "markets-index-action",
+  );
   const baseRecords = $derived.by(() => {
     const seen = new Map<string, { hash: string; year: number; day: number }>();
     for (const row of workspace?.trade_history ?? []) {
@@ -395,6 +400,14 @@
     try {
       const progress = await indexAvailableSavesForMarkets();
       onprogress(progress);
+      if (progress.phase === "paused") {
+        notify({
+          title: $translation("markets-index-notification-title"),
+          message: $translation("markets-index-notification-paused"),
+          tone: "warning",
+        });
+        return;
+      }
       notify({
         title: $translation("markets-index-notification-title"),
         message: $translation("markets-index-notification-complete", {
@@ -678,7 +691,7 @@
         disabled={!desktopAvailable || busy}
         onclick={() => runIndexing()}
       >
-        {$translation("markets-index-action")}
+        {$translation(indexActionKey)}
       </button>
     </header>
 
@@ -775,7 +788,7 @@
         <h3>{$translation("markets-empty-title")}</h3>
         <p>{$translation("markets-empty-detail")}</p>
         <button type="button" disabled={busy} onclick={() => runIndexing()}>
-          {$translation("markets-index-action")}
+          {$translation(indexActionKey)}
         </button>
       </section>
     {:else}

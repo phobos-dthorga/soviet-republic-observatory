@@ -17,6 +17,7 @@ const phaseOrder: Record<MarketIndexingProgress["phase"], number> = {
   parsing_records: 2,
   persisting: 3,
   queueing_warehouse: 3,
+  paused: -1,
   complete: 4,
   failed: -1,
 };
@@ -66,6 +67,7 @@ export function marketIndexingProgressView(
     parsing_records: "markets-index-parsing",
     persisting: "markets-index-persisting",
     queueing_warehouse: "markets-index-persisting",
+    paused: "markets-index-paused",
     complete: "markets-index-complete",
     failed: "markets-index-failed",
   } as const;
@@ -75,9 +77,11 @@ export function marketIndexingProgressView(
     state:
       progress.phase === "failed"
         ? "failed"
-        : progress.phase === "complete"
-          ? "complete"
-          : "running",
+        : progress.phase === "paused"
+          ? "paused"
+          : progress.phase === "complete"
+            ? "complete"
+            : "running",
     eyebrow: translate("markets-index-eyebrow"),
     heading: translate(headingKey[progress.phase]),
     progressPercent: progress.progress_percent,
@@ -123,6 +127,24 @@ export function marketIndexingProgressView(
         label: translate("markets-index-duplicates"),
         value: String(progress.duplicate_archives),
       },
+      {
+        id: "cache-records",
+        label: translate("markets-index-cache-records"),
+        value: String(progress.cache_records_reused),
+      },
+      {
+        id: "cache-rows",
+        label: translate("markets-index-cache-rows"),
+        value: String(progress.cache_rows_avoided),
+      },
+      {
+        id: "contention",
+        label: translate("markets-index-contention"),
+        value: translate("markets-index-contention-value", {
+          retries: progress.contention_retries,
+          seconds: Math.round(progress.contention_wait_ms / 1000),
+        }),
+      },
     ],
     currentItemLabel: progress.current_file
       ? translate("markets-index-current-file")
@@ -137,7 +159,9 @@ export function marketIndexingProgressView(
     notice:
       progress.phase === "failed"
         ? { tone: "error", text: translate("markets-index-failed-detail") }
-        : null,
+        : progress.phase === "paused"
+          ? { tone: "warning", text: translate("markets-index-paused-detail") }
+          : null,
   };
 }
 

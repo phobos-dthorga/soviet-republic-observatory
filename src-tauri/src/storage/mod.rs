@@ -20,6 +20,7 @@ mod snapshots;
 mod themes;
 mod warehouse_jobs;
 
+pub(crate) use markets::MARKET_STORAGE_CONTRACT_VERSION;
 pub(crate) use research_setup::StoredResearchSetup;
 
 #[cfg(test)]

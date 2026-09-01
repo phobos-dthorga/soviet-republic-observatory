@@ -324,6 +324,7 @@ export function reviewMarketIndexingProgress(
 ): MarketIndexingProgress {
   return {
     job_id: "review-market-index",
+    storage_contract_version: 2,
     phase: failed ? "failed" : "parsing_records",
     progress_percent: failed ? 46 : 63,
     started_at_ms: 1,
@@ -338,6 +339,11 @@ export function reviewMarketIndexingProgress(
     changed_archives: 1,
     failed_archives: failed ? 1 : 0,
     duplicate_archives: 4,
+    cache_records_reused: 1195,
+    cache_rows_avoided: 286000,
+    contention_retries: 2,
+    contention_wait_ms: 410,
+    resume_count: 1,
     error_code: failed ? "invalid_archive" : null,
   };
 }

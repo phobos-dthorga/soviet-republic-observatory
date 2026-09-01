@@ -109,6 +109,9 @@ an engineering requirement.
 - [ADR-0025: bounded application settings](architecture/decisions/0025-bounded-application-settings.md)
   — one typed preference authority without exposing evidence, security, or
   storage-integrity policy as presentation choices
+- [ADR-0026: recorder-first resumable maintenance](architecture/decisions/0026-recorder-first-resumable-maintenance.md)
+  — bounded background leases, durable checkpoints, content-addressed market
+  evidence, and ordinary single-instance ownership
 
 ## Evidence status vocabulary
 

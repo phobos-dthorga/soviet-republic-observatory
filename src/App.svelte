@@ -442,6 +442,15 @@
         marketWorkspace = reviewMarketWorkspace("ready");
         marketIndexingProgress = reviewMarketIndexingProgress(false);
         break;
+      case "markets-paused":
+        activeWorkspace = "markets";
+        marketWorkspace = reviewMarketWorkspace("ready");
+        marketIndexingProgress = {
+          ...reviewMarketIndexingProgress(false),
+          phase: "paused",
+          error_code: "storage_occupied",
+        };
+        break;
       case "markets-partial":
         activeWorkspace = "markets";
         marketWorkspace = reviewMarketWorkspace("partial");

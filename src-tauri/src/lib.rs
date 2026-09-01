@@ -1,6 +1,7 @@
 mod analysis_pack;
 mod application;
 mod automatic_observer;
+mod bulk_work;
 mod catalogue_service;
 mod commands;
 mod compatibility_profile;
@@ -42,7 +43,17 @@ use research_setup::ResearchSetupService;
 pub fn run() {
     let ui_review = ui_review::UiReviewStartup::parse(std::env::args_os())
         .unwrap_or_else(|error| panic!("Republic Observatory UI review startup failed: {error}"));
-    tauri::Builder::default()
+    let review_enabled = ui_review.context.enabled;
+    let mut builder = tauri::Builder::default();
+    if !review_enabled {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+    builder
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let data_directory = ui_review

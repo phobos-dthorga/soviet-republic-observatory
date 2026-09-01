@@ -78,6 +78,18 @@ describe("Markets presentation", () => {
     expect(view.stages.at(-1)?.state).toBe("active");
   });
 
+  it("presents storage contention as a resumable pause", () => {
+    const progress = {
+      ...reviewMarketIndexingProgress(),
+      phase: "paused" as const,
+      error_code: "storage_occupied",
+    };
+    const view = marketIndexingProgressView(progress, translate);
+
+    expect(view.state).toBe("paused");
+    expect(view.notice?.tone).toBe("warning");
+  });
+
   it("renders Rust metric units and time bases instead of assuming trade units", () => {
     const workspace = reviewMarketWorkspace();
     const price = workspace.metric_contexts.find(

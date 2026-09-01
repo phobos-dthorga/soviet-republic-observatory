@@ -1,4 +1,4 @@
-export type TaskRunState = "running" | "complete" | "failed";
+export type TaskRunState = "running" | "paused" | "complete" | "failed";
 export type TaskStageState = "pending" | "active" | "complete" | "failed";
 
 export type TimestampedTaskProgress = {

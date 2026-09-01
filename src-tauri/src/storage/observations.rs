@@ -2,6 +2,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use super::archive::{persist_history_signature, persist_resolution, resolve_branch};
 use super::history::{load_history, persist_compacted_history, persist_latest_metric_evidence};
+use super::markets::MarketPersistenceStats;
 use super::snapshots::persist_snapshots;
 use super::{ObservatoryStorage, from_sql_integer, now_ms, to_sql_integer};
 use crate::error::ObservatoryError;
@@ -13,6 +14,7 @@ use crate::model::{
 impl ObservatoryStorage {
     pub fn save_inspection(&self, inspection: &SaveInspection) -> Result<bool, ObservatoryError> {
         self.save_inspection_internal(inspection, true)
+            .map(|outcome| outcome.inserted)
     }
 
     pub fn save_reinterpretation(
@@ -20,13 +22,22 @@ impl ObservatoryStorage {
         inspection: &SaveInspection,
     ) -> Result<bool, ObservatoryError> {
         self.save_inspection_internal(inspection, false)
+            .map(|outcome| outcome.inserted)
+    }
+
+    pub(crate) fn save_reinterpretation_with_market_stats(
+        &self,
+        inspection: &SaveInspection,
+    ) -> Result<(bool, MarketPersistenceStats), ObservatoryError> {
+        self.save_inspection_internal(inspection, false)
+            .map(|outcome| (outcome.inserted, outcome.market))
     }
 
     fn save_inspection_internal(
         &self,
         inspection: &SaveInspection,
         record_file_observation: bool,
-    ) -> Result<bool, ObservatoryError> {
+    ) -> Result<SavePersistenceOutcome, ObservatoryError> {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
         let existing_storage_key = transaction
@@ -40,6 +51,7 @@ impl ObservatoryStorage {
         let storage_key =
             existing_storage_key.unwrap_or_else(|| inspection.interpretation_id.clone());
 
+        let mut market = MarketPersistenceStats::default();
         if !exists {
             let resolution = resolve_branch(&transaction, &storage_key, &inspection.records)?;
             let warnings_json = serde_json::to_string(&inspection.coverage.warnings)
@@ -101,7 +113,7 @@ impl ObservatoryStorage {
                 &inspection.snapshots,
                 &inspection.records,
             )?;
-            super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
+            market = super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
             for fact in &inspection.binary_facts {
                 transaction.execute(
                     "INSERT INTO binary_mapped_facts(\
@@ -159,12 +171,17 @@ impl ObservatoryStorage {
                 )?;
             }
             let markets_exist = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM market_observation_coverage WHERE payload_hash = ?1)",
-                [&storage_key],
+                "SELECT EXISTS(SELECT 1 FROM market_observation_coverage \
+                 WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
+                params![
+                    &storage_key,
+                    super::markets::MARKET_STORAGE_CONTRACT_VERSION
+                ],
                 |row| row.get::<_, bool>(0),
             )?;
             if !markets_exist {
-                super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
+                market =
+                    super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
                 super::warehouse_jobs::enqueue_projection_job(
                     &transaction,
                     &format!("market:{}", inspection.interpretation_id),
@@ -205,7 +222,10 @@ impl ObservatoryStorage {
         }
 
         transaction.commit()?;
-        Ok(!exists)
+        Ok(SavePersistenceOutcome {
+            inserted: !exists,
+            market,
+        })
     }
 
     pub fn load_latest_dataset(&self) -> Result<Option<ReceiverDataset>, ObservatoryError> {
@@ -374,4 +394,9 @@ impl ObservatoryStorage {
             .collect::<Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
+}
+
+struct SavePersistenceOutcome {
+    inserted: bool,
+    market: MarketPersistenceStats,
 }

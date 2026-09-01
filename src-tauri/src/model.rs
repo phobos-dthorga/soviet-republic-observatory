@@ -1152,6 +1152,7 @@ pub enum MarketIndexingPhase {
     ParsingRecords,
     Persisting,
     QueueingWarehouse,
+    Paused,
     Complete,
     Failed,
 }
@@ -1159,6 +1160,7 @@ pub enum MarketIndexingPhase {
 #[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
 pub struct MarketIndexingProgress {
     pub job_id: Option<String>,
+    pub storage_contract_version: u32,
     pub phase: MarketIndexingPhase,
     pub progress_percent: Option<u8>,
     pub started_at_ms: Option<i64>,
@@ -1173,6 +1175,11 @@ pub struct MarketIndexingProgress {
     pub changed_archives: u32,
     pub failed_archives: u32,
     pub duplicate_archives: u32,
+    pub cache_records_reused: u32,
+    pub cache_rows_avoided: u64,
+    pub contention_retries: u32,
+    pub contention_wait_ms: u64,
+    pub resume_count: u32,
     pub error_code: Option<String>,
 }
 

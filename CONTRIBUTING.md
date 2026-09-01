@@ -58,6 +58,13 @@ make evidence interpretation, provenance, schema or parser identity, save
 stability, storage limits, recorder priority, or security policy configurable.
 See [ADR-0025](docs/architecture/decisions/0025-bounded-application-settings.md).
 
+Bulk maintenance must use the recorder-first coordinator and checkpoint work at
+bounded, resumable units. Never hold a coordinator lease while parsing an
+archive or running a DuckDB calculation, never repeat a completed immutable
+unit merely to resume a job, and never treat the user-configurable patience
+budget as permission to weaken SQLite integrity or save-stability checks. See
+[ADR-0026](docs/architecture/decisions/0026-recorder-first-resumable-maintenance.md).
+
 Use the first-class AttentionCue for important new or newly available actions;
 do not reproduce pulse or glow CSS in a workspace. A cue needs a stable ID and
 content revision, must respect reduced motion, and can explain an already-valid

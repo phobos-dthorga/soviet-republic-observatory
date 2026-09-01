@@ -89,6 +89,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "parser-engine-aware immutable interpretations",
         include_str!("../../migrations/0017_parser_engine_interpretations.sql"),
     ),
+    (
+        18,
+        "versioned content-addressed market storage",
+        include_str!("../../migrations/0018_market_storage_contract.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

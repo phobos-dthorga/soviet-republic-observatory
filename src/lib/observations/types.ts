@@ -1100,11 +1100,13 @@ export type MarketIndexingPhase =
   | "parsing_records"
   | "persisting"
   | "queueing_warehouse"
+  | "paused"
   | "complete"
   | "failed";
 
 export type MarketIndexingProgress = {
   job_id: string | null;
+  storage_contract_version: number;
   phase: MarketIndexingPhase;
   progress_percent: number | null;
   started_at_ms: number | null;
@@ -1119,6 +1121,11 @@ export type MarketIndexingProgress = {
   changed_archives: number;
   failed_archives: number;
   duplicate_archives: number;
+  cache_records_reused: number;
+  cache_rows_avoided: number;
+  contention_retries: number;
+  contention_wait_ms: number;
+  resume_count: number;
   error_code: string | null;
 };
 

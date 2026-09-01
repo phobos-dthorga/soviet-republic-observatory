@@ -10,6 +10,7 @@
 <section
   class="task-progress"
   class:active={view.state === "running"}
+  class:paused={view.state === "paused"}
   class:failed={view.state === "failed"}
   class:warning={view.notice?.tone === "warning"}
   aria-live="polite"
@@ -100,6 +101,7 @@
     border-color: rgba(128, 198, 216, 0.5);
   }
   .task-progress.warning,
+  .task-progress.paused,
   .task-progress.failed {
     border-color: var(--colour-risk);
   }

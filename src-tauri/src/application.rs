@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Mutex, TryLockError};
-use std::time::{Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
@@ -9,6 +10,7 @@ use crate::analysis_pack::{
     AnalysisPackContribution, AnalysisPackDocument, AnalysisPackInspection, AnalysisPackSummary,
 };
 use crate::automatic_observer::{AutomaticObserver, latest_save_candidate_path};
+use crate::bulk_work::BulkWorkCoordinator;
 use crate::compatibility_runtime::CompatibilityRuntime;
 use crate::definition_catalogue::{
     CatalogueDiscoveryPhase, catalogue_watch_roots, discover_catalogue_with_reuse_and_progress,
@@ -22,14 +24,15 @@ use crate::language_pack::{
 use crate::model::{
     AnalysisContextResult, ApplicationPreferences, ApplicationPreferencesDraft,
     ApplicationSettingsView, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
-    CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
-    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
-    ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, ImportOutcome, MarketBasketDraft,
-    MarketIndexingPhase, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
-    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
-    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
-    RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
+    BackgroundWorkPriority, CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress,
+    CatalogueRefreshTrigger, CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus,
+    CompatibilityUpdate, ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind,
+    ImportOutcome, MarketBasketDraft, MarketIndexingPhase, MarketIndexingProgress,
+    MarketPriceSeries, MarketScenarioDraft, MarketWorkspace, ObservationImportResult,
+    OverlayInspection, OverlayProfileSummary, PopulationDataset, ProductionPathwayModel,
+    ProductionPathwayRequest, ProductionRouteCoverage, ProductionRouteModel,
+    ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource, RecorderHealth,
+    RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
     RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
@@ -43,6 +46,22 @@ const SAVE_DIRECTORY_KEY: &str = "save_directory";
 const GAME_MEDIA_DIRECTORY_KEY: &str = "game_media_directory";
 const WORKSHOP_DIRECTORY_KEY: &str = "workshop_directory";
 const AUTOMATIC_OBSERVATION_KEY: &str = "automatic_observation_enabled";
+
+fn background_priority_code(priority: BackgroundWorkPriority) -> u8 {
+    match priority {
+        BackgroundWorkPriority::Gentle => 0,
+        BackgroundWorkPriority::Balanced => 1,
+        BackgroundWorkPriority::FinishSooner => 2,
+    }
+}
+
+fn background_priority_from_code(code: u8) -> BackgroundWorkPriority {
+    match code {
+        1 => BackgroundWorkPriority::Balanced,
+        2 => BackgroundWorkPriority::FinishSooner,
+        _ => BackgroundWorkPriority::Gentle,
+    }
+}
 
 fn catalogue_trigger_name(trigger: CatalogueRefreshTrigger) -> &'static str {
     match trigger {
@@ -108,6 +127,9 @@ pub struct ObservatoryApplication {
     reinterpretation: Mutex<()>,
     reinterpretation_progress: Mutex<ReinterpretationProgress>,
     market_indexing_progress: Mutex<MarketIndexingProgress>,
+    bulk_work: BulkWorkCoordinator,
+    storage_patience_seconds: AtomicU64,
+    background_work_priority: AtomicU8,
     catalogue_refresh: Mutex<()>,
     catalogue_progress: Mutex<CatalogueRefreshProgress>,
 }
@@ -123,6 +145,8 @@ impl ObservatoryApplication {
         let compatibility = CompatibilityRuntime::initialise(data_directory)?;
         let storage = ObservatoryStorage::initialise(database_path)?;
         storage.record_compatibility_runtime(&compatibility.active()?, &compatibility.status()?)?;
+        let preferences = storage.load_application_preferences()?;
+        let market_indexing_progress = storage.latest_market_index_progress()?;
         let warehouse = match AnalyticalWarehouse::initialise(warehouse_path.clone()) {
             Ok(warehouse) => warehouse,
             Err(_) => {
@@ -135,7 +159,7 @@ impl ObservatoryApplication {
                 AnalyticalWarehouse::unavailable(warehouse_path)
             }
         };
-        let automatic_observation_enabled = storage.get_bool_setting(AUTOMATIC_OBSERVATION_KEY)?;
+        let automatic_observation_enabled = preferences.automatic_observation_enabled;
         let directory_configured = storage
             .get_setting(SAVE_DIRECTORY_KEY)?
             .is_some_and(|path| path.is_dir());
@@ -148,7 +172,14 @@ impl ObservatoryApplication {
             compatibility,
             reinterpretation: Mutex::new(()),
             reinterpretation_progress: Mutex::new(ReinterpretationProgress::default()),
-            market_indexing_progress: Mutex::new(MarketIndexingProgress::default()),
+            market_indexing_progress: Mutex::new(market_indexing_progress),
+            bulk_work: BulkWorkCoordinator::default(),
+            storage_patience_seconds: AtomicU64::new(u64::from(
+                preferences.effective_storage_patience_seconds,
+            )),
+            background_work_priority: AtomicU8::new(background_priority_code(
+                preferences.background_work_priority,
+            )),
             catalogue_refresh: Mutex::new(()),
             catalogue_progress: Mutex::new(CatalogueRefreshProgress::default()),
         })
@@ -249,6 +280,14 @@ impl ObservatoryApplication {
         &self,
         preferences: &ApplicationPreferences,
     ) -> Result<(), ObservatoryError> {
+        self.storage_patience_seconds.store(
+            u64::from(preferences.effective_storage_patience_seconds),
+            Ordering::Release,
+        );
+        self.background_work_priority.store(
+            background_priority_code(preferences.background_work_priority),
+            Ordering::Release,
+        );
         let directory_configured = self
             .storage
             .get_setting(SAVE_DIRECTORY_KEY)?
@@ -631,7 +670,9 @@ impl ObservatoryApplication {
             progress.updated_at_ms = Some(now_ms());
             progress.interpretation_id = Some(inspection.interpretation_id.clone());
             self.report_reinterpretation_progress(&progress, &mut notify);
-            let inserted = self.storage.save_reinterpretation(&inspection)?;
+            let inserted = self.run_coordinated_background_storage(|| {
+                self.storage.save_reinterpretation(&inspection)
+            })?;
             progress.phase = ReinterpretationPhase::QueueingWarehouse;
             progress.progress_percent = Some(92);
             progress.updated_at_ms = Some(now_ms());
@@ -717,6 +758,56 @@ impl ObservatoryApplication {
         Ok(())
     }
 
+    fn background_priority(&self) -> BackgroundWorkPriority {
+        background_priority_from_code(self.background_work_priority.load(Ordering::Acquire))
+    }
+
+    fn run_background_storage_step<T>(
+        &self,
+        progress: &mut MarketIndexingProgress,
+        mut operation: impl FnMut() -> Result<T, ObservatoryError>,
+    ) -> Result<T, ObservatoryError> {
+        let started = Instant::now();
+        let patience = Duration::from_secs(
+            self.storage_patience_seconds
+                .load(Ordering::Acquire)
+                .clamp(5, 300),
+        );
+        loop {
+            let priority = self.background_priority();
+            let remaining = patience.saturating_sub(started.elapsed());
+            let (lease, contention) = self.bulk_work.background_write(remaining, priority)?;
+            progress.contention_retries = progress
+                .contention_retries
+                .saturating_add(contention.retries);
+            progress.contention_wait_ms = progress
+                .contention_wait_ms
+                .saturating_add(contention.waited_ms);
+            let attempted_at = Instant::now();
+            let result = operation();
+            drop(lease);
+            match result {
+                Ok(value) => return Ok(value),
+                Err(ObservatoryError::StorageBusy) if started.elapsed() < patience => {
+                    progress.contention_retries = progress.contention_retries.saturating_add(1);
+                    progress.contention_wait_ms = progress.contention_wait_ms.saturating_add(
+                        attempted_at.elapsed().as_millis().min(u64::MAX as u128) as u64,
+                    );
+                    self.bulk_work.cooperative_yield(priority);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    fn run_coordinated_background_storage<T>(
+        &self,
+        operation: impl FnMut() -> Result<T, ObservatoryError>,
+    ) -> Result<T, ObservatoryError> {
+        let mut progress = MarketIndexingProgress::default();
+        self.run_background_storage_step(&mut progress, operation)
+    }
+
     pub fn index_available_saves_for_markets(
         &self,
         mut notify: impl FnMut(MarketIndexingProgress),
@@ -735,15 +826,17 @@ impl ObservatoryApplication {
             let source_directory_identity = crate::save_archive::directory_identity(&directory)?;
             let mut progress = MarketIndexingProgress {
                 job_id: None,
+                storage_contract_version: crate::storage::MARKET_STORAGE_CONTRACT_VERSION,
                 phase: MarketIndexingPhase::Discovering,
                 started_at_ms: Some(started_at_ms),
                 updated_at_ms: Some(started_at_ms),
                 ..MarketIndexingProgress::default()
             };
             self.report_market_indexing_progress(&progress, &mut notify);
-            let candidates = self
-                .storage
-                .market_index_candidates(&source_directory_identity)?;
+            let candidates = self.run_background_storage_step(&mut progress, || {
+                self.storage
+                    .market_index_candidates(&source_directory_identity)
+            })?;
             let profile = self.compatibility.active()?;
             let job_id = market_index_job_id(
                 &source_directory_identity,
@@ -755,10 +848,32 @@ impl ObservatoryApplication {
             progress.phase = MarketIndexingPhase::Matching;
             progress.progress_percent = Some(2);
             progress.updated_at_ms = Some(now_ms());
-            self.storage.start_market_index_job(&job_id, &candidates)?;
+            let durable = self.run_background_storage_step(&mut progress, || {
+                self.storage.start_market_index_job(&job_id, &candidates)
+            })?;
+            progress.completed_archives = durable.completed_archives;
+            progress.missing_archives = durable.missing_archives;
+            progress.changed_archives = durable.changed_archives;
+            progress.failed_archives = durable.failed_archives;
+            progress.duplicate_archives = durable.duplicate_archives;
+            progress.resume_count = durable.resume_count;
+            let item_states = self.run_background_storage_step(&mut progress, || {
+                self.storage.market_index_item_states(&job_id)
+            })?;
             self.report_market_indexing_progress(&progress, &mut notify);
 
             for (index, candidate) in candidates.iter().enumerate() {
+                if item_states
+                    .get(&candidate.payload_hash)
+                    .is_some_and(|state| {
+                        matches!(
+                            state.as_str(),
+                            "complete" | "missing" | "changed" | "duplicate"
+                        )
+                    })
+                {
+                    continue;
+                }
                 progress.current_archive = (index + 1).min(u32::MAX as usize) as u32;
                 progress.current_file = Some(candidate.source_file_name.clone());
                 progress.records_processed = 0;
@@ -773,14 +888,17 @@ impl ObservatoryApplication {
                 let path = directory.join(relative);
                 if relative.components().count() != 1 || !path.is_file() {
                     progress.missing_archives += 1;
-                    self.storage.update_market_index_item(
-                        &job_id,
-                        &candidate.payload_hash,
-                        "missing",
-                        0,
-                        0,
-                        Some("archive_missing"),
-                    )?;
+                    self.run_background_storage_step(&mut progress, || {
+                        self.storage.update_market_index_item(
+                            &job_id,
+                            &candidate.payload_hash,
+                            "missing",
+                            0,
+                            0,
+                            Some("archive_missing"),
+                        )
+                    })?;
+                    self.bulk_work.cooperative_yield(self.background_priority());
                     continue;
                 }
                 let metadata = fs::metadata(&path).map_err(|_| ObservatoryError::InvalidArchive)?;
@@ -795,14 +913,17 @@ impl ObservatoryApplication {
                     || candidate.source_directory_identity != source_directory_identity
                 {
                     progress.changed_archives += 1;
-                    self.storage.update_market_index_item(
-                        &job_id,
-                        &candidate.payload_hash,
-                        "changed",
-                        0,
-                        0,
-                        Some("archive_changed"),
-                    )?;
+                    self.run_background_storage_step(&mut progress, || {
+                        self.storage.update_market_index_item(
+                            &job_id,
+                            &candidate.payload_hash,
+                            "changed",
+                            0,
+                            0,
+                            Some("archive_changed"),
+                        )
+                    })?;
+                    self.bulk_work.cooperative_yield(self.background_priority());
                     continue;
                 }
 
@@ -816,51 +937,71 @@ impl ObservatoryApplication {
                         progress.phase = MarketIndexingPhase::Persisting;
                         progress.updated_at_ms = Some(now_ms());
                         self.report_market_indexing_progress(&progress, &mut notify);
-                        let already_indexed = self
-                            .storage
-                            .market_coverage_exists(&inspection.interpretation_id)?;
-                        self.storage.save_reinterpretation(&inspection)?;
+                        let already_indexed =
+                            self.run_background_storage_step(&mut progress, || {
+                                self.storage
+                                    .market_coverage_exists(&inspection.interpretation_id)
+                            })?;
+                        let (_, cache) = self.run_background_storage_step(&mut progress, || {
+                            self.storage
+                                .save_reinterpretation_with_market_stats(&inspection)
+                        })?;
+                        progress.cache_records_reused = progress
+                            .cache_records_reused
+                            .saturating_add(cache.records_reused);
+                        progress.cache_rows_avoided = progress
+                            .cache_rows_avoided
+                            .saturating_add(cache.rows_avoided);
                         if already_indexed {
                             progress.duplicate_archives += 1;
                         } else {
                             progress.completed_archives += 1;
                         }
-                        self.storage.update_market_index_item(
-                            &job_id,
-                            &candidate.payload_hash,
-                            if already_indexed {
-                                "duplicate"
-                            } else {
-                                "complete"
-                            },
-                            progress.records_processed,
-                            progress.rows_processed,
-                            None,
-                        )?;
+                        let records_processed = progress.records_processed;
+                        let rows_processed = progress.rows_processed;
+                        self.run_background_storage_step(&mut progress, || {
+                            self.storage.update_market_index_item(
+                                &job_id,
+                                &candidate.payload_hash,
+                                if already_indexed {
+                                    "duplicate"
+                                } else {
+                                    "complete"
+                                },
+                                records_processed,
+                                rows_processed,
+                                None,
+                            )
+                        })?;
                     }
                     Ok(_) => {
                         progress.changed_archives += 1;
-                        self.storage.update_market_index_item(
-                            &job_id,
-                            &candidate.payload_hash,
-                            "changed",
-                            0,
-                            0,
-                            Some("raw_payload_mismatch"),
-                        )?;
+                        self.run_background_storage_step(&mut progress, || {
+                            self.storage.update_market_index_item(
+                                &job_id,
+                                &candidate.payload_hash,
+                                "changed",
+                                0,
+                                0,
+                                Some("raw_payload_mismatch"),
+                            )
+                        })?;
                     }
                     Err(error) => {
                         progress.failed_archives += 1;
-                        self.storage.update_market_index_item(
-                            &job_id,
-                            &candidate.payload_hash,
-                            "failed",
-                            0,
-                            0,
-                            Some(error.code()),
-                        )?;
+                        self.run_background_storage_step(&mut progress, || {
+                            self.storage.update_market_index_item(
+                                &job_id,
+                                &candidate.payload_hash,
+                                "failed",
+                                0,
+                                0,
+                                Some(error.code()),
+                            )
+                        })?;
                     }
                 }
+                self.bulk_work.cooperative_yield(self.background_priority());
             }
 
             progress.phase = MarketIndexingPhase::QueueingWarehouse;
@@ -871,7 +1012,10 @@ impl ObservatoryApplication {
             progress.phase = MarketIndexingPhase::Complete;
             progress.progress_percent = Some(100);
             progress.updated_at_ms = Some(now_ms());
-            self.storage.finish_market_index_job(&progress)?;
+            let finish_snapshot = progress.clone();
+            self.run_background_storage_step(&mut progress, || {
+                self.storage.finish_market_index_job(&finish_snapshot)
+            })?;
             self.report_market_indexing_progress(&progress, &mut notify);
             diagnostics::record(
                 "info",
@@ -881,18 +1025,41 @@ impl ObservatoryApplication {
             );
             Ok(progress)
         })();
-        if let Err(error) = &result {
-            let mut failed = self.market_indexing_progress().unwrap_or_default();
-            failed.phase = MarketIndexingPhase::Failed;
-            failed.progress_percent = None;
-            failed.updated_at_ms = Some(now_ms());
-            failed.error_code = Some(error.code().to_owned());
-            self.report_market_indexing_progress(&failed, &mut notify);
-            if failed.job_id.is_some() {
-                let _ = self.storage.finish_market_index_job(&failed);
+        match result {
+            Ok(progress) => Ok(progress),
+            Err(ObservatoryError::StorageBusy) => {
+                let mut paused = self.market_indexing_progress().unwrap_or_default();
+                paused.phase = MarketIndexingPhase::Paused;
+                paused.updated_at_ms = Some(now_ms());
+                paused.error_code = Some("storage_occupied".to_owned());
+                self.report_market_indexing_progress(&paused, &mut notify);
+                if paused.job_id.is_some() {
+                    let _ = self.storage.finish_market_index_job(&paused);
+                }
+                diagnostics::record(
+                    "warning",
+                    "markets.index_paused_storage",
+                    "market_indexing",
+                    &format!(
+                        "Markets indexing paused after {} contention retries and {} ms waiting; completed archive checkpoints remain reusable.",
+                        paused.contention_retries, paused.contention_wait_ms
+                    ),
+                );
+                Ok(paused)
+            }
+            Err(error) => {
+                let mut failed = self.market_indexing_progress().unwrap_or_default();
+                failed.phase = MarketIndexingPhase::Failed;
+                failed.progress_percent = None;
+                failed.updated_at_ms = Some(now_ms());
+                failed.error_code = Some(error.code().to_owned());
+                self.report_market_indexing_progress(&failed, &mut notify);
+                if failed.job_id.is_some() {
+                    let _ = self.storage.finish_market_index_job(&failed);
+                }
+                Err(error)
             }
         }
-        result
     }
 
     fn report_market_indexing_progress(
@@ -1066,6 +1233,7 @@ impl ObservatoryApplication {
         let path = latest_save_candidate_path(&directory)?;
         let profile = self.compatibility.active()?;
         let inspection = inspect_save_archive(&path, &profile)?;
+        let _recorder_lease = self.bulk_work.recorder_write()?;
         let inserted = self.storage.save_inspection(&inspection)?;
         let dataset = self
             .storage
@@ -1158,6 +1326,7 @@ impl ObservatoryApplication {
         discovery_source: RecorderDiscoverySource,
     ) -> Result<AutomaticObservationUpdate, ObservatoryError> {
         let directory = self.storage.get_setting(SAVE_DIRECTORY_KEY)?;
+        let _recorder_lease = self.bulk_work.recorder_write()?;
         self.automatic_observer
             .lock()
             .map_err(|_| ObservatoryError::StorageUnavailable)?
@@ -1577,7 +1746,9 @@ impl ObservatoryApplication {
     }
 
     pub(crate) fn process_next_projection_job(&self) -> Result<bool, ObservatoryError> {
-        let Some(job) = self.storage.claim_projection_job()? else {
+        let Some(job) =
+            self.run_coordinated_background_storage(|| self.storage.claim_projection_job())?
+        else {
             return Ok(false);
         };
         let timer = Instant::now();
@@ -1592,15 +1763,18 @@ impl ObservatoryApplication {
         );
         let result = match job.projection_kind.as_str() {
             "observation" => self
-                .storage
-                .load_dataset(&job.source_identity)
+                .run_coordinated_background_storage(|| {
+                    self.storage.load_dataset(&job.source_identity)
+                })
                 .and_then(|dataset| {
                     self.warehouse
                         .project_observation(&job.projection_id, &dataset, now_ms())
                 }),
             "market_observation" => self
-                .storage
-                .market_warehouse_projection(&job.source_identity)
+                .run_coordinated_background_storage(|| {
+                    self.storage
+                        .market_warehouse_projection(&job.source_identity)
+                })
                 .and_then(|projection| {
                     self.warehouse.project_market_observation(
                         &job.projection_id,
@@ -1608,18 +1782,22 @@ impl ObservatoryApplication {
                         now_ms(),
                     )
                 }),
-            "overlay_state" => self.storage.active_overlay_document().and_then(|active| {
-                self.warehouse.project_overlay(
-                    &job.projection_id,
-                    active.as_ref().map(|(profile, revision, document)| {
-                        (profile.as_str(), *revision, document)
-                    }),
-                    now_ms(),
-                )
-            }),
+            "overlay_state" => self
+                .run_coordinated_background_storage(|| self.storage.active_overlay_document())
+                .and_then(|active| {
+                    self.warehouse.project_overlay(
+                        &job.projection_id,
+                        active.as_ref().map(|(profile, revision, document)| {
+                            (profile.as_str(), *revision, document)
+                        }),
+                        now_ms(),
+                    )
+                }),
             "branch_membership" => self
-                .storage
-                .branch_membership_projection(&job.source_identity)
+                .run_coordinated_background_storage(|| {
+                    self.storage
+                        .branch_membership_projection(&job.source_identity)
+                })
                 .and_then(|(revision, memberships)| {
                     self.warehouse.project_branch_memberships(
                         &job.projection_id,
@@ -1636,7 +1814,9 @@ impl ObservatoryApplication {
         };
         match result {
             Ok(()) => {
-                self.storage.complete_projection_job(&job.projection_id)?;
+                self.run_coordinated_background_storage(|| {
+                    self.storage.complete_projection_job(&job.projection_id)
+                })?;
                 diagnostics::record(
                     "info",
                     "warehouse.projection_complete",
@@ -1651,8 +1831,10 @@ impl ObservatoryApplication {
             Err(error) => {
                 self.warehouse.note_projection_failure();
                 let retry_delay_ms = self.warehouse.retry_delay().as_millis();
-                self.storage
-                    .fail_projection_job(&job.projection_id, error.code())?;
+                self.run_coordinated_background_storage(|| {
+                    self.storage
+                        .fail_projection_job(&job.projection_id, error.code())
+                })?;
                 diagnostics::record(
                     "error",
                     "warehouse.projection_failed",

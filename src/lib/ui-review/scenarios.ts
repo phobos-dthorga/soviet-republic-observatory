@@ -10,6 +10,7 @@ export const UI_REVIEW_SCENARIOS = [
   "workspace-population",
   "workspace-markets",
   "markets-indexing",
+  "markets-paused",
   "markets-partial",
   "markets-empty",
   "markets-lagging",

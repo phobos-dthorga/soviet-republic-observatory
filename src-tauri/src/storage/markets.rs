@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -14,6 +14,14 @@ use crate::model::{
     MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseScalarFact,
     MarketWarehouseTradeFact, ParsedMarketData, SaveInspection,
 };
+
+pub(crate) const MARKET_STORAGE_CONTRACT_VERSION: u32 = 2;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MarketPersistenceStats {
+    pub records_reused: u32,
+    pub rows_avoided: u64,
+}
 
 impl ObservatoryStorage {
     pub(crate) fn market_evidence(
@@ -516,8 +524,9 @@ impl ObservatoryStorage {
                      SELECT 1 FROM market_observation_coverage coverage \
                      JOIN observation_sources source ON source.payload_hash = coverage.payload_hash \
                      WHERE source.interpretation_id = ?1 \
-                 )",
-                [interpretation_id],
+                       AND coverage.storage_contract_version = ?2 \
+                  )",
+                params![interpretation_id, MARKET_STORAGE_CONTRACT_VERSION],
                 |row| row.get(0),
             )
             .map_err(Into::into)
@@ -568,16 +577,19 @@ impl ObservatoryStorage {
         &self,
         job_id: &str,
         candidates: &[MarketIndexCandidate],
-    ) -> Result<(), ObservatoryError> {
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
+        let resumed = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM market_indexing_jobs WHERE job_id = ?1)",
+            [job_id],
+            |row| row.get::<_, bool>(0),
+        )?;
         transaction.execute(
             "INSERT INTO market_indexing_jobs(job_id, state, started_at_ms, total_archives) \
              VALUES(?1, 'running', ?2, ?3) \
              ON CONFLICT(job_id) DO UPDATE SET state = 'running', completed_at_ms = NULL, \
-                 total_archives = excluded.total_archives, completed_archives = 0, \
-                 missing_archives = 0, changed_archives = 0, failed_archives = 0, \
-                 duplicate_archives = 0, last_error_code = NULL",
+                  total_archives = excluded.total_archives, last_error_code = NULL",
             params![
                 job_id,
                 now_ms(),
@@ -591,8 +603,45 @@ impl ObservatoryStorage {
                 params![job_id, candidate.payload_hash],
             )?;
         }
+        transaction.execute(
+            "UPDATE market_indexing_items SET state = 'pending', error_code = NULL \
+             WHERE job_id = ?1 AND state IN ('running', 'failed')",
+            [job_id],
+        )?;
         transaction.commit()?;
-        Ok(())
+        let mut progress = load_market_index_job_progress(&connection, job_id)?;
+        progress.resume_count = u32::from(resumed);
+        Ok(progress)
+    }
+
+    pub(crate) fn market_index_item_states(
+        &self,
+        job_id: &str,
+    ) -> Result<HashMap<String, String>, ObservatoryError> {
+        let connection = self.connect()?;
+        let mut statement = connection
+            .prepare("SELECT payload_hash, state FROM market_indexing_items WHERE job_id = ?1")?;
+        statement
+            .query_map([job_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<HashMap<_, _>, _>>()
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn latest_market_index_progress(
+        &self,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        let connection = self.connect()?;
+        let job_id = connection
+            .query_row(
+                "SELECT job_id FROM market_indexing_jobs ORDER BY started_at_ms DESC LIMIT 1",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        job_id.map_or_else(
+            || Ok(MarketIndexingProgress::default()),
+            |job_id| load_market_index_job_progress(&connection, &job_id),
+        )
     }
 
     pub(crate) fn update_market_index_item(
@@ -629,18 +678,20 @@ impl ObservatoryStorage {
             return Err(ObservatoryError::StorageUnavailable);
         };
         let connection = self.connect()?;
+        let (state, completed_at_ms) = match progress.phase {
+            crate::model::MarketIndexingPhase::Complete => ("complete", Some(now_ms())),
+            crate::model::MarketIndexingPhase::Paused => ("running", None),
+            crate::model::MarketIndexingPhase::Failed => ("failed", Some(now_ms())),
+            _ => ("running", None),
+        };
         connection.execute(
             "UPDATE market_indexing_jobs SET state = ?1, completed_at_ms = ?2, \
                     completed_archives = ?3, missing_archives = ?4, changed_archives = ?5, \
                     failed_archives = ?6, duplicate_archives = ?7, last_error_code = ?8 \
              WHERE job_id = ?9",
             params![
-                if progress.error_code.is_some() {
-                    "failed"
-                } else {
-                    "complete"
-                },
-                now_ms(),
+                state,
+                completed_at_ms,
                 progress.completed_archives,
                 progress.missing_archives,
                 progress.changed_archives,
@@ -652,6 +703,53 @@ impl ObservatoryStorage {
         )?;
         Ok(())
     }
+}
+
+fn load_market_index_job_progress(
+    connection: &Connection,
+    job_id: &str,
+) -> Result<MarketIndexingProgress, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT jobs.state, jobs.started_at_ms, jobs.completed_at_ms, jobs.total_archives, \
+                    jobs.last_error_code, \
+                    COALESCE(SUM(CASE WHEN items.state = 'complete' THEN 1 ELSE 0 END), 0), \
+                    COALESCE(SUM(CASE WHEN items.state = 'missing' THEN 1 ELSE 0 END), 0), \
+                    COALESCE(SUM(CASE WHEN items.state = 'changed' THEN 1 ELSE 0 END), 0), \
+                    COALESCE(SUM(CASE WHEN items.state = 'failed' THEN 1 ELSE 0 END), 0), \
+                    COALESCE(SUM(CASE WHEN items.state = 'duplicate' THEN 1 ELSE 0 END), 0) \
+             FROM market_indexing_jobs jobs \
+             LEFT JOIN market_indexing_items items ON items.job_id = jobs.job_id \
+             WHERE jobs.job_id = ?1 GROUP BY jobs.job_id",
+            [job_id],
+            |row| {
+                let state = row.get::<_, String>(0)?;
+                let error_code = row.get::<_, Option<String>>(4)?;
+                let phase = match state.as_str() {
+                    "complete" => crate::model::MarketIndexingPhase::Complete,
+                    "failed" => crate::model::MarketIndexingPhase::Failed,
+                    _ => crate::model::MarketIndexingPhase::Paused,
+                };
+                Ok(MarketIndexingProgress {
+                    job_id: Some(job_id.to_owned()),
+                    storage_contract_version: MARKET_STORAGE_CONTRACT_VERSION,
+                    phase,
+                    progress_percent: (phase == crate::model::MarketIndexingPhase::Complete)
+                        .then_some(100),
+                    started_at_ms: row.get(1)?,
+                    updated_at_ms: row.get::<_, Option<i64>>(2)?.or_else(|| row.get(1).ok()),
+                    total_archives: row.get(3)?,
+                    completed_archives: row.get(5)?,
+                    missing_archives: row.get(6)?,
+                    changed_archives: row.get(7)?,
+                    failed_archives: row.get(8)?,
+                    duplicate_archives: row.get(9)?,
+                    error_code,
+                    ..MarketIndexingProgress::default()
+                })
+            },
+        )
+        .map_err(Into::into)
 }
 
 fn market_commissioning_counts(
@@ -1001,13 +1099,15 @@ pub(crate) fn persist_market_data(
     connection: &Connection,
     storage_key: &str,
     inspection: &SaveInspection,
-) -> Result<(), ObservatoryError> {
+) -> Result<MarketPersistenceStats, ObservatoryError> {
+    let mut stats = MarketPersistenceStats::default();
     let warnings_json = serde_json::to_string(&inspection.market.warnings)
         .map_err(|_| ObservatoryError::StorageUnavailable)?;
     connection.execute(
         "INSERT OR REPLACE INTO market_observation_coverage( \
-             payload_hash, coverage_status, history_records, snapshot_scopes, row_count, warnings_json \
-         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+             payload_hash, coverage_status, history_records, snapshot_scopes, row_count, warnings_json, \
+             storage_contract_version \
+         ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             storage_key,
             inspection.market.coverage_status().as_str(),
@@ -1015,12 +1115,13 @@ pub(crate) fn persist_market_data(
             inspection.market.snapshots.len().min(u32::MAX as usize) as u32,
             inspection.market.row_count,
             warnings_json,
+            MARKET_STORAGE_CONTRACT_VERSION,
         ],
     )?;
 
     for (ordinal, record) in inspection.market.records.iter().enumerate() {
         let record_hash = record_hash(record, &inspection.market)?;
-        connection.execute(
+        let inserted = connection.execute(
             "INSERT OR IGNORE INTO market_records(record_hash, record_id, year, day, game_day) \
              VALUES(?1, ?2, ?3, ?4, ?5)",
             params![
@@ -1030,11 +1131,19 @@ pub(crate) fn persist_market_data(
                 record.day,
                 record.game_day
             ],
-        )?;
-        persist_record_rows(connection, &record_hash, &record.rows, &inspection.market)?;
+        )? > 0;
+        if inserted {
+            persist_record_rows(connection, &record_hash, &record.rows, &inspection.market)?;
+        } else {
+            stats.records_reused = stats.records_reused.saturating_add(1);
+            stats.rows_avoided = stats
+                .rows_avoided
+                .saturating_add(market_fact_row_count(&record.rows));
+        }
         connection.execute(
-            "INSERT OR IGNORE INTO market_observation_records(payload_hash, ordinal, record_hash) \
-             VALUES(?1, ?2, ?3)",
+            "INSERT INTO market_observation_records(payload_hash, ordinal, record_hash) \
+             VALUES(?1, ?2, ?3) \
+             ON CONFLICT(payload_hash, ordinal) DO UPDATE SET record_hash = excluded.record_hash",
             params![storage_key, ordinal as u32, record_hash],
         )?;
     }
@@ -1069,7 +1178,15 @@ pub(crate) fn persist_market_data(
             now_ms(),
         ],
     )?;
-    Ok(())
+    Ok(stats)
+}
+
+fn market_fact_row_count(rows: &MarketFactRows) -> u64 {
+    rows.prices
+        .len()
+        .saturating_add(rows.trades.len())
+        .saturating_add(rows.scalars.len())
+        .min(u64::MAX as usize) as u64
 }
 
 fn persist_record_rows(
@@ -1234,14 +1351,17 @@ fn record_hash(
     market: &ParsedMarketData,
 ) -> Result<String, ObservatoryError> {
     let mut hasher = Sha256::new();
+    hasher.update(b"republic-observatory-market-record-v2\0");
     hasher.update(record.record_id.to_le_bytes());
     hasher.update(record.year.to_le_bytes());
     hasher.update(record.day.to_le_bytes());
+    hasher.update(record.game_day.to_le_bytes());
     for row in &record.rows.prices {
         hasher.update(b"price\0");
         hasher.update(resource(market, row.resource_index)?.as_bytes());
         hasher.update(source_field(market, row.source_field_index)?.as_bytes());
         hasher.update([row.currency as u8, row.side as u8]);
+        hasher.update(row.source_line.to_le_bytes());
         hasher.update(row.value.to_bits().to_le_bytes());
         hasher.update(row.modifier.to_bits().to_le_bytes());
     }
@@ -1250,6 +1370,7 @@ fn record_hash(
         hasher.update(resource(market, row.resource_index)?.as_bytes());
         hasher.update(source_field(market, row.source_field_index)?.as_bytes());
         hasher.update([row.currency as u8, row.direction as u8, row.channel as u8]);
+        hasher.update(row.source_line.to_le_bytes());
         hasher.update(row.quantity.to_bits().to_le_bytes());
         hasher.update(row.account_value.to_bits().to_le_bytes());
     }
@@ -1257,6 +1378,8 @@ fn record_hash(
         hasher.update(b"scalar\0");
         hasher.update(row.fact_id.as_bytes());
         hasher.update(source_field(market, row.source_field_index)?.as_bytes());
+        hasher.update([row.currency.map_or(u8::MAX, |currency| currency as u8)]);
+        hasher.update(row.source_line.to_le_bytes());
         hasher.update(row.category.unwrap_or(i32::MIN).to_le_bytes());
         hasher.update(row.value.to_bits().to_le_bytes());
     }

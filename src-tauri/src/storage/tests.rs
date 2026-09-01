@@ -5,9 +5,11 @@ use super::ObservatoryStorage;
 use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
     AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
-    BackgroundWorkPriority, CoverageReport, CoverageStatus, MotionPreference, ReceiverRecord,
-    RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot,
-    SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset,
+    BackgroundWorkPriority, CoverageReport, CoverageStatus, MarketCurrency, MarketFactRows,
+    MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference, ParsedMarketData,
+    ReceiverRecord, RecorderCandidateStatus, RecorderDiscoverySource, SNAPSHOT_FACTS,
+    SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    StoragePatiencePreset,
 };
 
 #[test]
@@ -435,6 +437,108 @@ fn reinterpretation_is_idempotent_per_profile_and_immutable_across_profiles() {
         observation.interpretation_id == "local-profile-interpretation"
             && observation.mapping_classification == "player_mapped"
     }));
+}
+
+#[test]
+fn market_record_cache_reuses_shared_prefix_rows_across_interpretations() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("market-cache.sqlite3"))
+        .expect("storage");
+    let mut reviewed = inspection("market-raw-save", "market.zip", &[1, 2, 3]);
+    reviewed.market = ParsedMarketData {
+        resources: vec!["oil".to_owned()],
+        source_fields: vec!["$PRICE_BUY_RUB".to_owned()],
+        records: vec![MarketHistoryRecord {
+            record_id: 7,
+            year: 2017,
+            day: 93,
+            game_day: 93,
+            rows: MarketFactRows {
+                prices: vec![MarketPriceRow {
+                    resource_index: 0,
+                    source_field_index: 0,
+                    source_line: 12,
+                    currency: MarketCurrency::Rub,
+                    side: MarketPriceSide::Purchase,
+                    value: 12.5,
+                    modifier: 1.0,
+                }],
+                ..MarketFactRows::default()
+            },
+        }],
+        row_count: 1,
+        ..ParsedMarketData::default()
+    };
+    storage.save_inspection(&reviewed).expect("reviewed market");
+
+    let mut alternate = reviewed.clone();
+    alternate.interpretation_id = "market-alternate-interpretation".to_owned();
+    alternate.compatibility.profile_id = "local.market.profile".to_owned();
+    alternate.compatibility.profile_content_hash = "d".repeat(64);
+    alternate.compatibility.resolved_profile_hash = "e".repeat(64);
+    alternate.compatibility.profile_source = "local_override".to_owned();
+    let (inserted, cache) = storage
+        .save_reinterpretation_with_market_stats(&alternate)
+        .expect("alternate market interpretation");
+    assert!(inserted);
+    assert_eq!(cache.records_reused, 1);
+    assert_eq!(cache.rows_avoided, 1);
+
+    let connection = storage.connect().expect("connection");
+    let price_rows = connection
+        .query_row("SELECT COUNT(*) FROM market_price_facts", [], |row| {
+            row.get::<_, u32>(0)
+        })
+        .expect("price count");
+    assert_eq!(price_rows, 1);
+}
+
+#[test]
+fn market_index_resume_preserves_completed_archive_checkpoints() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("market-resume.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&inspection("market-one", "one.zip", &[1, 2]))
+        .expect("first archive");
+    storage
+        .save_inspection(&inspection("market-two", "two.zip", &[1, 2, 3]))
+        .expect("second archive");
+    let candidates = storage
+        .market_index_candidates("fixture-directory")
+        .expect("candidates");
+    assert_eq!(candidates.len(), 2);
+
+    storage
+        .start_market_index_job("resume-job", &candidates)
+        .expect("new job");
+    storage
+        .update_market_index_item(
+            "resume-job",
+            &candidates[0].payload_hash,
+            "complete",
+            3,
+            12,
+            None,
+        )
+        .expect("checkpoint");
+
+    let resumed = storage
+        .start_market_index_job("resume-job", &candidates)
+        .expect("resumed job");
+    assert_eq!(resumed.completed_archives, 1);
+    assert_eq!(resumed.resume_count, 1);
+    let states = storage
+        .market_index_item_states("resume-job")
+        .expect("item states");
+    assert_eq!(
+        states.get(&candidates[0].payload_hash).map(String::as_str),
+        Some("complete")
+    );
+    assert_eq!(
+        states.get(&candidates[1].payload_hash).map(String::as_str),
+        Some("pending")
+    );
 }
 
 #[test]
@@ -920,7 +1024,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        17
+        18
     );
     assert_eq!(
         migrated
@@ -952,6 +1056,12 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
     connection
         .execute("DELETE FROM schema_migrations WHERE version >= 16", [])
         .expect("remove current migration markers");
+    connection
+        .execute(
+            "ALTER TABLE market_observation_coverage DROP COLUMN storage_contract_version",
+            [],
+        )
+        .expect("restore version fifteen market coverage");
     connection
         .execute_batch(
             "DROP INDEX warehouse_projection_jobs_queue;
@@ -1008,7 +1118,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        17
+        18
     );
     assert_eq!(
         connection
