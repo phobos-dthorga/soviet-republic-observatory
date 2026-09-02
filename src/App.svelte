@@ -745,6 +745,13 @@
         broadcastIndexingProgress = reviewBroadcastIndexingProgress("running");
         receiverDataset = broadcastWorkspace.receiver;
         break;
+      case "broadcast-current":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("ready");
+        broadcastOutcome = reviewBroadcastOutcome();
+        broadcastIndexingProgress = reviewBroadcastIndexingProgress("current");
+        receiverDataset = broadcastWorkspace.receiver;
+        break;
       case "broadcast-paused":
         openWorkspace("broadcast");
         broadcastWorkspace = reviewBroadcastWorkspace("ready");

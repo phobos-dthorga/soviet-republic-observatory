@@ -3,6 +3,7 @@ export const UI_REVIEW_SCENARIOS = [
   "workspace-monitor",
   "workspace-broadcast",
   "broadcast-indexing",
+  "broadcast-current",
   "broadcast-paused",
   "broadcast-partial",
   "broadcast-empty",

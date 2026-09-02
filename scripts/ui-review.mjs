@@ -20,6 +20,7 @@ const scenarios = [
   "workspace-monitor",
   "workspace-broadcast",
   "broadcast-indexing",
+  "broadcast-current",
   "broadcast-paused",
   "broadcast-partial",
   "broadcast-empty",

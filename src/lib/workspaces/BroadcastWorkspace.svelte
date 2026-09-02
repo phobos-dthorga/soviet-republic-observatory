@@ -23,6 +23,8 @@
     PublishedMetricContext,
   } from "../observations/types";
   import {
+    broadcastIndexingChecked,
+    broadcastIndexingHasIssues,
     broadcastMetricLabel,
     broadcastOutcomeAvailabilityLabel,
     createBroadcastOutcomeChart,
@@ -185,6 +187,12 @@
       !["idle", "complete", "failed", "paused"].includes(
         indexingProgress.phase,
       ),
+  );
+  const indexingChecked = $derived(
+    indexingProgress ? broadcastIndexingChecked(indexingProgress) : 0,
+  );
+  const indexingHasIssues = $derived(
+    indexingProgress ? broadcastIndexingHasIssues(indexingProgress) : false,
   );
 
   $effect(() => {
@@ -446,18 +454,35 @@
         <div class="index-progress" aria-live="polite">
           <strong
             >{$translation("broadcast-index-progress", {
-              completed: indexingProgress.completed_archives,
+              completed: indexingChecked,
               total: indexingProgress.total_archives,
             })}</strong
           >
           <progress max="100" value={indexingProgress.progress_percent ?? 0}
           ></progress>
+          {#if indexingChecked > 0}
+            <span class="index-breakdown"
+              >{$translation("broadcast-index-breakdown", {
+                added: indexingProgress.completed_archives,
+                current: indexingProgress.duplicate_archives,
+                missing: indexingProgress.missing_archives,
+                changed: indexingProgress.changed_archives,
+                failed: indexingProgress.failed_archives,
+              })}</span
+            >
+          {/if}
           {#if indexingProgress.phase === "paused"}
             <span>{$translation("broadcast-index-paused")}</span>
           {:else if indexingProgress.phase === "failed"}
             <span>{$translation("broadcast-index-failed")}</span>
           {:else if indexingProgress.phase === "complete"}
-            <span>{$translation("broadcast-index-current")}</span>
+            <span
+              >{$translation(
+                indexingHasIssues
+                  ? "broadcast-index-complete-with-issues"
+                  : "broadcast-index-current",
+              )}</span
+            >
           {/if}
         </div>
       {/if}
@@ -895,6 +920,10 @@
   .index-progress span {
     color: var(--colour-muted);
     font-size: var(--type-caption);
+  }
+
+  .index-progress .index-breakdown {
+    color: var(--colour-text);
   }
 
   .outcome-controls {

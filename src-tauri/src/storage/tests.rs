@@ -670,6 +670,43 @@ fn market_index_resume_preserves_completed_archive_checkpoints() {
 }
 
 #[test]
+fn market_and_broadcast_index_progress_are_loaded_independently() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("index-progress.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&inspection("shared-save", "shared.zip", &[1, 2]))
+        .expect("recorded save");
+    let candidates = storage
+        .market_index_candidates("fixture-directory")
+        .expect("candidates");
+
+    storage
+        .start_market_index_job("market-index-fixture", &candidates, false)
+        .expect("Markets job");
+    storage
+        .start_market_index_job("broadcast-index-fixture", &candidates, false)
+        .expect("Broadcast job");
+
+    assert_eq!(
+        storage
+            .latest_market_index_progress()
+            .expect("latest Markets progress")
+            .job_id
+            .as_deref(),
+        Some("market-index-fixture")
+    );
+    assert_eq!(
+        storage
+            .latest_broadcast_index_progress()
+            .expect("latest Broadcast progress")
+            .job_id
+            .as_deref(),
+        Some("broadcast-index-fixture")
+    );
+}
+
+#[test]
 fn interrupted_warehouse_jobs_return_to_pending_without_losing_the_observation() {
     let directory = tempdir().expect("temporary directory");
     let path = directory.path().join("recovery.sqlite3");

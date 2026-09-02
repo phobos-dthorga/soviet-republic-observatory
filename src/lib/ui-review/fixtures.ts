@@ -685,17 +685,28 @@ export function reviewBroadcastOutcome(): BroadcastOutcomeModel {
 }
 
 export function reviewBroadcastIndexingProgress(
-  state: "running" | "paused" | "failed" = "running",
+  state: "running" | "paused" | "failed" | "current" = "running",
 ): BroadcastIndexingProgress {
+  const current = state === "current";
+  const base = reviewMarketIndexingProgress(state === "failed");
   return {
-    ...reviewMarketIndexingProgress(state === "failed"),
+    ...base,
     job_id: "review-broadcast-index",
-    phase:
-      state === "paused"
+    phase: current
+      ? "complete"
+      : state === "paused"
         ? "paused"
         : state === "failed"
           ? "failed"
           : "parsing_records",
+    progress_percent: current ? 100 : base.progress_percent,
+    current_file: current ? null : base.current_file,
+    current_archive: current ? base.total_archives : base.current_archive,
+    completed_archives: current ? 0 : base.completed_archives,
+    missing_archives: current ? 0 : base.missing_archives,
+    changed_archives: current ? 0 : base.changed_archives,
+    failed_archives: current ? 0 : base.failed_archives,
+    duplicate_archives: current ? base.total_archives : base.duplicate_archives,
     error_code:
       state === "paused"
         ? "storage_occupied"

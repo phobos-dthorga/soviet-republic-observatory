@@ -175,6 +175,27 @@ impl ObservatoryStorage {
             .optional()
             .map_err(Into::into)
     }
+
+    pub(crate) fn broadcast_coverage_exists(
+        &self,
+        interpretation_id: &str,
+    ) -> Result<bool, ObservatoryError> {
+        let connection = self.connect()?;
+        connection
+            .query_row(
+                r#"SELECT EXISTS(
+                       SELECT 1
+                         FROM observation_sources source
+                         JOIN broadcast_status_observation_coverage coverage
+                           ON coverage.payload_hash = source.payload_hash
+                        WHERE source.interpretation_id = ?1
+                          AND coverage.storage_contract_version = ?2
+                   )"#,
+                params![interpretation_id, BROADCAST_STATUS_STORAGE_CONTRACT_VERSION],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
 }
 
 fn load_status_history(

@@ -91,7 +91,30 @@ fn ratio_percent(
     )
 }
 
-fn market_index_job_id(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SaveIndexingKind {
+    Markets,
+    Broadcast,
+}
+
+impl SaveIndexingKind {
+    fn job_prefix(self) -> &'static str {
+        match self {
+            Self::Markets => "market-index",
+            Self::Broadcast => "broadcast-index",
+        }
+    }
+
+    fn diagnostics_scope(self) -> &'static str {
+        match self {
+            Self::Markets => "market_indexing",
+            Self::Broadcast => "broadcast_indexing",
+        }
+    }
+}
+
+fn save_index_job_id(
+    kind: SaveIndexingKind,
     source_directory_identity: &str,
     resolved_profile_hash: &str,
     candidates: &[crate::model::MarketIndexCandidate],
@@ -103,7 +126,13 @@ fn market_index_job_id(
     payload_hashes.sort_unstable();
     payload_hashes.dedup();
     let mut hasher = Sha256::new();
-    hasher.update(b"republic-observatory-market-index-v1\0");
+    hasher.update(b"republic-observatory-save-index-v2\0");
+    hasher.update(kind.job_prefix().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(crate::compatibility_profile::PARSER_ENGINE_VERSION.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(crate::storage::MARKET_STORAGE_CONTRACT_VERSION.to_le_bytes());
+    hasher.update(crate::storage::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION.to_le_bytes());
     hasher.update(source_directory_identity.as_bytes());
     hasher.update(b"\0");
     hasher.update(resolved_profile_hash.as_bytes());
@@ -116,7 +145,7 @@ fn market_index_job_id(
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    format!("market-index-{}", &suffix[..24])
+    format!("{}-{}", kind.job_prefix(), &suffix[..24])
 }
 
 #[derive(Debug)]
@@ -128,6 +157,7 @@ pub struct ObservatoryApplication {
     reinterpretation: Mutex<()>,
     reinterpretation_progress: Mutex<ReinterpretationProgress>,
     market_indexing_progress: Mutex<MarketIndexingProgress>,
+    broadcast_indexing_progress: Mutex<MarketIndexingProgress>,
     bulk_work: BulkWorkCoordinator,
     storage_patience_seconds: AtomicU64,
     background_work_priority: AtomicU8,
@@ -148,6 +178,7 @@ impl ObservatoryApplication {
         storage.record_compatibility_runtime(&compatibility.active()?, &compatibility.status()?)?;
         let preferences = storage.load_application_preferences()?;
         let market_indexing_progress = storage.latest_market_index_progress()?;
+        let broadcast_indexing_progress = storage.latest_broadcast_index_progress()?;
         let warehouse = match AnalyticalWarehouse::initialise(warehouse_path.clone()) {
             Ok(warehouse) => warehouse,
             Err(_) => {
@@ -174,6 +205,7 @@ impl ObservatoryApplication {
             reinterpretation: Mutex::new(()),
             reinterpretation_progress: Mutex::new(ReinterpretationProgress::default()),
             market_indexing_progress: Mutex::new(market_indexing_progress),
+            broadcast_indexing_progress: Mutex::new(broadcast_indexing_progress),
             bulk_work: BulkWorkCoordinator::default(),
             storage_patience_seconds: AtomicU64::new(u64::from(
                 preferences.effective_storage_patience_seconds,
@@ -804,7 +836,18 @@ impl ObservatoryApplication {
     }
 
     pub fn market_indexing_progress(&self) -> Result<MarketIndexingProgress, ObservatoryError> {
-        self.market_indexing_progress
+        self.save_indexing_progress(SaveIndexingKind::Markets)
+    }
+
+    fn save_indexing_progress(
+        &self,
+        kind: SaveIndexingKind,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        let progress = match kind {
+            SaveIndexingKind::Markets => &self.market_indexing_progress,
+            SaveIndexingKind::Broadcast => &self.broadcast_indexing_progress,
+        };
+        progress
             .lock()
             .map(|progress| progress.clone())
             .map_err(|_| ObservatoryError::StorageUnavailable)
@@ -876,29 +919,30 @@ impl ObservatoryApplication {
         &self,
         mut notify: impl FnMut(MarketIndexingProgress),
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
-        self.run_market_indexing(false, &mut notify)
+        self.run_save_indexing(SaveIndexingKind::Markets, false, &mut notify)
     }
 
     pub fn refresh_changed_market_data(
         &self,
         mut notify: impl FnMut(MarketIndexingProgress),
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
-        self.run_market_indexing(true, &mut notify)
+        self.run_save_indexing(SaveIndexingKind::Markets, true, &mut notify)
     }
 
     pub fn broadcast_indexing_progress(&self) -> Result<MarketIndexingProgress, ObservatoryError> {
-        self.market_indexing_progress()
+        self.save_indexing_progress(SaveIndexingKind::Broadcast)
     }
 
     pub fn index_available_saves_for_broadcast(
         &self,
         mut notify: impl FnMut(MarketIndexingProgress),
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
-        self.run_market_indexing(true, &mut notify)
+        self.run_save_indexing(SaveIndexingKind::Broadcast, false, &mut notify)
     }
 
-    fn run_market_indexing(
+    fn run_save_indexing(
         &self,
+        kind: SaveIndexingKind,
         refresh_all: bool,
         notify: &mut impl FnMut(MarketIndexingProgress),
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
@@ -916,19 +960,25 @@ impl ObservatoryApplication {
             let source_directory_identity = crate::save_archive::directory_identity(&directory)?;
             let mut progress = MarketIndexingProgress {
                 job_id: None,
-                storage_contract_version: crate::storage::MARKET_STORAGE_CONTRACT_VERSION,
+                storage_contract_version: match kind {
+                    SaveIndexingKind::Markets => crate::storage::MARKET_STORAGE_CONTRACT_VERSION,
+                    SaveIndexingKind::Broadcast => {
+                        crate::storage::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION
+                    }
+                },
                 phase: MarketIndexingPhase::Discovering,
                 started_at_ms: Some(started_at_ms),
                 updated_at_ms: Some(started_at_ms),
                 ..MarketIndexingProgress::default()
             };
-            self.report_market_indexing_progress(&progress, notify);
+            self.report_save_indexing_progress(kind, &progress, notify);
             let candidates = self.run_background_storage_step(&mut progress, || {
                 self.storage
                     .market_index_candidates(&source_directory_identity)
             })?;
             let profile = self.compatibility.active()?;
-            let job_id = market_index_job_id(
+            let job_id = save_index_job_id(
+                kind,
                 &source_directory_identity,
                 profile.resolved_hash(),
                 &candidates,
@@ -949,17 +999,22 @@ impl ObservatoryApplication {
             progress.duplicate_archives = durable.duplicate_archives;
             progress.resume_count = durable.resume_count;
             if progress.resume_count > 0 {
-                diagnostics::record(
-                    "info",
-                    "markets.index_resumed",
-                    "market_indexing",
-                    "Markets maintenance resumed from durable archive checkpoints under the background-work coordinator.",
-                );
+                let (code, message) = match kind {
+                    SaveIndexingKind::Markets => (
+                        "markets.index_resumed",
+                        "Markets maintenance resumed from durable archive checkpoints under the background-work coordinator.",
+                    ),
+                    SaveIndexingKind::Broadcast => (
+                        "broadcast.index_resumed",
+                        "Broadcast save indexing resumed from durable archive checkpoints under the background-work coordinator.",
+                    ),
+                };
+                diagnostics::record("info", code, kind.diagnostics_scope(), message);
             }
             let item_states = self.run_background_storage_step(&mut progress, || {
                 self.storage.market_index_item_states(&job_id)
             })?;
-            self.report_market_indexing_progress(&progress, notify);
+            self.report_save_indexing_progress(kind, &progress, notify);
 
             for (index, candidate) in candidates.iter().enumerate() {
                 if item_states
@@ -981,7 +1036,7 @@ impl ObservatoryApplication {
                 progress.progress_percent =
                     ratio_percent(index as u64, candidates.len() as u64, 3, 94);
                 progress.updated_at_ms = Some(now_ms());
-                self.report_market_indexing_progress(&progress, notify);
+                self.report_save_indexing_progress(kind, &progress, notify);
 
                 let relative = Path::new(&candidate.source_file_name);
                 let path = directory.join(relative);
@@ -1026,32 +1081,33 @@ impl ObservatoryApplication {
                     continue;
                 }
 
-                let cached_counts = self.run_background_storage_step(&mut progress, || {
-                    self.storage.cached_market_variant_counts(
-                        &candidate.raw_payload_hash,
-                        profile.resolved_hash(),
-                    )
-                })?;
-                let cached_broadcast_records =
-                    self.run_background_storage_step(&mut progress, || {
-                        self.storage.cached_broadcast_variant_count(
-                            &candidate.raw_payload_hash,
-                            profile.resolved_hash(),
-                        )
-                    })?;
-                if let (Some((records, rows)), Some(status_records)) =
-                    (cached_counts, cached_broadcast_records)
-                {
+                let cached_counts = match kind {
+                    SaveIndexingKind::Markets => {
+                        self.run_background_storage_step(&mut progress, || {
+                            self.storage.cached_market_variant_counts(
+                                &candidate.raw_payload_hash,
+                                profile.resolved_hash(),
+                            )
+                        })?
+                    }
+                    SaveIndexingKind::Broadcast => self
+                        .run_background_storage_step(&mut progress, || {
+                            self.storage.cached_broadcast_variant_count(
+                                &candidate.raw_payload_hash,
+                                profile.resolved_hash(),
+                            )
+                        })?
+                        .map(|records| (records, records.saturating_mul(9))),
+                };
+                if let Some((records, rows)) = cached_counts {
                     match hash_save_stats_payload(&path, &profile) {
                         Ok(payload_hash) if payload_hash == candidate.raw_payload_hash => {
                             progress.records_processed = records;
                             progress.rows_processed = rows;
                             progress.duplicate_archives =
                                 progress.duplicate_archives.saturating_add(1);
-                            progress.cache_records_reused = progress
-                                .cache_records_reused
-                                .saturating_add(records)
-                                .saturating_add(status_records);
+                            progress.cache_records_reused =
+                                progress.cache_records_reused.saturating_add(records);
                             progress.cache_rows_avoided =
                                 progress.cache_rows_avoided.saturating_add(u64::from(rows));
                             self.run_background_storage_step(&mut progress, || {
@@ -1098,29 +1154,45 @@ impl ObservatoryApplication {
 
                 progress.phase = MarketIndexingPhase::ParsingRecords;
                 progress.updated_at_ms = Some(now_ms());
-                self.report_market_indexing_progress(&progress, notify);
+                self.report_save_indexing_progress(kind, &progress, notify);
                 match inspect_save_archive(&path, &profile) {
                     Ok(inspection) if inspection.payload_hash == candidate.raw_payload_hash => {
-                        progress.records_processed = inspection.market.records.len() as u32;
-                        progress.rows_processed = inspection.market.row_count;
+                        let (records_processed, rows_processed) = match kind {
+                            SaveIndexingKind::Markets => (
+                                inspection.market.records.len() as u32,
+                                inspection.market.row_count,
+                            ),
+                            SaveIndexingKind::Broadcast => {
+                                let records = inspection.citizen_status.records.len() as u32;
+                                (records, records.saturating_mul(9))
+                            }
+                        };
+                        progress.records_processed = records_processed;
+                        progress.rows_processed = rows_processed;
                         progress.phase = MarketIndexingPhase::Persisting;
                         progress.updated_at_ms = Some(now_ms());
-                        self.report_market_indexing_progress(&progress, notify);
+                        self.report_save_indexing_progress(kind, &progress, notify);
                         let already_indexed =
-                            self.run_background_storage_step(&mut progress, || {
-                                self.storage
-                                    .market_coverage_exists(&inspection.interpretation_id)
+                            self.run_background_storage_step(&mut progress, || match kind {
+                                SaveIndexingKind::Markets => self
+                                    .storage
+                                    .market_coverage_exists(&inspection.interpretation_id),
+                                SaveIndexingKind::Broadcast => self
+                                    .storage
+                                    .broadcast_coverage_exists(&inspection.interpretation_id),
                             })?;
                         let (_, cache) = self.run_background_storage_step(&mut progress, || {
                             self.storage
                                 .save_reinterpretation_with_market_stats(&inspection)
                         })?;
-                        progress.cache_records_reused = progress
-                            .cache_records_reused
-                            .saturating_add(cache.records_reused);
-                        progress.cache_rows_avoided = progress
-                            .cache_rows_avoided
-                            .saturating_add(cache.rows_avoided);
+                        if kind == SaveIndexingKind::Markets {
+                            progress.cache_records_reused = progress
+                                .cache_records_reused
+                                .saturating_add(cache.records_reused);
+                            progress.cache_rows_avoided = progress
+                                .cache_rows_avoided
+                                .saturating_add(cache.rows_avoided);
+                        }
                         if already_indexed {
                             progress.duplicate_archives += 1;
                         } else {
@@ -1177,7 +1249,7 @@ impl ObservatoryApplication {
             progress.progress_percent = Some(97);
             progress.current_file = None;
             progress.updated_at_ms = Some(now_ms());
-            self.report_market_indexing_progress(&progress, notify);
+            self.report_save_indexing_progress(kind, &progress, notify);
             progress.phase = MarketIndexingPhase::Complete;
             progress.progress_percent = Some(100);
             progress.updated_at_ms = Some(now_ms());
@@ -1185,13 +1257,19 @@ impl ObservatoryApplication {
             self.run_background_storage_step(&mut progress, || {
                 self.storage.finish_market_index_job(&finish_snapshot)
             })?;
-            self.report_market_indexing_progress(&progress, notify);
+            self.report_save_indexing_progress(kind, &progress, notify);
+            let (complete_code, task_label) = match kind {
+                SaveIndexingKind::Markets => ("markets.index_complete", "Markets maintenance"),
+                SaveIndexingKind::Broadcast => {
+                    ("broadcast.index_complete", "Broadcast save indexing")
+                }
+            };
             diagnostics::record(
                 "info",
-                "markets.index_complete",
-                "market_indexing",
+                complete_code,
+                kind.diagnostics_scope(),
                 &format!(
-                    "Markets maintenance completed without changing the analytical head; {} cached records and {} cached rows were reused after {} contention retries and {} ms waiting.",
+                    "{task_label} completed without changing the selected save; {} cached records and {} cached rows were reused after {} contention retries and {} ms waiting.",
                     progress.cache_records_reused,
                     progress.cache_rows_avoided,
                     progress.contention_retries,
@@ -1203,32 +1281,40 @@ impl ObservatoryApplication {
         match result {
             Ok(progress) => Ok(progress),
             Err(ObservatoryError::StorageBusy) => {
-                let mut paused = self.market_indexing_progress().unwrap_or_default();
+                let mut paused = self.save_indexing_progress(kind).unwrap_or_default();
                 paused.phase = MarketIndexingPhase::Paused;
                 paused.updated_at_ms = Some(now_ms());
                 paused.error_code = Some("storage_occupied".to_owned());
-                self.report_market_indexing_progress(&paused, notify);
+                self.report_save_indexing_progress(kind, &paused, notify);
                 if paused.job_id.is_some() {
                     let _ = self.storage.finish_market_index_job(&paused);
                 }
+                let (paused_code, task_label) = match kind {
+                    SaveIndexingKind::Markets => {
+                        ("markets.index_paused_storage", "Markets indexing")
+                    }
+                    SaveIndexingKind::Broadcast => {
+                        ("broadcast.index_paused_storage", "Broadcast save indexing")
+                    }
+                };
                 diagnostics::record(
                     "warning",
-                    "markets.index_paused_storage",
-                    "market_indexing",
+                    paused_code,
+                    kind.diagnostics_scope(),
                     &format!(
-                        "Markets indexing paused after {} contention retries and {} ms waiting; completed archive checkpoints remain reusable.",
+                        "{task_label} paused after {} contention retries and {} ms waiting; completed archive checkpoints remain reusable.",
                         paused.contention_retries, paused.contention_wait_ms
                     ),
                 );
                 Ok(paused)
             }
             Err(error) => {
-                let mut failed = self.market_indexing_progress().unwrap_or_default();
+                let mut failed = self.save_indexing_progress(kind).unwrap_or_default();
                 failed.phase = MarketIndexingPhase::Failed;
                 failed.progress_percent = None;
                 failed.updated_at_ms = Some(now_ms());
                 failed.error_code = Some(error.code().to_owned());
-                self.report_market_indexing_progress(&failed, notify);
+                self.report_save_indexing_progress(kind, &failed, notify);
                 if failed.job_id.is_some() {
                     let _ = self.storage.finish_market_index_job(&failed);
                 }
@@ -1237,12 +1323,17 @@ impl ObservatoryApplication {
         }
     }
 
-    fn report_market_indexing_progress(
+    fn report_save_indexing_progress(
         &self,
+        kind: SaveIndexingKind,
         progress: &MarketIndexingProgress,
         notify: &mut impl FnMut(MarketIndexingProgress),
     ) {
-        if let Ok(mut current) = self.market_indexing_progress.lock() {
+        let target = match kind {
+            SaveIndexingKind::Markets => &self.market_indexing_progress,
+            SaveIndexingKind::Broadcast => &self.broadcast_indexing_progress,
+        };
+        if let Ok(mut current) = target.lock() {
             *current = progress.clone();
         }
         notify(progress.clone());
@@ -2206,7 +2297,9 @@ mod tests {
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
-    use super::{ObservatoryApplication, count_save_candidates, market_index_job_id};
+    use super::{
+        ObservatoryApplication, SaveIndexingKind, count_save_candidates, save_index_job_id,
+    };
     use crate::automatic_observer::latest_save_candidate_path;
     use crate::compatibility_profile::ResolvedCompatibilityProfile;
     use crate::model::{DirectoryKind, MarketIndexCandidate, WarehousePhase};
@@ -2297,15 +2390,17 @@ mod tests {
     }
 
     #[test]
-    fn market_index_job_identity_is_content_derived_and_order_independent() {
+    fn save_index_job_identity_is_content_derived_order_independent_and_task_specific() {
         let first = market_candidate("a");
         let second = market_candidate("b");
-        let forward = market_index_job_id(
+        let forward = save_index_job_id(
+            SaveIndexingKind::Markets,
             "directory-identity",
             "profile-one",
             &[first.clone(), second.clone()],
         );
-        let reverse = market_index_job_id(
+        let reverse = save_index_job_id(
+            SaveIndexingKind::Markets,
             "directory-identity",
             "profile-one",
             &[second, first.clone(), first],
@@ -2313,9 +2408,19 @@ mod tests {
         assert_eq!(forward, reverse);
         assert_ne!(
             forward,
-            market_index_job_id(
+            save_index_job_id(
+                SaveIndexingKind::Markets,
                 "directory-identity",
                 "profile-two",
+                &[market_candidate("a"), market_candidate("b")],
+            )
+        );
+        assert_ne!(
+            forward,
+            save_index_job_id(
+                SaveIndexingKind::Broadcast,
+                "directory-identity",
+                "profile-one",
                 &[market_candidate("a"), market_candidate("b")],
             )
         );

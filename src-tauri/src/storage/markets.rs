@@ -695,11 +695,26 @@ impl ObservatoryStorage {
     pub(crate) fn latest_market_index_progress(
         &self,
     ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.latest_index_progress("market-index-")
+    }
+
+    pub(crate) fn latest_broadcast_index_progress(
+        &self,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.latest_index_progress("broadcast-index-")
+    }
+
+    fn latest_index_progress(
+        &self,
+        job_prefix: &str,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
         let connection = self.connect()?;
         let job_id = connection
             .query_row(
-                "SELECT job_id FROM market_indexing_jobs ORDER BY started_at_ms DESC LIMIT 1",
-                [],
+                "SELECT job_id FROM market_indexing_jobs \
+                 WHERE substr(job_id, 1, length(?1)) = ?1 \
+                 ORDER BY started_at_ms DESC LIMIT 1",
+                [job_prefix],
                 |row| row.get::<_, String>(0),
             )
             .optional()?;

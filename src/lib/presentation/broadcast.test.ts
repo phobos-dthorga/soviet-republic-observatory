@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { translate } from "../i18n/runtime";
-import type { BroadcastOutcomeModel } from "../observations/types";
+import type {
+  BroadcastIndexingProgress,
+  BroadcastOutcomeModel,
+} from "../observations/types";
 import {
+  broadcastIndexingChecked,
+  broadcastIndexingHasIssues,
   broadcastMetricLabel,
   broadcastOutcomeAvailabilityLabel,
   createBroadcastOutcomeChart,
@@ -41,7 +46,61 @@ describe("Broadcast presentation", () => {
     expect(chart.series[1].points[0].value).toBe(2);
     expect(chart.unit).toBe("pp");
   });
+
+  it("counts cached saves as checked without calling them newly added", () => {
+    const progress = indexingProgress({
+      total_archives: 9,
+      duplicate_archives: 9,
+    });
+
+    expect(broadcastIndexingChecked(progress)).toBe(9);
+    expect(broadcastIndexingHasIssues(progress)).toBe(false);
+  });
+
+  it("reports unavailable or rejected saves separately from successful checks", () => {
+    const progress = indexingProgress({
+      total_archives: 9,
+      completed_archives: 2,
+      duplicate_archives: 4,
+      missing_archives: 1,
+      changed_archives: 1,
+      failed_archives: 1,
+    });
+
+    expect(broadcastIndexingChecked(progress)).toBe(9);
+    expect(broadcastIndexingHasIssues(progress)).toBe(true);
+  });
 });
+
+function indexingProgress(
+  overrides: Partial<BroadcastIndexingProgress>,
+): BroadcastIndexingProgress {
+  return {
+    job_id: "broadcast-index-fixture",
+    storage_contract_version: 1,
+    phase: "complete",
+    progress_percent: 100,
+    started_at_ms: 1,
+    updated_at_ms: 2,
+    current_file: null,
+    current_archive: 0,
+    total_archives: 0,
+    records_processed: 0,
+    rows_processed: 0,
+    completed_archives: 0,
+    missing_archives: 0,
+    changed_archives: 0,
+    failed_archives: 0,
+    duplicate_archives: 0,
+    cache_records_reused: 0,
+    cache_rows_avoided: 0,
+    contention_retries: 0,
+    contention_wait_ms: 0,
+    resume_count: 0,
+    error_code: null,
+    ...overrides,
+  };
+}
 
 function pair(recordId: number, day: number) {
   return {

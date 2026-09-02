@@ -2,6 +2,7 @@ import type { ChartPoint, ChartSpec } from "../charts/types";
 import type { TranslationKey } from "../i18n/catalog";
 import type { Translator } from "../i18n/runtime";
 import type {
+  BroadcastIndexingProgress,
   BroadcastOutcomeAvailability,
   BroadcastOutcomeModel,
 } from "../observations/types";
@@ -38,6 +39,29 @@ const availabilityKeys: Record<BroadcastOutcomeAvailability, TranslationKey> = {
   constant_receiver_changes: "broadcast-outcome-constant-receiver",
   constant_status_changes: "broadcast-outcome-constant-status",
 };
+
+export function broadcastIndexingChecked(
+  progress: BroadcastIndexingProgress,
+): number {
+  const terminalArchives =
+    progress.completed_archives +
+    progress.duplicate_archives +
+    progress.missing_archives +
+    progress.changed_archives +
+    progress.failed_archives;
+  return Math.min(progress.total_archives, Math.max(0, terminalArchives));
+}
+
+export function broadcastIndexingHasIssues(
+  progress: BroadcastIndexingProgress,
+): boolean {
+  return (
+    progress.missing_archives +
+      progress.changed_archives +
+      progress.failed_archives >
+    0
+  );
+}
 
 export function broadcastMetricLabel(
   metricId: string,
