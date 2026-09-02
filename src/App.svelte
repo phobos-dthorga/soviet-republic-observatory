@@ -9,6 +9,7 @@
   import PopulationWorkspace from "./lib/workspaces/PopulationWorkspace.svelte";
   import PlanWorkspace from "./lib/workspaces/PlanWorkspace.svelte";
   import MarketsWorkspace from "./lib/workspaces/MarketsWorkspace.svelte";
+  import EnvironmentWorkspace from "./lib/workspaces/EnvironmentWorkspace.svelte";
   import LanguageDialog from "./lib/i18n/LanguageDialog.svelte";
   import ThemeDialog from "./lib/theme/ThemeDialog.svelte";
   import SettingsDialog from "./lib/settings/SettingsDialog.svelte";
@@ -72,6 +73,7 @@
     reviewBroadcastIndexingProgress,
     reviewBroadcastOutcome,
     reviewBroadcastWorkspace,
+    reviewEnvironmentWorkspace,
     reviewCatalogueProgress,
     reviewMarketIndexingProgress,
     reviewMarketWorkspace,
@@ -95,6 +97,8 @@
     getBroadcastIndexingProgress,
     getBroadcastOutcome,
     getBroadcastWorkspace,
+    getEnvironmentIndexingProgress,
+    getEnvironmentWorkspace,
     getCatalogueStatus,
     getDiagnosticLog,
     getLatestReceiverDataset,
@@ -112,6 +116,7 @@
     listenForRecorderUpdates,
     listenForCatalogueProgress,
     listenForBroadcastIndexingProgress,
+    listenForEnvironmentIndexingProgress,
     listenForCompatibilityUpdates,
     listenForReinterpretationProgress,
     listenForMarketIndexingProgress,
@@ -127,6 +132,8 @@
     BroadcastOutcomeModel,
     BroadcastOutcomeRequest,
     BroadcastWorkspaceModel,
+    EnvironmentIndexingProgress,
+    EnvironmentWorkspaceModel,
     CatalogueRefreshProgress,
     CatalogueStatus,
     CompatibilityUpdate,
@@ -168,6 +175,7 @@
     { id: "plan", label: "nav-plan", enabled: true },
     { id: "materials", label: "nav-materials", enabled: true },
     { id: "population", label: "nav-population", enabled: true },
+    { id: "environment", label: "nav-environment", enabled: true },
     { id: "markets", label: "nav-markets", enabled: true },
     { id: "archive", label: "nav-archive", enabled: true },
   ];
@@ -194,6 +202,9 @@
   let broadcastIndexingProgress = $state<BroadcastIndexingProgress | null>(
     null,
   );
+  let environmentIndexingProgress = $state<EnvironmentIndexingProgress | null>(
+    null,
+  );
   const desktopAvailable = desktopHostAvailable();
   let setupState = $state<SetupState | null>(null);
   let receiverDataset = $state<ReceiverDataset | null>(null);
@@ -204,6 +215,7 @@
   let republicPlan = $state<RepublicPlanWorkspace | null>(null);
   let marketWorkspace = $state<MarketWorkspace | null>(null);
   let broadcastWorkspace = $state<BroadcastWorkspaceModel | null>(null);
+  let environmentWorkspace = $state<EnvironmentWorkspaceModel | null>(null);
   let broadcastOutcome = $state<BroadcastOutcomeModel | null>(null);
   let publishedMetricContexts = $state<PublishedMetricContext[]>([]);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
@@ -532,6 +544,7 @@
       refreshRepublicPlan(),
       refreshMarketWorkspace(),
       refreshBroadcastWorkspace(),
+      refreshEnvironmentWorkspace(),
     ]);
   }
 
@@ -579,6 +592,15 @@
     } catch {
       broadcastWorkspace = null;
       broadcastOutcome = null;
+    }
+  }
+
+  async function refreshEnvironmentWorkspace(): Promise<void> {
+    if (!desktopAvailable) return;
+    try {
+      environmentWorkspace = await getEnvironmentWorkspace();
+    } catch {
+      environmentWorkspace = null;
     }
   }
 
@@ -658,6 +680,7 @@
     void refreshRepublicPlan();
     void refreshMarketWorkspace();
     void refreshBroadcastWorkspace();
+    void refreshEnvironmentWorkspace();
   }
 
   function acceptRecorderUpdate(update: RecorderUpdate): void {
@@ -680,6 +703,7 @@
       void refreshRepublicBrief();
       void refreshRepublicPlan();
       void refreshMarketWorkspace();
+      void refreshEnvironmentWorkspace();
     }
   }
 
@@ -728,8 +752,10 @@
     researchBuildProgress = null;
     marketIndexingProgress = null;
     broadcastIndexingProgress = null;
+    environmentIndexingProgress = null;
     marketWorkspace = null;
     broadcastWorkspace = null;
+    environmentWorkspace = null;
     broadcastOutcome = null;
     reviewRouteFixture = null;
     reviewPathwayFixture = null;
@@ -824,6 +850,10 @@
       case "population-probe-missing":
         openWorkspace("population");
         populationDataset = reviewPopulationDataset();
+        break;
+      case "workspace-environment":
+        openWorkspace("environment");
+        environmentWorkspace = reviewEnvironmentWorkspace();
         break;
       case "workspace-markets":
         openWorkspace("markets");
@@ -993,6 +1023,7 @@
     let stopReinterpretationListening: (() => void) | undefined;
     let stopMarketIndexingListening: (() => void) | undefined;
     let stopBroadcastIndexingListening: (() => void) | undefined;
+    let stopEnvironmentIndexingListening: (() => void) | undefined;
     let stopResearchBuildListening: (() => void) | undefined;
     let stopWarehouseListening: (() => void) | undefined;
     const initialDataReady = Promise.all([
@@ -1006,6 +1037,8 @@
       getMarketWorkspace().catch(() => null),
       getBroadcastWorkspace().catch(() => null),
       getBroadcastIndexingProgress().catch(() => null),
+      getEnvironmentWorkspace().catch(() => null),
+      getEnvironmentIndexingProgress().catch(() => null),
       getPublishedMetricContexts().catch(() => []),
     ]).then(
       ([
@@ -1019,6 +1052,8 @@
         markets,
         broadcast,
         broadcastIndexing,
+        environment,
+        environmentIndexing,
         metricContexts,
       ]) => {
         if (disposed) return;
@@ -1033,6 +1068,8 @@
         marketWorkspace = markets;
         broadcastWorkspace = broadcast;
         broadcastIndexingProgress = broadcastIndexing;
+        environmentWorkspace = environment;
+        environmentIndexingProgress = environmentIndexing;
         publishedMetricContexts = metricContexts;
       },
     );
@@ -1060,6 +1097,7 @@
         void refreshRepublicPlan();
         void refreshMarketWorkspace();
         void refreshBroadcastWorkspace();
+        void refreshEnvironmentWorkspace();
       }
     }).then((unlisten) => {
       if (disposed) unlisten();
@@ -1135,6 +1173,21 @@
       if (disposed) unlisten();
       else stopBroadcastIndexingListening = unlisten;
     });
+    void observeLatestTaskProgress(
+      {
+        listen: listenForEnvironmentIndexingProgress,
+        read: getEnvironmentIndexingProgress,
+      },
+      (progress) => {
+        if (!disposed) {
+          environmentIndexingProgress = progress;
+          if (progress.phase === "complete") void refreshEnvironmentWorkspace();
+        }
+      },
+    ).then((unlisten) => {
+      if (disposed) unlisten();
+      else stopEnvironmentIndexingListening = unlisten;
+    });
     return () => {
       disposed = true;
       stopListening?.();
@@ -1143,6 +1196,7 @@
       stopReinterpretationListening?.();
       stopMarketIndexingListening?.();
       stopBroadcastIndexingListening?.();
+      stopEnvironmentIndexingListening?.();
       stopResearchBuildListening?.();
       stopWarehouseListening?.();
       stopUiReview?.();
@@ -1469,6 +1523,21 @@
       {desktopAvailable}
       location={activeLocation}
       onlocationchange={updateActiveFilters}
+      onrelatednavigate={requestRelatedNavigation}
+      onopenresearch={() => openDialog("research")}
+    />
+  {:else if activeWorkspace === "environment"}
+    <EnvironmentWorkspace
+      workspace={environmentWorkspace}
+      indexingProgress={environmentIndexingProgress}
+      {desktopAvailable}
+      location={activeLocation}
+      onlocationchange={updateActiveFilters}
+      onupdate={(updated) => (environmentWorkspace = updated)}
+      onprogress={(progress) => {
+        environmentIndexingProgress = progress;
+        if (progress.phase === "complete") void refreshEnvironmentWorkspace();
+      }}
       onrelatednavigate={requestRelatedNavigation}
       onopenresearch={() => openDialog("research")}
     />

@@ -31,6 +31,14 @@ export const workspaceSections = {
     "population-cities",
     "population-identity",
   ],
+  environment: [
+    "environment-overview",
+    "environment-pollution",
+    "environment-waste",
+    "environment-water",
+    "environment-carbon",
+    "environment-recording",
+  ],
   markets: [
     "markets-pulse",
     "markets-trade",
@@ -52,6 +60,7 @@ export type WorkspaceFilters = {
   currency?: "rub" | "usd";
   channel?: "standard" | "international";
   resourceToken?: string;
+  activityChannel?: string;
   catalogueEntityId?: string;
   planRevision?: number;
   interpretationId?: string;
@@ -114,6 +123,7 @@ const workspaceLabels = {
   plan: "nav-plan",
   materials: "nav-materials",
   population: "nav-population",
+  environment: "nav-environment",
   markets: "nav-markets",
   archive: "nav-archive",
 } as const satisfies Record<WorkspaceName, TranslationKey>;
@@ -206,6 +216,11 @@ export function destinationsForSubject(
           subject.reference,
         ),
         exactWorkspaceDestination(
+          "environment",
+          "environment-overview",
+          subject.reference,
+        ),
+        exactWorkspaceDestination(
           "markets",
           "markets-pulse",
           subject.reference,
@@ -278,6 +293,12 @@ function resourceDestinations(
         resourceToken: definitionId,
       }),
       "source",
+    ),
+    withRelationship(
+      workspaceDestination("environment", "environment-overview", {
+        resourceToken: sourceToken,
+      }),
+      "history",
     ),
   ];
   if (isElectronicsEconomyResource(sourceToken)) {

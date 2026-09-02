@@ -198,6 +198,7 @@
         latest_year: null,
         latest_day: null,
         latest_population_count: null,
+        collection_stage: null,
         warnings: [],
       },
     };

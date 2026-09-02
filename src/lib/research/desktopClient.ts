@@ -1,8 +1,10 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import type { TesmioProbeStatus } from "../observations/types";
 import type {
   ResearchBuildProgress,
+  ResearchSessionProgress,
   ResearchSetupStatus,
   ResearchSourceDownloadProgress,
 } from "./types";
@@ -24,7 +26,7 @@ const browserProgress: ResearchBuildProgress = {
 };
 
 const browserStatus: ResearchSetupStatus = {
-  notice_revision: 2,
+  notice_revision: 4,
   notice_accepted: false,
   source_available: false,
   compiler_available: false,
@@ -44,12 +46,43 @@ const browserStatus: ResearchSetupStatus = {
   warnings: [],
   progress: browserProgress,
   download_progress: {
+    task_id: "research_source_download",
+    run_id: "not_started",
     state: "idle",
+    phase: "idle",
     progress_percent: null,
     transferred_bytes: 0,
     expected_bytes: null,
+    started_at_ms: null,
     updated_at_ms: null,
+    current_item: null,
     error_code: null,
+  },
+  session: {
+    state: "game_not_configured",
+    game_configured: false,
+    reviewed_loader_source_available: false,
+    probe_ready: false,
+    report_snapshot_count: 0,
+    report_collection_stage: null,
+    managed_folder: "W&R/tesmioloader/observatory",
+    can_prepare: false,
+    can_launch: false,
+    writes_game_directory: true,
+    writes_save_data: false,
+    changes_running_game_memory: true,
+    progress: {
+      task_id: "research_session_preparation",
+      run_id: "not_started",
+      state: "idle",
+      phase: "idle",
+      progress_percent: null,
+      started_at_ms: null,
+      updated_at_ms: null,
+      current_item: null,
+      log_lines: [],
+      error_code: null,
+    },
   },
 };
 
@@ -61,6 +94,30 @@ export function getResearchSetup(): Promise<ResearchSetupStatus> {
   return isTauri()
     ? invoke<ResearchSetupStatus>("get_research_setup")
     : Promise.resolve(structuredClone(browserStatus));
+}
+
+export function getResearchReportStatus(): Promise<TesmioProbeStatus> {
+  return isTauri()
+    ? invoke<TesmioProbeStatus>("get_research_report_status")
+    : Promise.resolve({
+        state: "missing",
+        read_only: true,
+        optional: true,
+        persisted: false,
+        probe_id: null,
+        probe_version: null,
+        loader_api_version: null,
+        target_game_version: null,
+        executable_timestamp: null,
+        content_hash: null,
+        snapshot_count: 0,
+        sample_count: 0,
+        latest_year: null,
+        latest_day: null,
+        latest_population_count: null,
+        collection_stage: null,
+        warnings: [],
+      });
 }
 
 export function setResearchNoticeAccepted(
@@ -126,4 +183,31 @@ export function listenForResearchSourceDownloadProgress(
     "research-source-download-progress",
     (event) => accept(event.payload),
   );
+}
+
+export function getResearchSessionProgress(): Promise<ResearchSessionProgress> {
+  return isTauri()
+    ? invoke<ResearchSessionProgress>("get_research_session_progress")
+    : Promise.resolve(structuredClone(browserStatus.session.progress));
+}
+
+export function listenForResearchSessionProgress(
+  accept: (progress: ResearchSessionProgress) => void,
+): Promise<UnlistenFn> {
+  if (!isTauri()) return Promise.resolve(() => undefined);
+  return listen<ResearchSessionProgress>("research-session-progress", (event) =>
+    accept(event.payload),
+  );
+}
+
+export function prepareObservationOnlySession(): Promise<ResearchSetupStatus> {
+  return invoke<ResearchSetupStatus>("prepare_observation_only_session", {
+    gameDirectoryWriteConfirmed: true,
+  });
+}
+
+export function launchObservationOnlySession(): Promise<ResearchSetupStatus> {
+  return invoke<ResearchSetupStatus>("launch_observation_only_session", {
+    runningGameMemoryConfirmed: true,
+  });
 }

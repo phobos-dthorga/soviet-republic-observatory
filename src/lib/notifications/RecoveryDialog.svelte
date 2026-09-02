@@ -1,7 +1,8 @@
 <script lang="ts">
   import { translation } from "../i18n/runtime";
+  import { detailsFromError } from "./errors";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
-  import TechnicalDetails from "../ui/TechnicalDetails.svelte";
+  import ErrorSummary from "../ui/ErrorSummary.svelte";
   import { modalFocus } from "../ui/modalFocus";
   import { dismissRecoveryProposal, recoveryProposal } from "./service";
 
@@ -15,6 +16,7 @@
 
   let busy = $state(false);
   let failure = $state("");
+  let failureDetails = $state<ReturnType<typeof detailsFromError>>();
 
   function close(): void {
     if (!busy) dismissRecoveryProposal();
@@ -23,20 +25,33 @@
   async function recover(): Promise<void> {
     const proposal = $recoveryProposal;
     if (!proposal || busy) return;
+    if (proposal.closeBeforeRun) {
+      dismissRecoveryProposal();
+      try {
+        await proposal.run();
+      } catch {
+        // The owning surface reports the failure with its full task context.
+      }
+      return;
+    }
     busy = true;
     failure = "";
     try {
       await proposal.run();
       dismissRecoveryProposal();
-    } catch {
+    } catch (error) {
       failure = $translation("recovery-action-failed");
+      failureDetails = detailsFromError(error, proposal.technicalDetails);
     } finally {
       busy = false;
     }
   }
 
   $effect(() => {
-    if ($recoveryProposal) failure = "";
+    if ($recoveryProposal) {
+      failure = "";
+      failureDetails = undefined;
+    }
   });
 </script>
 
@@ -80,11 +95,16 @@
       {/if}
 
       {#if failure}
-        <p class="recovery-failure" role="alert">{failure}</p>
+        <div class="recovery-failure" role="alert">
+          <ErrorSummary message={failure} technicalDetails={failureDetails} />
+        </div>
       {/if}
 
-      {#if $recoveryProposal.technicalDetails}
-        <TechnicalDetails {...$recoveryProposal.technicalDetails} />
+      {#if $recoveryProposal.technicalDetails && !failure}
+        <ErrorSummary
+          message={$translation("error-details-proposal-hint")}
+          technicalDetails={$recoveryProposal.technicalDetails}
+        />
       {/if}
 
       <footer>

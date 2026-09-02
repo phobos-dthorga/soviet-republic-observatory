@@ -24,6 +24,10 @@ export function resetApplicationPreferences(): Promise<ApplicationSettingsView> 
   return invoke<ApplicationSettingsView>("reset_application_preferences");
 }
 
+export function eraseApplicationDatabases(confirmation: string): Promise<void> {
+  return invoke<void>("erase_application_databases", { confirmation });
+}
+
 export function replayAllAttentionCues(): Promise<number> {
   return invoke<number>("replay_all_attention_cues");
 }

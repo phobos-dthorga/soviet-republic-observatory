@@ -292,6 +292,15 @@
   function resourceRegistryStateLabel(
     state: ResourceRegistryStatus["state"] | undefined,
   ): string {
+    if (state === "waiting_for_game") {
+      const stage = resourceRegistry?.collection_stage;
+      if (stage === "waiting_for_game_state")
+        return $translation("resources-live-state-waiting-game-state");
+      if (stage === "waiting_for_loaded_republic")
+        return $translation("resources-live-state-waiting-republic");
+      if (stage === "stopped_at_record_limit")
+        return $translation("resources-live-state-record-limit");
+    }
     const keys = {
       disabled: "resources-live-state-disabled",
       waiting_for_game: "resources-live-state-waiting-for-game",
@@ -546,6 +555,17 @@
     let disposed = false;
     const stops: Array<() => void> = [];
     const clock = window.setInterval(() => (clockMs = Date.now()), 1_000);
+    const registryClock = window.setInterval(() => {
+      if (resourceRegistry?.enabled && !resourceBusy) {
+        const previousSnapshot = resourceRegistry.latest_snapshot?.snapshot_id;
+        void loadResourceRegistryStatus().then(() => {
+          const nextSnapshot = resourceRegistry?.latest_snapshot?.snapshot_id;
+          if (nextSnapshot && nextSnapshot !== previousSnapshot) {
+            void loadResourceCatalogue();
+          }
+        });
+      }
+    }, 5_000);
     for (const listen of [
       listenForCatalogueUpdates,
       listenForWarehouseUpdates,
@@ -585,6 +605,7 @@
     return () => {
       disposed = true;
       window.clearInterval(clock);
+      window.clearInterval(registryClock);
       stops.forEach((stop) => stop());
     };
   });

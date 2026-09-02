@@ -5,13 +5,27 @@ export type ResearchArtifactState =
 export type ResearchSourceOrigin = "manual_checkout" | "observatory_downloaded";
 export type ResearchSourceDownloadState =
   "idle" | "running" | "complete" | "failed";
+export type ResearchSourceDownloadPhase =
+  | "idle"
+  | "connecting"
+  | "downloading"
+  | "checking_archive"
+  | "installing"
+  | "verifying"
+  | "complete"
+  | "failed";
 
 export type ResearchSourceDownloadProgress = {
+  task_id: string;
+  run_id: string;
   state: ResearchSourceDownloadState;
+  phase: ResearchSourceDownloadPhase;
   progress_percent: number | null;
   transferred_bytes: number;
   expected_bytes: number | null;
+  started_at_ms: number | null;
   updated_at_ms: number | null;
+  current_item: string | null;
   error_code: string | null;
 };
 
@@ -41,6 +55,53 @@ export type ResearchBuildProgress = {
   remediation_code: string | null;
 };
 
+export type ResearchSessionState =
+  | "game_not_configured"
+  | "prerequisites_required"
+  | "ready_to_prepare"
+  | "prepared"
+  | "report_available"
+  | "invalid";
+export type ResearchSessionTaskState =
+  "idle" | "running" | "complete" | "failed";
+export type ResearchSessionPhase =
+  | "idle"
+  | "preflight"
+  | "building_host"
+  | "installing"
+  | "verifying"
+  | "complete"
+  | "failed";
+
+export type ResearchSessionProgress = {
+  task_id: string;
+  run_id: string;
+  state: ResearchSessionTaskState;
+  phase: ResearchSessionPhase;
+  progress_percent: number | null;
+  started_at_ms: number | null;
+  updated_at_ms: number | null;
+  current_item: string | null;
+  log_lines: string[];
+  error_code: string | null;
+};
+
+export type ResearchSessionStatus = {
+  state: ResearchSessionState;
+  game_configured: boolean;
+  reviewed_loader_source_available: boolean;
+  probe_ready: boolean;
+  report_snapshot_count: number;
+  report_collection_stage: string | null;
+  managed_folder: string;
+  can_prepare: boolean;
+  can_launch: boolean;
+  writes_game_directory: boolean;
+  writes_save_data: boolean;
+  changes_running_game_memory: boolean;
+  progress: ResearchSessionProgress;
+};
+
 export type ResearchSetupStatus = {
   notice_revision: number;
   notice_accepted: boolean;
@@ -62,4 +123,5 @@ export type ResearchSetupStatus = {
   warnings: string[];
   progress: ResearchBuildProgress;
   download_progress: ResearchSourceDownloadProgress;
+  session: ResearchSessionStatus;
 };

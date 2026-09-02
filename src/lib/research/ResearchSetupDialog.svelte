@@ -5,8 +5,10 @@
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
   import { notify, openRecoveryProposal } from "../notifications/service";
+  import { detailsFromError } from "../notifications/errors";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import { observeLatestTaskProgress } from "../tasks/progress";
+  import ErrorSummary from "../ui/ErrorSummary.svelte";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
   import { modalFocus } from "../ui/modalFocus";
   import {
@@ -15,16 +17,26 @@
     configureResearchCheckout,
     downloadReviewedTesmioSource,
     getResearchBuildProgress,
+    getResearchSessionProgress,
+    getResearchReportStatus,
     getResearchSourceDownloadProgress,
     getResearchSetup,
     listenForResearchBuildProgress,
+    listenForResearchSessionProgress,
     listenForResearchSourceDownloadProgress,
     researchDesktopAvailable,
+    launchObservationOnlySession,
+    prepareObservationOnlySession,
     setResearchNoticeAccepted,
   } from "./desktopClient";
-  import { researchBuildProgressView } from "./progress";
+  import {
+    researchBuildProgressView,
+    researchDownloadProgressView,
+    researchSessionProgressView,
+  } from "./progress";
   import type {
     ResearchBuildProgress,
+    ResearchSessionProgress,
     ResearchSetupStatus,
     ResearchSourceDownloadProgress,
   } from "./types";
@@ -48,18 +60,35 @@
   let status = $state<ResearchSetupStatus | null>(null);
   let progress = $state<ResearchBuildProgress | null>(null);
   let downloadProgress = $state<ResearchSourceDownloadProgress | null>(null);
+  let sessionProgress = $state<ResearchSessionProgress | null>(null);
   let busy = $state(false);
   let errorMessage = $state("");
   let errorCode = $state("");
+  let errorDetail = $state("");
   let stopProgress: (() => void) | null = null;
   let stopDownloadProgress: (() => void) | null = null;
+  let stopSessionProgress: (() => void) | null = null;
   let researchContent = $state<HTMLDivElement>();
   let researchResults = $state<HTMLDivElement>();
   const progressView = $derived(
     progress ? researchBuildProgressView(progress, $translation) : null,
   );
+  const downloadProgressView = $derived(
+    downloadProgress
+      ? researchDownloadProgressView(
+          downloadProgress,
+          $translation,
+          (value) => `${formatNumber(value, $activeLocale)} B`,
+        )
+      : null,
+  );
   const buildFailure = $derived(
     progress?.state === "failed" ? describeBuildFailure(progress) : null,
+  );
+  const sessionProgressView = $derived(
+    sessionProgress
+      ? researchSessionProgressView(sessionProgress, $translation)
+      : null,
   );
 
   $effect(() => {
@@ -68,22 +97,58 @@
       stopProgress = null;
       stopDownloadProgress?.();
       stopDownloadProgress = null;
+      stopSessionProgress?.();
+      stopSessionProgress = null;
       return;
     }
     untrack(() => {
       void initialise();
     });
+    const reportClock = researchDesktopAvailable()
+      ? window.setInterval(() => void refreshCheckedReportStatus(), 3_000)
+      : undefined;
     return () => {
+      if (reportClock !== undefined) window.clearInterval(reportClock);
       stopProgress?.();
       stopProgress = null;
       stopDownloadProgress?.();
       stopDownloadProgress = null;
+      stopSessionProgress?.();
+      stopSessionProgress = null;
     };
   });
+
+  async function refreshCheckedReportStatus(): Promise<void> {
+    if (busy || !status?.session.can_launch) return;
+    try {
+      const report = await getResearchReportStatus();
+      const reportAvailable =
+        report.state === "available" || report.state === "warning";
+      status = {
+        ...status,
+        session: {
+          ...status.session,
+          state: reportAvailable
+            ? "report_available"
+            : status.session.state === "report_available"
+              ? "prepared"
+              : status.session.state,
+          report_snapshot_count: reportAvailable ? report.snapshot_count : 0,
+          report_collection_stage: reportAvailable
+            ? report.collection_stage
+            : null,
+        },
+      };
+    } catch {
+      // The normal command surfaces actionable errors. Background refreshes
+      // remain quiet so a temporary read does not replace the current dialog.
+    }
+  }
 
   async function initialise(): Promise<void> {
     errorMessage = "";
     errorCode = "";
+    errorDetail = "";
     stopProgress?.();
     stopProgress = await observeLatestTaskProgress(
       {
@@ -93,13 +158,26 @@
       (latest) => (progress = latest),
       (error) => (errorMessage = describeError(error)),
     );
-    stopDownloadProgress = await listenForResearchSourceDownloadProgress(
+    stopDownloadProgress = await observeLatestTaskProgress(
+      {
+        read: getResearchSourceDownloadProgress,
+        listen: listenForResearchSourceDownloadProgress,
+      },
       (latest) => (downloadProgress = latest),
+      (error) => (errorMessage = describeError(error)),
+    );
+    stopSessionProgress = await observeLatestTaskProgress(
+      {
+        read: getResearchSessionProgress,
+        listen: listenForResearchSessionProgress,
+      },
+      (latest) => (sessionProgress = latest),
+      (error) => (errorMessage = describeError(error)),
     );
     try {
       status = await getResearchSetup();
       progress = status.progress;
-      downloadProgress = await getResearchSourceDownloadProgress();
+      sessionProgress = status.session.progress;
       await tick();
       researchContent?.scrollTo({ top: 0 });
     } catch (error) {
@@ -108,11 +186,9 @@
   }
 
   function describeError(error: unknown): string {
-    if (typeof error === "object" && error && "code" in error) {
-      errorCode = String((error as { code: unknown }).code);
-    } else {
-      errorCode = "unknown";
-    }
+    const details = detailsFromError(error);
+    errorCode = details.code ?? "unknown";
+    errorDetail = details.detail ?? "";
     return $translation("research-setup-error-summary");
   }
 
@@ -168,6 +244,7 @@
     busy = true;
     errorMessage = "";
     errorCode = "";
+    errorDetail = "";
     try {
       status = await setResearchNoticeAccepted(accepted);
     } catch (error) {
@@ -185,6 +262,7 @@
     busy = true;
     errorMessage = "";
     errorCode = "";
+    errorDetail = "";
     try {
       status = await configureResearchCheckout(selected);
       notify({
@@ -216,6 +294,7 @@
       message: $translation("research-setup-download-confirm-detail"),
       consequence: $translation("research-setup-download-confirm-safety"),
       actionLabel: $translation("research-setup-download-confirm-action"),
+      closeBeforeRun: true,
       run: downloadSource,
     });
   }
@@ -224,6 +303,7 @@
     busy = true;
     errorMessage = "";
     errorCode = "";
+    errorDetail = "";
     try {
       status = await downloadReviewedTesmioSource();
       downloadProgress = status.download_progress;
@@ -246,6 +326,7 @@
         technicalDetails: {
           code: errorCode,
           operation: "research_source_download",
+          detail: errorDetail,
         },
       });
       throw error;
@@ -258,6 +339,7 @@
     busy = true;
     errorMessage = "";
     errorCode = "";
+    errorDetail = "";
     try {
       status = await buildResearchProbe();
       progress = status.progress;
@@ -288,6 +370,119 @@
     } finally {
       busy = false;
     }
+  }
+
+  function confirmPreparation(): void {
+    openRecoveryProposal({
+      title: $translation("research-session-prepare-confirm-title"),
+      message: $translation("research-session-prepare-confirm-detail"),
+      consequence: $translation("research-session-prepare-confirm-safety"),
+      actionLabel: $translation("research-session-prepare-confirm-action"),
+      closeBeforeRun: true,
+      run: prepareSession,
+    });
+  }
+
+  async function prepareSession(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    errorCode = "";
+    errorDetail = "";
+    try {
+      status = await prepareObservationOnlySession();
+      sessionProgress = status.session.progress;
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-session-prepare-success"),
+        tone: "success",
+        dedupeKey: "research.session.prepare",
+      });
+    } catch (error) {
+      sessionProgress = await getResearchSessionProgress().catch(
+        () => sessionProgress,
+      );
+      errorMessage = describeError(error);
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-session-error-summary"),
+        tone: "error",
+        dedupeKey: "research.session.prepare",
+        technicalDetails: {
+          code: errorCode,
+          operation: "prepare_observation_only_session",
+          detail: errorDetail,
+        },
+      });
+      throw error;
+    } finally {
+      busy = false;
+    }
+  }
+
+  function confirmLaunch(): void {
+    openRecoveryProposal({
+      title: $translation("research-session-launch-confirm-title"),
+      message: $translation("research-session-launch-confirm-detail"),
+      consequence: $translation("research-session-launch-confirm-safety"),
+      actionLabel: $translation("research-session-launch-confirm-action"),
+      closeBeforeRun: true,
+      run: launchSession,
+    });
+  }
+
+  async function launchSession(): Promise<void> {
+    busy = true;
+    errorMessage = "";
+    errorCode = "";
+    errorDetail = "";
+    try {
+      status = await launchObservationOnlySession();
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-session-launch-success"),
+        tone: "success",
+        dedupeKey: "research.session.launch",
+      });
+    } catch (error) {
+      errorMessage = describeError(error);
+      notify({
+        title: $translation("research-setup-title"),
+        message: $translation("research-session-launch-failure"),
+        tone: "error",
+        dedupeKey: "research.session.launch",
+        technicalDetails: {
+          code: errorCode,
+          operation: "launch_observation_only_session",
+          detail: errorDetail,
+        },
+      });
+      throw error;
+    } finally {
+      busy = false;
+    }
+  }
+
+  function sessionStateLabel(): string {
+    const waitingStage = status?.session.report_collection_stage;
+    const key =
+      status?.session.state === "report_available"
+        ? status.session.report_snapshot_count > 0
+          ? "research-session-state-report"
+          : waitingStage === "waiting_for_game_state"
+            ? "research-session-state-waiting-game"
+            : waitingStage === "waiting_for_loaded_republic"
+              ? "research-session-state-waiting-republic"
+              : waitingStage === "stopped_at_record_limit"
+                ? "research-session-state-limit"
+                : "research-session-state-waiting"
+        : status?.session.state === "prepared"
+          ? "research-session-state-prepared"
+          : status?.session.state === "ready_to_prepare"
+            ? "research-session-state-ready"
+            : status?.session.state === "invalid"
+              ? "research-session-state-repair"
+              : "research-session-state-required";
+    return $translation(key);
   }
 
   async function revealResearchResults(): Promise<void> {
@@ -386,12 +581,30 @@
 
       {#if errorMessage && !buildFailure}
         <div class="research-error" role="alert">
-          <p>{errorMessage}</p>
-          <TechnicalDetails code={errorCode} operation="research_setup" />
+          <ErrorSummary
+            message={errorMessage}
+            technicalDetails={{
+              code: errorCode,
+              operation: "research_setup",
+              detail: errorDetail,
+            }}
+          />
         </div>
       {/if}
 
       <div class="research-content" bind:this={researchContent}>
+        {#if downloadProgressView && downloadProgress?.state !== "idle"}
+          <TaskProgressPanel
+            view={downloadProgressView}
+            headingId="research-download-progress-title"
+          />
+        {/if}
+        {#if sessionProgressView && sessionProgress?.state !== "idle"}
+          <TaskProgressPanel
+            view={sessionProgressView}
+            headingId="research-session-progress-title"
+          />
+        {/if}
         <ol class="research-steps">
           <li data-ready={status?.notice_accepted ?? false}>
             <span>01</span>
@@ -427,7 +640,10 @@
             >
           </li>
 
-          <li data-ready={status?.checkout_state === "reviewed"}>
+          <li
+            data-ready={status?.checkout_state === "reviewed" &&
+              status?.session.reviewed_loader_source_available}
+          >
             <span>02</span>
             <div>
               <h3>{$translation("research-setup-checkout-title")}</h3>
@@ -455,7 +671,8 @@
                     !researchDesktopAvailable()}
                   onclick={confirmDownload}
                   >{status?.source_origin === "observatory_downloaded" &&
-                  status?.checkout_state !== "reviewed"
+                  (!status?.session.reviewed_loader_source_available ||
+                    status?.checkout_state !== "reviewed")
                     ? $translation("research-setup-repair-download")
                     : $translation("research-setup-download-action")}</button
                 >
@@ -463,26 +680,10 @@
               <p class="download-privacy">
                 {$translation("research-setup-download-privacy-short")}
               </p>
-              {#if downloadProgress?.state === "running"}
-                <div class="source-download-progress" aria-live="polite">
-                  <strong
-                    >{$translation("research-setup-download-running")}</strong
-                  >
-                  <progress
-                    max="100"
-                    value={downloadProgress.progress_percent ?? undefined}
-                  ></progress>
-                  <span>
-                    {formatNumber(
-                      downloadProgress.transferred_bytes,
-                      $activeLocale,
-                    )} B
-                  </span>
-                </div>
-              {/if}
             </div>
             <strong
-              >{status?.checkout_state === "reviewed"
+              >{status?.checkout_state === "reviewed" &&
+              status?.session.reviewed_loader_source_available
                 ? $translation("research-setup-reviewed")
                 : $translation("research-setup-required")}</strong
             >
@@ -564,6 +765,71 @@
                       ? $translation("research-setup-missing")
                       : $translation("research-setup-not-built")}
             </strong>
+          </li>
+
+          <li
+            data-ready={status?.session.state === "prepared" ||
+              status?.session.state === "report_available"}
+          >
+            <span>05</span>
+            <div>
+              <h3>{$translation("research-session-prepare-title")}</h3>
+              <p>{$translation("research-session-prepare-detail")}</p>
+              <p
+                class="session-boundary guidance-surface"
+                data-guidance-surface="boundary"
+                data-guidance-layout="compact"
+                role="note"
+              >
+                <strong
+                  >{$translation(
+                    "research-session-save-boundary-title",
+                  )}</strong
+                >
+                {$translation("research-session-save-boundary-detail")}
+              </p>
+              <button
+                type="button"
+                class="primary"
+                disabled={busy || !status?.session.can_prepare}
+                onclick={confirmPreparation}
+                >{status?.session.state === "invalid"
+                  ? $translation("research-session-repair-action")
+                  : $translation("research-session-prepare-action")}</button
+              >
+              {#if status && !status.session.game_configured}
+                <p>{$translation("research-session-game-folder-required")}</p>
+              {/if}
+              <p class="safe-location">
+                {$translation("research-session-managed-folder")}
+                <code>{status?.session.managed_folder}</code>
+              </p>
+            </div>
+            <strong>{sessionStateLabel()}</strong>
+          </li>
+
+          <li data-ready={status?.session.state === "report_available"}>
+            <span>06</span>
+            <div>
+              <h3>{$translation("research-session-launch-title")}</h3>
+              <p>{$translation("research-session-launch-detail")}</p>
+              <button
+                type="button"
+                class="primary"
+                disabled={busy || !status?.session.can_launch}
+                onclick={confirmLaunch}
+                >{$translation("research-session-launch-action")}</button
+              >
+            </div>
+            <strong
+              >{status?.session.state === "report_available"
+                ? status.session.report_snapshot_count > 0
+                  ? $translation("research-session-state-report")
+                  : sessionStateLabel()
+                : status?.session.can_launch
+                  ? $translation("research-session-state-launch-ready")
+                  : $translation("research-session-state-required")}</strong
+            >
           </li>
         </ol>
 
@@ -817,22 +1083,6 @@
   }
   .download-privacy {
     margin-bottom: 0;
-  }
-  .source-download-progress {
-    display: grid;
-    grid-template-columns: max-content minmax(120px, 1fr) max-content;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    border: 1px solid var(--colour-line-faint);
-    padding: 8px;
-    color: var(--colour-text);
-    background: var(--colour-surface);
-    font-size: var(--type-caption);
-  }
-  .source-download-progress progress {
-    width: 100%;
-    accent-color: var(--colour-observed);
   }
   dl {
     display: grid;

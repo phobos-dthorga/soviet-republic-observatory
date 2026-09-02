@@ -547,6 +547,7 @@ export type TesmioProbeStatus = {
   latest_year: number | null;
   latest_day: number | null;
   latest_population_count: number | null;
+  collection_stage: string | null;
   warnings: string[];
 };
 
@@ -1000,6 +1001,7 @@ export type ResourceRegistryStatus = {
   state: ResourceRegistryIngestionState;
   latest_snapshot: ResourceRegistrySnapshotSummary | null;
   latest_probe_content_hash: string | null;
+  collection_stage: string | null;
   warning_code: string | null;
 };
 
@@ -1343,6 +1345,186 @@ export type MarketIndexingProgress = {
 };
 
 export type BroadcastIndexingProgress = MarketIndexingProgress;
+
+export type EnvironmentIndexingProgress = MarketIndexingProgress;
+
+export type EnvironmentActivityChannel =
+  | "production"
+  | "construction_use"
+  | "factory_use"
+  | "shop_use"
+  | "vehicle_use"
+  | "factory_waste"
+  | "citizen_waste"
+  | "demolition_waste";
+
+export type EnvironmentActivityPoint = {
+  record_id: number;
+  year: number;
+  day: number;
+  game_day: number;
+  activity_channel: EnvironmentActivityChannel;
+  resource_token: string;
+  primary_value: number;
+  secondary_value: number;
+  source_field: string;
+  source_line: number;
+  row_ordinal: number;
+  quantity_is_publishable: boolean;
+  exact_observation: ExactObservationReference | null;
+};
+
+export type EnvironmentActivitySummary = {
+  activity_channel: EnvironmentActivityChannel;
+  resource_count: number;
+  row_count: number;
+  latest_recorded_value: number | null;
+  quantity_is_publishable: boolean;
+};
+
+export type EnvironmentLiveState =
+  "disabled" | "waiting_for_reviewed_facility_contract" | "ready";
+
+export type EnvironmentRecordingStatus = {
+  enabled: boolean;
+  interval_game_days: number;
+  state: EnvironmentLiveState;
+  notice_revision: number;
+  latest_snapshot_id: string | null;
+  latest_game_day: number | null;
+  captured_facilities: number;
+  detail_code: string | null;
+};
+
+export type EnvironmentSourceAvailability = {
+  save_activity: boolean;
+  live_pollution: boolean;
+  live_radiation: boolean;
+  live_water_and_sewage: boolean;
+  spatial_pollution_map: boolean;
+  pollution_units: string;
+  radiation_units: string;
+};
+
+export type EnvironmentDefinitionContext = {
+  available: boolean;
+  building_count: number;
+  pollution_class_facts: number;
+  sewage_pollution_factors: number;
+  water_quality_facts: number;
+  connection_capability_facts: number;
+};
+
+export type CarbonFactorEntry = {
+  resource_token: string;
+  activity_channel: EnvironmentActivityChannel;
+  grams_co2e_per_unit: number;
+  source_name: string;
+  source_year: number;
+  reason: string;
+  reference: string | null;
+};
+
+export type CarbonFactorSetDraft = {
+  factor_set_id: string | null;
+  name: string;
+  accounting_boundary: string;
+  reason: string;
+  entries: CarbonFactorEntry[];
+};
+
+export type CarbonFactorRevision = {
+  factor_set_id: string;
+  name: string;
+  accounting_boundary: string;
+  reason: string;
+  entries: CarbonFactorEntry[];
+  revision: number;
+  content_hash: string;
+  created_at_ms: number;
+  selected: boolean;
+};
+
+export type CarbonEstimateContribution = {
+  resource_token: string;
+  activity_channel: EnvironmentActivityChannel;
+  recorded_quantity: number;
+  grams_co2e_per_unit: number;
+  estimated_grams_co2e: number;
+};
+
+export type CarbonEstimateModel = {
+  available: boolean;
+  factor_set_id: string | null;
+  factor_set_revision: number | null;
+  estimated_grams_co2e: number | null;
+  covered_rows: number;
+  eligible_rows: number;
+  coverage_percent: number;
+  missing_factors: string[];
+  contributions: CarbonEstimateContribution[];
+  limitation: string | null;
+};
+
+export type CarbonFactorImportPreview = {
+  valid: boolean;
+  row_count: number;
+  draft: CarbonFactorSetDraft | null;
+  errors: string[];
+};
+
+export type EnvironmentWorkspaceModel = {
+  analysis_context: AnalysisContext;
+  coverage_status: CoverageStatus | null;
+  history_records: number;
+  row_count: number;
+  returned_rows: number;
+  truncated: boolean;
+  warnings: CoverageWarning[];
+  source_availability: EnvironmentSourceAvailability;
+  definition_context: EnvironmentDefinitionContext;
+  recording: EnvironmentRecordingStatus;
+  activity: EnvironmentActivityPoint[];
+  summaries: EnvironmentActivitySummary[];
+  resources: string[];
+  factor_sets: CarbonFactorRevision[];
+  carbon_estimate: CarbonEstimateModel | null;
+};
+
+export type EnvironmentCaptureResult = {
+  captured: boolean;
+  status: EnvironmentRecordingStatus;
+};
+
+export type EnvironmentFacilityReading = {
+  facility_index: number;
+  position_x: number;
+  position_z: number;
+  definition_identity: string | null;
+  pollution_value: number | null;
+  radiation_value: number | null;
+  water_amount: number | null;
+  water_capacity: number | null;
+  water_quality: number | null;
+  sewage_amount: number | null;
+  sewage_capacity: number | null;
+  sewage_quality: number | null;
+};
+
+export type EnvironmentSnapshot = {
+  snapshot_id: string;
+  session_id: string;
+  game_day: number;
+  facility_count: number;
+  captured_at_ms: number;
+  readings: EnvironmentFacilityReading[];
+};
+
+export type EnvironmentHistoryModel = {
+  recording: EnvironmentRecordingStatus;
+  snapshots: EnvironmentSnapshot[];
+  truncated: boolean;
+};
 
 export type MarketMetricContext = {
   metric_id: string;

@@ -14,6 +14,7 @@ export type RecoveryProposal = {
   consequence?: string;
   actionLabel: string;
   technicalDetails?: TechnicalDetailsView;
+  closeBeforeRun?: boolean;
   run: () => void | Promise<void>;
 };
 

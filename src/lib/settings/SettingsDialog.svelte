@@ -6,6 +6,7 @@
     translation,
   } from "../i18n/runtime";
   import { activeTheme } from "../theme/runtime";
+  import { detailsFromError } from "../notifications/errors";
   import { notify, openRecoveryProposal } from "../notifications/service";
   import {
     chooseAndConfigureDirectory,
@@ -14,9 +15,11 @@
   import type { DirectoryKind, SetupState } from "../observations/types";
   import { noteAllAttentionCuesReplayed } from "../attention/service";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import ErrorSummary from "../ui/ErrorSummary.svelte";
   import { modalFocus } from "../ui/modalFocus";
   import {
     applicationSettingsHostAvailable,
+    eraseApplicationDatabases,
     getApplicationSettings,
     replayAllAttentionCues,
     resetApplicationPreferences,
@@ -60,9 +63,13 @@
   let draft = $state<ApplicationPreferencesDraft | null>(null);
   let busy = $state(false);
   let errorMessage = $state("");
+  let errorDetails = $state<ReturnType<typeof detailsFromError>>();
   let statusMessage = $state("");
   let loadedForOpen = $state(false);
   let rebuildConfirmationOpen = $state(false);
+  let eraseConfirmationOpen = $state(false);
+  let eraseConfirmation = $state("");
+  const requiredEraseConfirmation = "ERASE OBSERVATORY DATA";
 
   function fallbackPreferences(): ApplicationPreferences {
     return {
@@ -76,6 +83,16 @@
       wording_mode: "player_friendly",
       automatic_observation_enabled: setup?.automatic_observer.enabled ?? false,
     };
+  }
+
+  function showError(error: unknown, message: string, operation: string): void {
+    errorMessage = message;
+    errorDetails = detailsFromError(error, { operation });
+  }
+
+  function clearError(): void {
+    errorMessage = "";
+    errorDetails = undefined;
   }
 
   const currentSetup = $derived(view?.setup ?? setup);
@@ -119,7 +136,7 @@
   }
 
   async function load(): Promise<void> {
-    errorMessage = "";
+    clearError();
     statusMessage = "";
     if (!desktopAvailable) {
       const preferences = fallbackPreferences();
@@ -145,8 +162,12 @@
     busy = true;
     try {
       accept(await getApplicationSettings());
-    } catch {
-      errorMessage = $translation("settings-error-unavailable");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-error-unavailable"),
+        "get_application_settings",
+      );
     } finally {
       busy = false;
     }
@@ -155,7 +176,7 @@
   async function save(): Promise<void> {
     if (!draft || busy || !desktopAvailable) return;
     busy = true;
-    errorMessage = "";
+    clearError();
     statusMessage = "";
     try {
       accept(await updateApplicationPreferences(draft));
@@ -166,8 +187,12 @@
         tone: "success",
         dedupeKey: "settings-saved",
       });
-    } catch {
-      errorMessage = $translation("settings-error-invalid");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-error-invalid"),
+        "update_application_preferences",
+      );
     } finally {
       busy = false;
     }
@@ -176,13 +201,17 @@
   async function restoreDefaults(): Promise<void> {
     if (busy || !desktopAvailable) return;
     busy = true;
-    errorMessage = "";
+    clearError();
     statusMessage = "";
     try {
       accept(await resetApplicationPreferences());
       statusMessage = $translation("settings-defaults-restored");
-    } catch {
-      errorMessage = $translation("settings-error-unavailable");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-error-unavailable"),
+        "reset_application_preferences",
+      );
     } finally {
       busy = false;
     }
@@ -191,7 +220,7 @@
   async function selectDirectory(kind: DirectoryKind): Promise<void> {
     if (busy || !desktopAvailable) return;
     busy = true;
-    errorMessage = "";
+    clearError();
     statusMessage = "";
     try {
       const title = $translation(
@@ -205,8 +234,12 @@
       onsetupchange(nextSetup);
       if (view) view = { ...view, setup: nextSetup };
       statusMessage = $translation("settings-source-updated");
-    } catch {
-      errorMessage = $translation("settings-error-directory");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-error-directory"),
+        `choose_${kind}_directory`,
+      );
     } finally {
       busy = false;
     }
@@ -215,13 +248,17 @@
   async function replayGuidance(): Promise<void> {
     if (busy || !desktopAvailable) return;
     busy = true;
-    errorMessage = "";
+    clearError();
     try {
       await replayAllAttentionCues();
       noteAllAttentionCuesReplayed();
       statusMessage = $translation("settings-guidance-replayed");
-    } catch {
-      errorMessage = $translation("settings-error-unavailable");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-error-unavailable"),
+        "replay_attention_cues",
+      );
     } finally {
       busy = false;
     }
@@ -230,7 +267,7 @@
   async function rebuildAnalyticalWarehouse(): Promise<void> {
     if (busy || !desktopAvailable || !rebuildConfirmationOpen) return;
     busy = true;
-    errorMessage = "";
+    clearError();
     statusMessage = "";
     try {
       await rebuildWarehouse();
@@ -242,10 +279,36 @@
         tone: "success",
         dedupeKey: "warehouse-rebuild-queued",
       });
-    } catch {
-      errorMessage = $translation("settings-rebuild-error");
+    } catch (error) {
+      showError(
+        error,
+        $translation("settings-rebuild-error"),
+        "rebuild_warehouse",
+      );
     } finally {
       busy = false;
+    }
+  }
+
+  async function eraseAllApplicationData(): Promise<void> {
+    if (
+      busy ||
+      !desktopAvailable ||
+      eraseConfirmation !== requiredEraseConfirmation
+    )
+      return;
+    busy = true;
+    clearError();
+    statusMessage = $translation("settings-erase-restarting");
+    try {
+      await eraseApplicationDatabases(eraseConfirmation);
+    } catch (error) {
+      busy = false;
+      showError(
+        error,
+        $translation("settings-erase-error"),
+        "erase_application_databases",
+      );
     }
   }
 
@@ -334,7 +397,12 @@
       {/if}
 
       {#if errorMessage}
-        <p class="settings-error" role="alert">{errorMessage}</p>
+        <div class="settings-error" role="alert">
+          <ErrorSummary
+            message={errorMessage}
+            technicalDetails={errorDetails}
+          />
+        </div>
       {/if}
       {#if statusMessage}
         <p class="settings-status" role="status">{statusMessage}</p>
@@ -647,6 +715,73 @@
               </div>
             </GuidanceSurface>
           {/if}
+
+          <div class="danger-zone">
+            <div>
+              <span class="eyebrow"
+                >{$translation("settings-erase-eyebrow")}</span
+              >
+              <h4>{$translation("settings-erase-title")}</h4>
+              <p>{$translation("settings-erase-detail")}</p>
+            </div>
+            <button
+              type="button"
+              class="danger-action"
+              disabled={busy || !desktopAvailable}
+              onclick={() => {
+                eraseConfirmation = "";
+                eraseConfirmationOpen = true;
+              }}
+            >
+              {$translation("settings-erase-action")}
+            </button>
+          </div>
+
+          {#if eraseConfirmationOpen}
+            <div
+              class="erase-confirmation"
+              role="alertdialog"
+              aria-labelledby="settings-erase-confirm-title"
+            >
+              <strong id="settings-erase-confirm-title">
+                {$translation("settings-erase-confirm-title")}
+              </strong>
+              <p>{$translation("settings-erase-confirm-detail")}</p>
+              <p class="save-safety">
+                {$translation("settings-erase-save-safety")}
+              </p>
+              <label>
+                <span>
+                  {$translation("settings-erase-confirm-instruction", {
+                    phrase: requiredEraseConfirmation,
+                  })}
+                </span>
+                <input
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  bind:value={eraseConfirmation}
+                  disabled={busy}
+                />
+              </label>
+              <div class="confirmation-actions">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onclick={() => (eraseConfirmationOpen = false)}
+                  >{$translation("action-cancel")}</button
+                >
+                <button
+                  type="button"
+                  class="danger-action"
+                  disabled={busy ||
+                    eraseConfirmation !== requiredEraseConfirmation}
+                  onclick={eraseAllApplicationData}
+                  >{$translation("settings-erase-confirm-action")}</button
+                >
+              </div>
+            </div>
+          {/if}
         </section>
 
         <section aria-labelledby="settings-guidance-title">
@@ -904,6 +1039,61 @@
     margin-top: 18px;
     border-top: 1px solid var(--colour-line-faint);
     padding-top: 16px;
+  }
+
+  .danger-zone {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-top: 18px;
+    border-top: 1px solid var(--colour-risk);
+    padding-top: 16px;
+  }
+
+  .danger-zone p {
+    max-width: 72ch;
+    margin-top: 5px;
+    color: var(--colour-muted);
+    line-height: 1.5;
+  }
+
+  .danger-action {
+    border-color: var(--colour-risk);
+    color: var(--colour-risk);
+    background: var(--colour-risk-soft);
+  }
+
+  .erase-confirmation {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+    border: 1px solid var(--colour-risk);
+    border-inline-start-width: 4px;
+    padding: 14px;
+    background: var(--colour-risk-soft);
+  }
+
+  .erase-confirmation p {
+    line-height: 1.5;
+  }
+
+  .erase-confirmation .save-safety {
+    color: var(--colour-success);
+    font-weight: 700;
+  }
+
+  .erase-confirmation label {
+    display: grid;
+    gap: 6px;
+  }
+
+  .erase-confirmation input {
+    min-height: 40px;
+    border: 1px solid var(--colour-risk);
+    padding: 7px 10px;
+    color: var(--colour-text);
+    background: var(--colour-canvas);
   }
 
   .maintenance-grid {

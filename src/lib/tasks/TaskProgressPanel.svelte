@@ -132,7 +132,7 @@
   }
   .task-stages {
     display: grid;
-    grid-template-columns: repeat(4, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     gap: 5px;
     margin: 0 0 10px;
     padding: 0;

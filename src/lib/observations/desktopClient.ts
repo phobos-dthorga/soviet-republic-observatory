@@ -52,6 +52,13 @@ import type {
   ResourceRegistryAssurance,
   ResourceRegistrySnapshotSummary,
   ResourceRegistryStatus,
+  CarbonFactorImportPreview,
+  CarbonFactorSetDraft,
+  EnvironmentCaptureResult,
+  EnvironmentIndexingProgress,
+  EnvironmentHistoryModel,
+  EnvironmentSnapshot,
+  EnvironmentWorkspaceModel,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -163,6 +170,130 @@ export function listenForBroadcastIndexingProgress(
   return listen<BroadcastIndexingProgress>(
     "broadcast-indexing-progress",
     (event) => accept(event.payload),
+  );
+}
+
+export function getEnvironmentWorkspace(): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("get_environment_workspace");
+}
+
+export function getEnvironmentHistory(): Promise<EnvironmentHistoryModel> {
+  return invoke<EnvironmentHistoryModel>("get_environment_history");
+}
+
+export function getEnvironmentSnapshot(
+  snapshotId: string,
+): Promise<EnvironmentSnapshot | null> {
+  return invoke<EnvironmentSnapshot | null>("get_environment_snapshot", {
+    snapshotId,
+  });
+}
+
+export function getEnvironmentIndexingProgress(): Promise<EnvironmentIndexingProgress> {
+  return invoke<EnvironmentIndexingProgress>(
+    "get_environment_indexing_progress",
+  );
+}
+
+export function indexAvailableSavesForEnvironment(): Promise<EnvironmentIndexingProgress> {
+  return invoke<EnvironmentIndexingProgress>(
+    "index_available_saves_for_environment",
+  );
+}
+
+export function resumeEnvironmentIndexing(): Promise<EnvironmentIndexingProgress> {
+  return invoke<EnvironmentIndexingProgress>("resume_environment_indexing");
+}
+
+export function listenForEnvironmentIndexingProgress(
+  accept: (progress: EnvironmentIndexingProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<EnvironmentIndexingProgress>(
+    "environment-indexing-progress",
+    (event) => accept(event.payload),
+  );
+}
+
+export function saveCarbonFactorSet(
+  draft: CarbonFactorSetDraft,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("save_carbon_factor_set", { draft });
+}
+
+export function selectCarbonFactorSet(
+  factorSetId: string,
+  revision: number,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("select_carbon_factor_set", {
+    factorSetId,
+    revision,
+  });
+}
+
+export function rollbackCarbonFactorSet(
+  factorSetId: string,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("rollback_carbon_factor_set", {
+    factorSetId,
+  });
+}
+
+export function removeCarbonFactorSet(
+  factorSetId: string,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("remove_carbon_factor_set", {
+    factorSetId,
+  });
+}
+
+export function exportCarbonFactorSet(
+  factorSetId: string,
+  revision: number,
+): Promise<string> {
+  return invoke<string>("export_carbon_factor_set", {
+    factorSetId,
+    revision,
+  });
+}
+
+export function previewCarbonFactorImport(
+  csv: string,
+): Promise<CarbonFactorImportPreview> {
+  return invoke<CarbonFactorImportPreview>("preview_carbon_factor_import", {
+    csv,
+  });
+}
+
+export function applyCarbonFactorImport(
+  csv: string,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("apply_carbon_factor_import", {
+    csv,
+  });
+}
+
+export function enableEnvironmentRecording(
+  consent: boolean,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("enable_environment_recording", {
+    consent,
+  });
+}
+
+export function disableEnvironmentRecording(): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>("disable_environment_recording");
+}
+
+export function captureEnvironmentSnapshot(): Promise<EnvironmentCaptureResult> {
+  return invoke<EnvironmentCaptureResult>("capture_environment_snapshot");
+}
+
+export function deleteLiveEnvironmentRecordings(
+  confirmation: string,
+): Promise<EnvironmentWorkspaceModel> {
+  return invoke<EnvironmentWorkspaceModel>(
+    "delete_live_environmental_recordings",
+    { confirmation },
   );
 }
 
