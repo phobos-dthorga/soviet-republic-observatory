@@ -8,6 +8,7 @@ const MAX_CATALOGUE_ROWS: u64 = 6_000_000;
 const MAX_OBSERVATION_ROWS: u64 = 5_000_000;
 const MAX_MARKET_ROWS: u64 = 5_000_000;
 const MAX_BROADCAST_ROWS: u64 = 1_000_000;
+const MAX_ENVIRONMENT_ROWS: u64 = 5_000_000;
 const MAX_RESOURCE_REGISTRY_ROWS: u64 = 2_048;
 const MAX_OVERLAY_ROWS: u64 = 4_608;
 const MAX_BRANCH_MEMBERSHIP_ROWS: u64 = 1_000_000;
@@ -148,6 +149,7 @@ fn row_limit(kind: WarehouseWriteKind) -> u64 {
         WarehouseWriteKind::ObservationProjection => MAX_OBSERVATION_ROWS,
         WarehouseWriteKind::MarketProjection => MAX_MARKET_ROWS,
         WarehouseWriteKind::BroadcastProjection => MAX_BROADCAST_ROWS,
+        WarehouseWriteKind::EnvironmentProjection => MAX_ENVIRONMENT_ROWS,
         WarehouseWriteKind::ResourceRegistryProjection => MAX_RESOURCE_REGISTRY_ROWS,
         WarehouseWriteKind::OverlayProjection => MAX_OVERLAY_ROWS,
         WarehouseWriteKind::BranchMembershipProjection => MAX_BRANCH_MEMBERSHIP_ROWS,

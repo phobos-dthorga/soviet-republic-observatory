@@ -222,6 +222,12 @@
             "building.service_capacity",
             "building.quality_of_living",
             "building.vehicle_capacity",
+            "building.pollution_class",
+            "building.sewage_pollution_factor",
+            "building.water_required_quality",
+            "building.water_industry_substation_disabled",
+            "building.production_sewage_disabled",
+            "building.sewage_disabled",
             "vehicle.type",
             "vehicle.family",
             "vehicle.country",
@@ -474,7 +480,15 @@
         "market.vehicle.import.rub",
         "market.vehicle.import.usd",
         "market.vehicle.export.rub",
-        "market.vehicle.export.usd"
+        "market.vehicle.export.usd",
+        "environment.activity.production",
+        "environment.activity.construction_use",
+        "environment.activity.factory_use",
+        "environment.activity.shop_use",
+        "environment.activity.vehicle_use",
+        "environment.waste.factory",
+        "environment.waste.citizen",
+        "environment.waste.demolition"
       ]
     }
   }

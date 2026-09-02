@@ -19,8 +19,8 @@ Republic Observatory may consume telemetry from one optional GPL-3.0-only
 research companion under these rules:
 
 1. The main application remains functional without TesmioLoader.
-2. The companion is built and installed separately; Observatory never silently
-   installs or activates a loader or DLL.
+2. The companion remains optional. Observatory may automate its reviewed setup
+   only through the consent boundaries in ADR-0029.
 3. TesmioLoader is treated as a general modding platform, not as inherently
    read-only. A research launch requires the reviewed observation-only host
    settings, the companion as the sole plugin DLL, and a passing preflight
@@ -35,20 +35,23 @@ research companion under these rules:
 7. Rust derives the telemetry location from the configured game folder, rejects
    links or escapes, imposes independent size/line/schema bounds, and returns
    aggregate status only.
-8. Telemetry is not imported into SQLite or DuckDB in this slice.
+8. Anonymous person samples are not imported. A separately enabled, checked
+   resource reading may be retained as session evidence.
 9. Samples have no public subject identifier. They cannot form biographies,
    family graphs, or causal claims.
 10. The interface provides a first-class legal and technical-risk screen. It
     explicitly says that same-process execution is not an OS sandbox.
-11. Source acquisition may retain the exact reviewed headers and upstream
-    licence after a separate player-confirmed GitHub download. It never obtains
-    a loader binary, accepts an arbitrary URL, installs, or activates anything.
+11. Source acquisition may retain the exact reviewed build sources, headers,
+    and licence after a player-confirmed GitHub download. It never downloads a
+    loader binary or accepts an arbitrary URL.
+12. Preparing the dedicated game folder and launching W&R are separate,
+    immediately confirmed actions. Neither action grants save-write authority.
 
 ## Consequences
 
 Reverse engineering can advance without making saves fragile or making
 TesmioLoader a dependency. The public evidence boundary remains conservative.
-Live capture still carries native-code risk and manual setup cost. Each game
+Live capture still carries native-code risk and guided setup cost. Each game
 build requires a reviewed identity/layout update, and source audit is only a
 regression guardrail—not a security proof.
 

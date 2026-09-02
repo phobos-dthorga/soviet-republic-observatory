@@ -6,6 +6,7 @@ mod broadcast;
 mod comparison;
 mod compatibility;
 mod connection;
+mod environment;
 mod history;
 mod language_packs;
 mod markets;
@@ -23,6 +24,7 @@ mod snapshots;
 mod themes;
 mod warehouse_jobs;
 
+pub(crate) use crate::environment::ENVIRONMENT_STORAGE_CONTRACT_VERSION;
 pub(crate) use broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION;
 pub(crate) use markets::MARKET_STORAGE_CONTRACT_VERSION;
 pub(crate) use research_setup::StoredResearchSetup;

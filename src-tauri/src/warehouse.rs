@@ -14,11 +14,12 @@ use crate::model::{
     CatalogueGenerationSummary, CataloguePage, CatalogueSearchFilter,
     CompatibilityCatalogueScopeState, CompatibilityCatalogueScopeStatus, DefinitionDossier,
     DefinitionFact, DefinitionMappingProvenance, DefinitionRelation, DefinitionSummary,
-    DefinitionValue, MarketPriceSeriesPoint, MarketPriceVolatility, MarketTradePoint,
-    MarketWarehousePriceFact, MarketWarehouseProjection, MarketWarehouseRecord,
-    MarketWarehouseScalarFact, MarketWarehouseTradeFact, ProductionPathwayAuxiliaryRequirement,
-    ProductionPathwayCandidate, ProductionPathwayChoice, ProductionPathwayDiagnostic,
-    ProductionPathwayLink, ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
+    DefinitionValue, EnvironmentDefinitionContext, EnvironmentWarehouseProjection,
+    MarketPriceSeriesPoint, MarketPriceVolatility, MarketTradePoint, MarketWarehousePriceFact,
+    MarketWarehouseProjection, MarketWarehouseRecord, MarketWarehouseScalarFact,
+    MarketWarehouseTradeFact, ProductionPathwayAuxiliaryRequirement, ProductionPathwayCandidate,
+    ProductionPathwayChoice, ProductionPathwayDiagnostic, ProductionPathwayLink,
+    ProductionPathwayModel, ProductionPathwayNode, ProductionPathwayRequest,
     ProductionPathwayRequirement, ProductionRouteCoverage, ProductionRouteFlow,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, UnknownDirectiveSummary,
     WarehouseHealth, WarehousePhase, WarehouseSnapshot, WarehouseWriteKind, WarehouseWriteStage,
@@ -31,7 +32,7 @@ use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 9;
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 10;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v3";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
@@ -221,6 +222,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
         9,
         include_str!("../warehouse_migrations/0009_resource_registry.sql"),
     ),
+    (
+        10,
+        include_str!("../warehouse_migrations/0010_environment_activity.sql"),
+    ),
 ];
 
 pub struct AnalyticalWarehouse {
@@ -243,6 +248,47 @@ impl std::fmt::Debug for AnalyticalWarehouse {
 impl AnalyticalWarehouse {
     pub fn is_available(&self) -> bool {
         self.available
+    }
+
+    pub fn environment_definition_context(
+        &self,
+    ) -> Result<EnvironmentDefinitionContext, ObservatoryError> {
+        if !self.available {
+            return Ok(EnvironmentDefinitionContext::default());
+        }
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT COUNT(DISTINCT revisions.revision_hash),\
+                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.pollution_class'),\
+                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.sewage_pollution_factor'),\
+                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.water_required_quality'),\
+                        COUNT(*) FILTER (WHERE properties.field_id IN (\
+                            'building.environment.water_industry_substation_disabled',\
+                            'building.environment.production_sewage_disabled',\
+                            'building.environment.sewage_disabled'))\
+                 FROM catalogue_generation_entities membership\
+                 JOIN warehouse_metadata metadata\
+                   ON membership.generation_id = metadata.current_catalogue_generation_id\
+                 JOIN definition_entity_revisions revisions USING(revision_hash)\
+                 JOIN definition_properties properties USING(revision_hash)\
+                 WHERE metadata.singleton_id = 1\
+                   AND revisions.entity_kind = 'building'\
+                   AND properties.field_id LIKE 'building.environment.%'",
+                [],
+                |row| {
+                    let building_count = row.get::<_, u32>(0)?;
+                    Ok(EnvironmentDefinitionContext {
+                        available: building_count > 0,
+                        building_count,
+                        pollution_class_facts: row.get(1)?,
+                        sewage_pollution_factors: row.get(2)?,
+                        water_quality_facts: row.get(3)?,
+                        connection_capability_facts: row.get(4)?,
+                    })
+                },
+            )
+            .map_err(Into::into)
     }
 
     pub fn initialise(database_path: PathBuf) -> Result<Self, ObservatoryError> {
@@ -1000,6 +1046,106 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    pub fn project_environment_observation(
+        &self,
+        projection_id: &str,
+        projection: &EnvironmentWarehouseProjection,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
+            return Ok(());
+        }
+        let rows_total = projection.row_count();
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::EnvironmentProjection, rows_total)?;
+        let transaction = connection.transaction()?;
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE incoming_environment_activity_records AS \
+                 SELECT * FROM environment_activity_records WHERE FALSE; \
+             CREATE OR REPLACE TEMP TABLE incoming_environment_activity_facts AS \
+                 SELECT * FROM environment_activity_facts WHERE FALSE;",
+        )?;
+        let mut rows_written = 0_u64;
+        {
+            let mut membership =
+                transaction.appender("environment_activity_observation_records")?;
+            let mut records = transaction.appender("incoming_environment_activity_records")?;
+            for record in &projection.records {
+                membership.append_row(params![
+                    projection.interpretation_id,
+                    projection.raw_payload_hash,
+                    projection.branch_id,
+                    record.record_hash,
+                    record.ordinal,
+                    projection.profile_id,
+                    projection.profile_version,
+                    projection.resolved_profile_hash,
+                    projection.mapping_classification,
+                ])?;
+                records.append_row(params![
+                    record.record_hash,
+                    record.record_id,
+                    record.year,
+                    record.day,
+                    record.game_day,
+                ])?;
+                rows_written = rows_written.saturating_add(1);
+            }
+        }
+        {
+            let mut facts = transaction.appender("incoming_environment_activity_facts")?;
+            for fact in &projection.facts {
+                facts.append_row(params![
+                    fact.record_hash,
+                    fact.source_field,
+                    fact.source_line,
+                    fact.row_ordinal,
+                    fact.resource_token,
+                    fact.activity_channel,
+                    fact.primary_value,
+                    fact.secondary_value,
+                    fact.quantity_is_publishable,
+                    fact.mapping_id,
+                ])?;
+                rows_written = rows_written.saturating_add(1);
+                if rows_written == rows_total || rows_written.is_multiple_of(512) {
+                    permit.progress(WarehouseWriteStage::Staging, rows_written);
+                }
+            }
+        }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
+        transaction.execute_batch(
+            "CREATE OR REPLACE TEMP TABLE new_environment_activity_records AS \
+                 SELECT DISTINCT incoming.* FROM incoming_environment_activity_records incoming \
+                 WHERE NOT EXISTS (SELECT 1 FROM environment_activity_records stored \
+                                   WHERE stored.record_hash = incoming.record_hash); \
+             INSERT INTO environment_activity_records \
+                 SELECT * FROM new_environment_activity_records; \
+             INSERT INTO environment_activity_facts \
+                 SELECT DISTINCT fact.* FROM incoming_environment_activity_facts fact \
+                 JOIN new_environment_activity_records record USING(record_hash);",
+        )?;
+        record_receipt(
+            &transaction,
+            projection_id,
+            "environment_observation",
+            &projection.interpretation_id,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1, observation_watermark = ?2 \
+             WHERE singleton_id = 1",
+            params![applied_at_ms, projection.interpretation_id],
+        )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
+        transaction.commit()?;
+        permit.complete();
+        Ok(())
+    }
+
     pub fn project_resource_registry(
         &self,
         projection_id: &str,
@@ -1726,6 +1872,9 @@ impl AnalyticalWarehouse {
         transaction.execute("DELETE FROM broadcast_status_facts", [])?;
         transaction.execute("DELETE FROM broadcast_status_observation_records", [])?;
         transaction.execute("DELETE FROM broadcast_status_records", [])?;
+        transaction.execute("DELETE FROM environment_activity_facts", [])?;
+        transaction.execute("DELETE FROM environment_activity_observation_records", [])?;
+        transaction.execute("DELETE FROM environment_activity_records", [])?;
         transaction.execute("DELETE FROM resource_registry_prices", [])?;
         transaction.execute("DELETE FROM resource_registry_entries", [])?;
         transaction.execute("DELETE FROM resource_registry_snapshots", [])?;
@@ -1734,7 +1883,8 @@ impl AnalyticalWarehouse {
         transaction.execute(
             "DELETE FROM projection_receipts \
              WHERE projection_kind IN ('observation', 'market_observation', \
-                 'broadcast_observation', 'resource_registry_snapshot', 'branch_membership')",
+                 'broadcast_observation', 'environment_observation', \
+                 'resource_registry_snapshot', 'branch_membership')",
             [],
         )?;
         record_receipt(
@@ -3683,6 +3833,96 @@ mod tests {
             branch_id: "main".to_owned(),
             profile_id: "profile".to_owned(),
             profile_version: "1.2.0".to_owned(),
+            resolved_profile_hash: "b".repeat(64),
+            mapping_classification: "reviewed_mapping".to_owned(),
+            records,
+            facts,
+        }
+    }
+
+    #[test]
+    fn environment_projection_is_idempotent_and_reuses_content_addressed_records() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse =
+            AnalyticalWarehouse::initialise(directory.path().join("environment.duckdb"))
+                .expect("warehouse");
+        let projection = environment_projection_fixture("environment-one");
+        warehouse
+            .project_environment_observation("environment:one", &projection, 1)
+            .expect("first projection");
+        warehouse
+            .project_environment_observation("environment:one", &projection, 2)
+            .expect("duplicate delivery");
+        let second = environment_projection_fixture("environment-two");
+        warehouse
+            .project_environment_observation("environment:two", &second, 3)
+            .expect("second interpretation");
+
+        let connection = warehouse.lock().expect("connection");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM environment_activity_records",
+                    [],
+                    |row| { row.get::<_, u32>(0) }
+                )
+                .expect("record count"),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM environment_activity_facts",
+                    [],
+                    |row| { row.get::<_, u32>(0) }
+                )
+                .expect("fact count"),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT COUNT(*) FROM environment_activity_observation_records",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("membership count"),
+            4
+        );
+    }
+
+    fn environment_projection_fixture(interpretation_id: &str) -> EnvironmentWarehouseProjection {
+        let records = (0..2)
+            .map(|ordinal| crate::model::EnvironmentWarehouseRecord {
+                record_hash: format!("{:064x}", ordinal + 21),
+                ordinal,
+                record_id: ordinal,
+                year: 2017,
+                day: ordinal as u16,
+                game_day: i64::from(ordinal),
+            })
+            .collect::<Vec<_>>();
+        let facts = records
+            .iter()
+            .map(|record| crate::model::EnvironmentWarehouseFact {
+                record_hash: record.record_hash.clone(),
+                source_field: "$FactoryProductionStats".to_owned(),
+                source_line: u64::from(record.ordinal) + 1,
+                row_ordinal: 0,
+                resource_token: "chemicals".to_owned(),
+                activity_channel: "production".to_owned(),
+                primary_value: 42.0,
+                secondary_value: 0.0,
+                quantity_is_publishable: true,
+                mapping_id: "environment.activity.production".to_owned(),
+            })
+            .collect();
+        EnvironmentWarehouseProjection {
+            interpretation_id: interpretation_id.to_owned(),
+            raw_payload_hash: "a".repeat(64),
+            branch_id: "main".to_owned(),
+            profile_id: "profile".to_owned(),
+            profile_version: "1.3.0".to_owned(),
             resolved_profile_hash: "b".repeat(64),
             mapping_classification: "reviewed_mapping".to_owned(),
             records,

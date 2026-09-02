@@ -28,4 +28,4 @@ $command = 'call "{0}" && cl /nologo /LD /O2 /MT /W4 /WX /wd4505 /EHsc /Fo"{3}" 
 if ($LASTEXITCODE -ne 0) { throw "Probe compilation failed with exit code $LASTEXITCODE." }
 Copy-Item -LiteralPath (Join-Path $probeRoot 'observatory_probe.ini') -Destination (Join-Path $output 'observatory_probe.ini') -Force
 Write-Host "Built $dll"
-Write-Host 'Nothing was installed into the game. See README.md for the deliberate manual experiment step.'
+Write-Host 'Nothing was installed into the game. Observatory can prepare the checked session after separate consent.'

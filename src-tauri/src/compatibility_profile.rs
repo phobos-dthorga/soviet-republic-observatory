@@ -20,6 +20,17 @@ const LEGACY_BASE_PROFILE_HASH: &str =
 const LEGACY_MARKET_PROFILE_VERSION: &str = "1.1.0";
 const LEGACY_MARKET_PROFILE_HASH: &str =
     "44bcec2f9abba9d2559fd9c283220238f65000e1ef14f010ebebf3dff45053e8";
+const LEGACY_BROADCAST_PROFILE_VERSION: &str = "1.2.0";
+const LEGACY_BROADCAST_PROFILE_HASH: &str =
+    "df95d3c543b7bd932180894ebf192aa934bc5e78dd4246b44b2d836671eda5b4";
+const ENVIRONMENT_DEFINITION_MAPPING_IDS: &[&str] = &[
+    "core.building.pollution_class",
+    "core.building.sewage_pollution_factor",
+    "core.building.water_required_quality",
+    "core.building.water_industry_substation_disabled",
+    "core.building.production_sewage_disabled",
+    "core.building.sewage_disabled",
+];
 
 const BUILTIN_PROFILE_BYTES: &[u8] =
     include_bytes!("../../compatibility/wrsr-1.1.1.9.rocompat.json");
@@ -80,6 +91,17 @@ const MARKET_STATS_SLOTS: &[&str] = &[
     "market.vehicle.import.usd",
     "market.vehicle.export.rub",
     "market.vehicle.export.usd",
+];
+
+const ENVIRONMENT_STATS_SLOTS: &[&str] = &[
+    "environment.activity.production",
+    "environment.activity.construction_use",
+    "environment.activity.factory_use",
+    "environment.activity.shop_use",
+    "environment.activity.vehicle_use",
+    "environment.waste.factory",
+    "environment.waste.citizen",
+    "environment.waste.demolition",
 ];
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -233,6 +255,18 @@ pub enum DefinitionOperation {
     BuildingQualityOfLiving,
     #[serde(rename = "building.vehicle_capacity")]
     BuildingVehicleCapacity,
+    #[serde(rename = "building.pollution_class")]
+    BuildingPollutionClass,
+    #[serde(rename = "building.sewage_pollution_factor")]
+    BuildingSewagePollutionFactor,
+    #[serde(rename = "building.water_required_quality")]
+    BuildingWaterRequiredQuality,
+    #[serde(rename = "building.water_industry_substation_disabled")]
+    BuildingWaterIndustrySubstationDisabled,
+    #[serde(rename = "building.production_sewage_disabled")]
+    BuildingProductionSewageDisabled,
+    #[serde(rename = "building.sewage_disabled")]
+    BuildingSewageDisabled,
     #[serde(rename = "vehicle.type")]
     VehicleType,
     #[serde(rename = "vehicle.family")]
@@ -554,7 +588,18 @@ impl ResolvedCompatibilityProfile {
 
     pub fn legacy_reviewed_builtins() -> Result<Vec<Self>, ObservatoryError> {
         let current = CompatibilityProfileDocument::parse(BUILTIN_PROFILE_BYTES)?;
-        let mut market = current.clone();
+        let mut broadcast = current.clone();
+        broadcast.version = LEGACY_BROADCAST_PROFILE_VERSION.to_owned();
+        broadcast.content_hash = LEGACY_BROADCAST_PROFILE_HASH.to_owned();
+        if let Some(stats_fields) = broadcast.mappings.stats_fields.as_mut() {
+            stats_fields.retain(|mapping| !mapping.host_slot.starts_with("environment."));
+        }
+        if let Some(definition_directives) = broadcast.mappings.definition_directives.as_mut() {
+            definition_directives.retain(|mapping| {
+                !ENVIRONMENT_DEFINITION_MAPPING_IDS.contains(&mapping.id.as_str())
+            });
+        }
+        let mut market = broadcast.clone();
         market.version = LEGACY_MARKET_PROFILE_VERSION.to_owned();
         market.content_hash = LEGACY_MARKET_PROFILE_HASH.to_owned();
         if let Some(stats_fields) = market.mappings.stats_fields.as_mut() {
@@ -566,7 +611,7 @@ impl ResolvedCompatibilityProfile {
         if let Some(stats_fields) = base.mappings.stats_fields.as_mut() {
             stats_fields.retain(|mapping| !mapping.host_slot.starts_with("market."));
         }
-        [market, base]
+        [broadcast, market, base]
             .into_iter()
             .map(|document| {
                 if document.calculated_content_hash()? != document.content_hash {
@@ -955,6 +1000,7 @@ fn validate_mappings(mappings: &ProfileMappings) -> Result<(), ObservatoryError>
         for field in fields {
             if !REQUIRED_STATS_SLOTS.contains(&field.host_slot.as_str())
                 && !MARKET_STATS_SLOTS.contains(&field.host_slot.as_str())
+                && !ENVIRONMENT_STATS_SLOTS.contains(&field.host_slot.as_str())
                 && !CITIZEN_STATUS_METRICS
                     .iter()
                     .any(|metric| metric.id == field.host_slot)
@@ -1244,6 +1290,9 @@ fn slot_supports_context(slot: &str, context: StatsContext) -> bool {
     if MARKET_STATS_SLOTS.contains(&slot) {
         return true;
     }
+    if ENVIRONMENT_STATS_SLOTS.contains(&slot) {
+        return context == StatsContext::History;
+    }
     if context == StatsContext::History {
         return RECEIVER_METRICS.iter().any(|metric| metric.id == slot)
             || CITIZEN_STATUS_METRICS
@@ -1426,7 +1475,7 @@ mod tests {
     fn reviewed_profile_is_strict_and_complete() {
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("reviewed profile");
         assert_eq!(profile.stats_archive_aliases(), ["stats.ini"]);
-        assert_eq!(profile.mapping_counts(), (6, 59, 35, 0, 0));
+        assert_eq!(profile.mapping_counts(), (6, 67, 41, 0, 0));
         for index in 0..=8 {
             let field = profile
                 .indexed_field_for("$Citizens_Status", StatsContext::History, index)

@@ -28,13 +28,15 @@ use crate::model::{
     AnalysisContextResult, ApplicationPreferences, ApplicationPreferencesDraft,
     ApplicationSettingsView, ArchiveComparison, ArchiveOverview, AutomaticObservationUpdate,
     BackgroundWorkPriority, BroadcastOutcomeModel, BroadcastOutcomeRequest,
-    BroadcastWorkspaceModel, CataloguePage, CatalogueRefreshPhase, CatalogueRefreshProgress,
-    CatalogueRefreshTrigger, CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus,
-    CompatibilityUpdate, ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind,
-    ImportOutcome, MaintenanceDiagnostics, MarketBasketDraft, MarketIndexingPhase,
-    MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft, MarketWorkspace,
-    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
-    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    BroadcastWorkspaceModel, CarbonFactorImportPreview, CarbonFactorSetDraft, CataloguePage,
+    CatalogueRefreshPhase, CatalogueRefreshProgress, CatalogueRefreshTrigger,
+    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
+    ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, EnvironmentCaptureResult,
+    EnvironmentHistoryModel, EnvironmentRecordingStatus, EnvironmentSnapshot,
+    EnvironmentWorkspaceModel, ImportOutcome, MaintenanceDiagnostics, MarketBasketDraft,
+    MarketIndexingPhase, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
+    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
+    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
     RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, ResourceCatalogueRequest,
@@ -101,6 +103,7 @@ fn ratio_percent(
 enum SaveIndexingKind {
     Markets,
     Broadcast,
+    Environment,
 }
 
 impl SaveIndexingKind {
@@ -108,6 +111,7 @@ impl SaveIndexingKind {
         match self {
             Self::Markets => "market-index",
             Self::Broadcast => "broadcast-index",
+            Self::Environment => "environment-index",
         }
     }
 
@@ -115,6 +119,7 @@ impl SaveIndexingKind {
         match self {
             Self::Markets => "market_indexing",
             Self::Broadcast => "broadcast_indexing",
+            Self::Environment => "environment_indexing",
         }
     }
 }
@@ -139,6 +144,7 @@ fn save_index_job_id(
     hasher.update(b"\0");
     hasher.update(crate::storage::MARKET_STORAGE_CONTRACT_VERSION.to_le_bytes());
     hasher.update(crate::storage::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION.to_le_bytes());
+    hasher.update(crate::storage::ENVIRONMENT_STORAGE_CONTRACT_VERSION.to_le_bytes());
     hasher.update(source_directory_identity.as_bytes());
     hasher.update(b"\0");
     hasher.update(resolved_profile_hash.as_bytes());
@@ -164,6 +170,7 @@ pub struct ObservatoryApplication {
     reinterpretation_progress: Mutex<ReinterpretationProgress>,
     market_indexing_progress: Mutex<MarketIndexingProgress>,
     broadcast_indexing_progress: Mutex<MarketIndexingProgress>,
+    environment_indexing_progress: Mutex<MarketIndexingProgress>,
     bulk_work: BulkWorkCoordinator,
     storage_patience_seconds: AtomicU64,
     background_work_priority: AtomicU8,
@@ -185,6 +192,7 @@ impl ObservatoryApplication {
         let preferences = storage.load_application_preferences()?;
         let market_indexing_progress = storage.latest_market_index_progress()?;
         let broadcast_indexing_progress = storage.latest_broadcast_index_progress()?;
+        let environment_indexing_progress = storage.latest_environment_index_progress()?;
         let warehouse = match AnalyticalWarehouse::initialise(warehouse_path.clone()) {
             Ok(warehouse) => warehouse,
             Err(_) => {
@@ -212,6 +220,7 @@ impl ObservatoryApplication {
             reinterpretation_progress: Mutex::new(ReinterpretationProgress::default()),
             market_indexing_progress: Mutex::new(market_indexing_progress),
             broadcast_indexing_progress: Mutex::new(broadcast_indexing_progress),
+            environment_indexing_progress: Mutex::new(environment_indexing_progress),
             bulk_work: BulkWorkCoordinator::default(),
             storage_patience_seconds: AtomicU64::new(u64::from(
                 preferences.effective_storage_patience_seconds,
@@ -437,6 +446,141 @@ impl ObservatoryApplication {
         request: &BroadcastOutcomeRequest,
     ) -> Result<BroadcastOutcomeModel, ObservatoryError> {
         crate::broadcast::calculate_outcome(&self.broadcast_workspace()?, request)
+    }
+
+    pub fn environment_workspace(&self) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        let mut context = self.archive_overview()?.analysis_context;
+        context.resource_catalogue_revision_id =
+            Some(self.current_resource_catalogue_revision_id()?);
+        let mut workspace = self.storage.environment_workspace(context)?;
+        workspace.definition_context = self
+            .warehouse
+            .environment_definition_context()
+            .unwrap_or_default();
+        Ok(workspace)
+    }
+
+    pub fn environment_history(&self) -> Result<EnvironmentHistoryModel, ObservatoryError> {
+        self.storage.environment_history()
+    }
+
+    pub fn environment_snapshot(
+        &self,
+        snapshot_id: &str,
+    ) -> Result<Option<EnvironmentSnapshot>, ObservatoryError> {
+        self.storage.environment_snapshot(snapshot_id)
+    }
+
+    pub fn save_carbon_factor_set(
+        &self,
+        draft: &CarbonFactorSetDraft,
+    ) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        let workspace = self.environment_workspace()?;
+        let known_resources = workspace.resources.iter().cloned().collect();
+        crate::environment::validate_factor_draft(draft, &known_resources)?;
+        self.storage.save_carbon_factor_set(draft)?;
+        self.environment_workspace()
+    }
+
+    pub fn select_carbon_factor_set(
+        &self,
+        factor_set_id: &str,
+        revision: u32,
+    ) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        self.storage
+            .select_carbon_factor_set(factor_set_id, revision)?;
+        self.environment_workspace()
+    }
+
+    pub fn rollback_carbon_factor_set(
+        &self,
+        factor_set_id: &str,
+    ) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        self.storage.rollback_carbon_factor_set(factor_set_id)?;
+        self.environment_workspace()
+    }
+
+    pub fn remove_carbon_factor_set(
+        &self,
+        factor_set_id: &str,
+    ) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        self.storage.remove_carbon_factor_set(factor_set_id)?;
+        self.environment_workspace()
+    }
+
+    pub fn export_carbon_factor_set(
+        &self,
+        factor_set_id: &str,
+        revision: u32,
+    ) -> Result<String, ObservatoryError> {
+        Ok(crate::environment::export_factor_csv(
+            &self
+                .storage
+                .carbon_factor_revision(factor_set_id, revision)?,
+        ))
+    }
+
+    pub fn preview_carbon_factor_import(
+        &self,
+        csv: &str,
+    ) -> Result<CarbonFactorImportPreview, ObservatoryError> {
+        let mut preview = crate::environment::preview_factor_csv(csv);
+        let Some(draft) = preview.draft.as_ref() else {
+            return Ok(preview);
+        };
+        let known_resources = self
+            .environment_workspace()?
+            .resources
+            .into_iter()
+            .collect();
+        if let Err(error) = crate::environment::validate_factor_draft(draft, &known_resources) {
+            preview.valid = false;
+            preview.errors = vec![match error {
+                ObservatoryError::InvalidCarbonFactorSet(reason) => reason.to_owned(),
+                other => other.code().to_owned(),
+            }];
+            preview.draft = None;
+        }
+        Ok(preview)
+    }
+
+    pub fn apply_carbon_factor_import(
+        &self,
+        csv: &str,
+    ) -> Result<EnvironmentWorkspaceModel, ObservatoryError> {
+        let preview = self.preview_carbon_factor_import(csv)?;
+        let draft = preview
+            .draft
+            .ok_or(ObservatoryError::InvalidCarbonFactorSet("invalid_csv"))?;
+        self.save_carbon_factor_set(&draft)
+    }
+
+    pub fn enable_environment_recording(
+        &self,
+        accepted_notice_revision: u32,
+    ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {
+        self.storage
+            .set_environment_recording(true, accepted_notice_revision)
+    }
+
+    pub fn disable_environment_recording(
+        &self,
+    ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {
+        self.storage.set_environment_recording(false, 0)
+    }
+
+    pub fn capture_environment_snapshot(
+        &self,
+    ) -> Result<EnvironmentCaptureResult, ObservatoryError> {
+        let status = self.storage.environment_recording_status()?;
+        Ok(EnvironmentCaptureResult {
+            captured: false,
+            status,
+        })
+    }
+
+    pub fn delete_live_environmental_recordings(&self) -> Result<u32, ObservatoryError> {
+        self.storage.delete_live_environmental_recordings()
     }
 
     pub fn market_workspace(&self) -> Result<MarketWorkspace, ObservatoryError> {
@@ -856,6 +1000,7 @@ impl ObservatoryApplication {
         let progress = match kind {
             SaveIndexingKind::Markets => &self.market_indexing_progress,
             SaveIndexingKind::Broadcast => &self.broadcast_indexing_progress,
+            SaveIndexingKind::Environment => &self.environment_indexing_progress,
         };
         progress
             .lock()
@@ -950,6 +1095,19 @@ impl ObservatoryApplication {
         self.run_save_indexing(SaveIndexingKind::Broadcast, false, &mut notify)
     }
 
+    pub fn environment_indexing_progress(
+        &self,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.save_indexing_progress(SaveIndexingKind::Environment)
+    }
+
+    pub fn index_available_saves_for_environment(
+        &self,
+        mut notify: impl FnMut(MarketIndexingProgress),
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.run_save_indexing(SaveIndexingKind::Environment, false, &mut notify)
+    }
+
     fn run_save_indexing(
         &self,
         kind: SaveIndexingKind,
@@ -974,6 +1132,9 @@ impl ObservatoryApplication {
                     SaveIndexingKind::Markets => crate::storage::MARKET_STORAGE_CONTRACT_VERSION,
                     SaveIndexingKind::Broadcast => {
                         crate::storage::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION
+                    }
+                    SaveIndexingKind::Environment => {
+                        crate::storage::ENVIRONMENT_STORAGE_CONTRACT_VERSION
                     }
                 },
                 phase: MarketIndexingPhase::Discovering,
@@ -1017,6 +1178,10 @@ impl ObservatoryApplication {
                     SaveIndexingKind::Broadcast => (
                         "broadcast.index_resumed",
                         "Broadcast save indexing resumed from durable archive checkpoints under the background-work coordinator.",
+                    ),
+                    SaveIndexingKind::Environment => (
+                        "environment.index_resumed",
+                        "Environment save indexing resumed from saved archive checkpoints.",
                     ),
                 };
                 diagnostics::record("info", code, kind.diagnostics_scope(), message);
@@ -1108,6 +1273,14 @@ impl ObservatoryApplication {
                             )
                         })?
                         .map(|records| (records, records.saturating_mul(9))),
+                    SaveIndexingKind::Environment => {
+                        self.run_background_storage_step(&mut progress, || {
+                            self.storage.cached_environment_variant_count(
+                                &candidate.raw_payload_hash,
+                                profile.resolved_hash(),
+                            )
+                        })?
+                    }
                 };
                 if let Some((records, rows)) = cached_counts {
                     match hash_save_stats_payload(&path, &profile) {
@@ -1176,6 +1349,10 @@ impl ObservatoryApplication {
                                 let records = inspection.citizen_status.records.len() as u32;
                                 (records, records.saturating_mul(9))
                             }
+                            SaveIndexingKind::Environment => (
+                                inspection.environment.records.len() as u32,
+                                inspection.environment.row_count,
+                            ),
                         };
                         progress.records_processed = records_processed;
                         progress.rows_processed = rows_processed;
@@ -1190,6 +1367,9 @@ impl ObservatoryApplication {
                                 SaveIndexingKind::Broadcast => self
                                     .storage
                                     .broadcast_coverage_exists(&inspection.interpretation_id),
+                                SaveIndexingKind::Environment => self
+                                    .storage
+                                    .environment_coverage_exists(&inspection.interpretation_id),
                             })?;
                         let (_, cache) = self.run_background_storage_step(&mut progress, || {
                             self.storage
@@ -1273,6 +1453,9 @@ impl ObservatoryApplication {
                 SaveIndexingKind::Broadcast => {
                     ("broadcast.index_complete", "Broadcast save indexing")
                 }
+                SaveIndexingKind::Environment => {
+                    ("environment.index_complete", "Environment save indexing")
+                }
             };
             diagnostics::record(
                 "info",
@@ -1306,6 +1489,10 @@ impl ObservatoryApplication {
                     SaveIndexingKind::Broadcast => {
                         ("broadcast.index_paused_storage", "Broadcast save indexing")
                     }
+                    SaveIndexingKind::Environment => (
+                        "environment.index_paused_storage",
+                        "Environment save indexing",
+                    ),
                 };
                 diagnostics::record(
                     "warning",
@@ -1342,6 +1529,7 @@ impl ObservatoryApplication {
         let target = match kind {
             SaveIndexingKind::Markets => &self.market_indexing_progress,
             SaveIndexingKind::Broadcast => &self.broadcast_indexing_progress,
+            SaveIndexingKind::Environment => &self.environment_indexing_progress,
         };
         if let Ok(mut current) = target.lock() {
             *current = progress.clone();
@@ -2000,6 +2188,7 @@ impl ObservatoryApplication {
                 state: ResourceRegistryIngestionState::Disabled,
                 latest_snapshot,
                 latest_probe_content_hash: None,
+                collection_stage: None,
                 warning_code: None,
             });
         }
@@ -2021,6 +2210,7 @@ impl ObservatoryApplication {
             state,
             latest_snapshot,
             latest_probe_content_hash: probe.content_hash,
+            collection_stage: probe.collection_stage,
             warning_code,
         })
     }
@@ -2290,6 +2480,19 @@ impl ObservatoryApplication {
                     let projection =
                         projection.ok_or(ObservatoryError::StorageContractViolation)?;
                     self.warehouse.project_broadcast_observation(
+                        &job.projection_id,
+                        &projection,
+                        now_ms(),
+                    )
+                }),
+            "environment_observation" => self
+                .run_coordinated_background_storage(|| {
+                    self.storage.environment_projection(&job.source_identity)
+                })
+                .and_then(|projection| {
+                    let projection =
+                        projection.ok_or(ObservatoryError::StorageContractViolation)?;
+                    self.warehouse.project_environment_observation(
                         &job.projection_id,
                         &projection,
                         now_ms(),

@@ -28,6 +28,29 @@ pub(crate) fn suggest_directory(
     suggest_from_steam_roots(kind, system_steam_roots())
 }
 
+/// Windows file dialogs do not consistently honour extended-length paths as
+/// their initial folder. Stored paths remain canonical; only the picker-facing
+/// copy is converted back to the ordinary form.
+pub(crate) fn picker_start_directory(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let display = path.to_string_lossy();
+        if let Some(unc) = display.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{unc}"));
+        }
+        if let Some(drive) = display.strip_prefix(r"\\?\")
+            && drive.as_bytes().get(1) == Some(&b':')
+            && drive
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic)
+        {
+            return PathBuf::from(drive);
+        }
+    }
+    path.to_path_buf()
+}
+
 fn suggest_from_steam_roots(
     kind: DirectoryKind,
     roots: impl IntoIterator<Item = PathBuf>,
@@ -216,12 +239,22 @@ fn system_steam_roots() -> Vec<PathBuf> {
     #[cfg(windows)]
     {
         use winreg::RegKey;
-        use winreg::enums::HKEY_CURRENT_USER;
+        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
 
         if let Ok(steam) = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Software\\Valve\\Steam") {
             if let Ok(path) = steam.get_value::<String, _>("SteamPath") {
                 roots.push(PathBuf::from(path));
             } else if let Ok(path) = steam.get_value::<String, _>("InstallPath") {
+                roots.push(PathBuf::from(path));
+            }
+        }
+        for key in [
+            "SOFTWARE\\WOW6432Node\\Valve\\Steam",
+            "SOFTWARE\\Valve\\Steam",
+        ] {
+            if let Ok(steam) = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(key)
+                && let Ok(path) = steam.get_value::<String, _>("InstallPath")
+            {
                 roots.push(PathBuf::from(path));
             }
         }
@@ -243,7 +276,8 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        MAX_LIBRARY_FILE_BYTES, STEAM_APP_ID, parse_library_file, suggest_from_steam_roots,
+        MAX_LIBRARY_FILE_BYTES, STEAM_APP_ID, parse_library_file, picker_start_directory,
+        suggest_from_steam_roots,
     };
     use crate::model::DirectoryKind;
 
@@ -341,5 +375,56 @@ mod tests {
         let suggestion = super::suggest_directory(DirectoryKind::Save, Some(&configured))
             .expect("configured suggestion");
         assert_eq!(suggestion.path, configured);
+    }
+
+    #[test]
+    fn picker_start_paths_remain_specific_to_each_directory_kind() {
+        let root = TempDir::new().expect("temp root");
+        let save = root.path().join("save_cloud");
+        let game = root.path().join("media_soviet");
+        let workshop = root.path().join("workshop").join(STEAM_APP_ID);
+        for path in [&save, &game, &workshop] {
+            fs::create_dir_all(path).expect("configured directory");
+        }
+
+        assert_eq!(
+            picker_start_directory(
+                &super::suggest_directory(DirectoryKind::Save, Some(&save))
+                    .expect("save suggestion")
+                    .path,
+            ),
+            save
+        );
+        assert_eq!(
+            picker_start_directory(
+                &super::suggest_directory(DirectoryKind::Game, Some(&game))
+                    .expect("game suggestion")
+                    .path,
+            ),
+            game
+        );
+        assert_eq!(
+            picker_start_directory(
+                &super::suggest_directory(DirectoryKind::Workshop, Some(&workshop))
+                    .expect("workshop suggestion")
+                    .path,
+            ),
+            workshop
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn picker_converts_extended_windows_paths_without_changing_storage_identity() {
+        assert_eq!(
+            picker_start_directory(std::path::Path::new(
+                r"\\?\C:\Games\SovietRepublic\media_soviet"
+            )),
+            std::path::PathBuf::from(r"C:\Games\SovietRepublic\media_soviet")
+        );
+        assert_eq!(
+            picker_start_directory(std::path::Path::new(r"\\?\UNC\server\share\SovietRepublic")),
+            std::path::PathBuf::from(r"\\server\share\SovietRepublic")
+        );
     }
 }

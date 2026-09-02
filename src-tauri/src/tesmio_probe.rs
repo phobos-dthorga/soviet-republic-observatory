@@ -9,6 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -24,10 +26,16 @@ const MAX_SAMPLES_PER_SNAPSHOT: u32 = 32;
 const MAX_POPULATION: u32 = 500_000;
 const MAX_STATUS_VALUE: f32 = 1.5;
 const MAX_MONEY_SPENT: f32 = 1.0e12;
-const REVIEWED_PROBE_VERSION: &str = "0.2.0";
+const PROBE_SCHEMA_VERSION: u32 = 3;
+const REVIEWED_PROBE_VERSION: &str = "0.2.3";
 const REVIEWED_GAME_VERSION: &str = "1.1.1.9";
 const REVIEWED_EXECUTABLE_TIMESTAMP: u64 = 0x6A3E_B6AD;
-const REVIEWED_EXECUTABLE_SIZE: u64 = 10_308_608;
+// TesmioLoader reports the PE Optional Header's SizeOfImage for the loaded
+// module, not the executable's on-disk byte length (10,308,608 bytes).
+const REVIEWED_EXECUTABLE_SIZE: u64 = 11_128_832;
+const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a";
+const REPORT_READ_ATTEMPTS: usize = 3;
+const REPORT_READ_RETRY_DELAY: Duration = Duration::from_millis(15);
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -41,6 +49,7 @@ struct SessionRecord {
     target_game_version: String,
     executable_timestamp: u64,
     executable_size: u64,
+    game_state_rva: String,
     person_size: u32,
     person_vector_rva: String,
     resource_stride: u32,
@@ -49,6 +58,14 @@ struct SessionRecord {
     writes_save_data: bool,
     writes_observatory_databases: bool,
     network_access: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProbeStatusRecord {
+    schema_version: u32,
+    record_type: String,
+    stage: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -174,12 +191,12 @@ pub fn inspect(media_directory: Option<&Path>) -> TesmioProbeStatus {
 }
 
 fn inspect_inner(media_directory: &Path) -> Result<TesmioProbeStatus, &'static str> {
-    let Some((text, bytes)) = read_probe(media_directory)? else {
+    let Some(parsed) = read_parsed_probe(media_directory)? else {
         let mut status = TesmioProbeStatus::not_configured();
         status.state = TesmioProbeState::Missing;
         return Ok(status);
     };
-    Ok(parse_records_full(&text, &bytes)?.status)
+    Ok(parsed.status)
 }
 
 pub(crate) fn inspect_resource_registry(
@@ -188,10 +205,27 @@ pub(crate) fn inspect_resource_registry(
     let Some(media_directory) = media_directory else {
         return Ok(None);
     };
-    let Some((text, bytes)) = read_probe(media_directory)? else {
-        return Ok(None);
-    };
-    Ok(parse_records_full(&text, &bytes)?.resource_registry)
+    Ok(read_parsed_probe(media_directory)?.and_then(|parsed| parsed.resource_registry))
+}
+
+fn read_parsed_probe(media_directory: &Path) -> Result<Option<ParsedProbe>, &'static str> {
+    let mut last_error = "probe_unreadable";
+    for attempt in 0..REPORT_READ_ATTEMPTS {
+        let Some((text, bytes)) = read_probe(media_directory)? else {
+            return Ok(None);
+        };
+        match parse_records_full(&text, &bytes) {
+            Ok(parsed) => return Ok(Some(parsed)),
+            Err(error) => last_error = error,
+        }
+        // The probe flushes bounded records while W&R is rendering and briefly
+        // rewrites this same file during rollover. A second read prevents that
+        // normal boundary from appearing as a persistent invalid report.
+        if attempt + 1 < REPORT_READ_ATTEMPTS {
+            thread::sleep(REPORT_READ_RETRY_DELAY);
+        }
+    }
+    Err(last_error)
 }
 
 fn read_probe(media_directory: &Path) -> Result<Option<(String, Vec<u8>)>, &'static str> {
@@ -233,10 +267,19 @@ fn read_probe(media_directory: &Path) -> Result<Option<(String, Vec<u8>)>, &'sta
 }
 
 fn probe_path(game_root: &Path) -> PathBuf {
-    game_root
-        .join("tesmioloader")
-        .join("build")
-        .join(PROBE_FILE)
+    let managed = managed_build_root(game_root);
+    if managed.exists() {
+        managed.join(PROBE_FILE)
+    } else {
+        game_root
+            .join("tesmioloader")
+            .join("build")
+            .join(PROBE_FILE)
+    }
+}
+
+fn managed_build_root(game_root: &Path) -> PathBuf {
+    game_root.join("tesmioloader").join("observatory")
 }
 
 pub(crate) fn verify_observation_only_session(media_directory: Option<&Path>) -> bool {
@@ -249,7 +292,16 @@ pub(crate) fn verify_observation_only_session(media_directory: Option<&Path>) ->
     let Some(game_root) = canonical_media.parent() else {
         return false;
     };
-    let build_root = game_root.join("tesmioloader").join("build");
+    let managed = managed_build_root(game_root);
+    let build_root = if managed.exists() {
+        managed
+    } else {
+        game_root.join("tesmioloader").join("build")
+    };
+    verify_observation_only_build_root(&build_root)
+}
+
+pub(crate) fn verify_observation_only_build_root(build_root: &Path) -> bool {
     let config_path = build_root.join("tesmioloader.ini");
     let plugin_root = build_root.join("plugins");
     let Ok(metadata) = fs::symlink_metadata(&config_path) else {
@@ -264,27 +316,11 @@ pub(crate) fn verify_observation_only_session(media_directory: Option<&Path>) ->
     if config.starts_with('\u{feff}') {
         return false;
     }
-    let mut section = String::new();
-    let mut values = BTreeMap::<(String, String), String>::new();
-    for raw_line in config.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
-            continue;
-        }
-        if let Some(name) = line
-            .strip_prefix('[')
-            .and_then(|line| line.strip_suffix(']'))
-        {
-            section = name.trim().to_ascii_lowercase();
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            return false;
-        };
-        let identity = (section.clone(), key.trim().to_ascii_lowercase());
-        if section.is_empty() || values.insert(identity, value.trim().to_owned()).is_some() {
-            return false;
-        }
+    let Some(values) = parse_loader_configuration(&config) else {
+        return false;
+    };
+    if !observation_only_configuration_is_safe(&values) {
+        return false;
     }
     for (key, expected) in [
         ("trace_reads", "0"),
@@ -332,6 +368,144 @@ pub(crate) fn verify_observation_only_session(media_directory: Option<&Path>) ->
         && plugin_root.join("observatory_probe.ini").is_file()
 }
 
+pub(crate) fn observation_only_configuration_matches(build_root: &Path, expected: &[u8]) -> bool {
+    let Ok(actual) = fs::read_to_string(build_root.join("tesmioloader.ini")) else {
+        return false;
+    };
+    let Ok(expected) = std::str::from_utf8(expected) else {
+        return false;
+    };
+    let (Some(mut actual), Some(mut expected)) = (
+        parse_loader_configuration(&actual),
+        parse_loader_configuration(expected),
+    ) else {
+        return false;
+    };
+    if !observation_only_configuration_is_safe(&actual)
+        || !observation_only_configuration_is_safe(&expected)
+    {
+        return false;
+    }
+    // TesmioLoader writes its own harmless display tag, normalises spacing
+    // around '=', and may rewrite the game path to Windows' extended-length
+    // spelling on first launch. All operational keys remain allowlisted and
+    // must still match the configuration Observatory prepared.
+    let game_executable_key = ("tesmioloader".to_owned(), "game_exe".to_owned());
+    let (Some(actual_game_executable), Some(expected_game_executable)) = (
+        actual.remove(&game_executable_key),
+        expected.remove(&game_executable_key),
+    ) else {
+        return false;
+    };
+    if !configured_paths_match(&actual_game_executable, &expected_game_executable) {
+        return false;
+    }
+    actual.remove(&("tesmioloader".to_owned(), "menu_tag".to_owned()));
+    actual == expected
+}
+
+fn configured_paths_match(actual: &str, expected: &str) -> bool {
+    let actual = Path::new(actual);
+    let expected = Path::new(expected);
+    if !actual.is_absolute() || !expected.is_absolute() {
+        return false;
+    }
+    let (Ok(actual), Ok(expected)) = (actual.canonicalize(), expected.canonicalize()) else {
+        return false;
+    };
+    #[cfg(windows)]
+    {
+        actual
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&expected.to_string_lossy())
+    }
+    #[cfg(not(windows))]
+    {
+        actual == expected
+    }
+}
+
+fn parse_loader_configuration(config: &str) -> Option<BTreeMap<(String, String), String>> {
+    if config.starts_with('\u{feff}') {
+        return None;
+    }
+    let mut section = String::new();
+    let mut values = BTreeMap::<(String, String), String>::new();
+    for raw_line in config.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with(';') || line.starts_with('#') {
+            continue;
+        }
+        if let Some(name) = line
+            .strip_prefix('[')
+            .and_then(|line| line.strip_suffix(']'))
+        {
+            section = name.trim().to_ascii_lowercase();
+            if section != "tesmioloader" && section != "plugins" {
+                return None;
+            }
+            continue;
+        }
+        let (key, value) = line.split_once('=')?;
+        let identity = (section.clone(), key.trim().to_ascii_lowercase());
+        let value = value.trim();
+        if section.is_empty()
+            || value.chars().any(char::is_control)
+            || values.insert(identity, value.to_owned()).is_some()
+        {
+            return None;
+        }
+    }
+    Some(values)
+}
+
+fn observation_only_configuration_is_safe(values: &BTreeMap<(String, String), String>) -> bool {
+    if values.keys().any(|(section, key)| match section.as_str() {
+        "tesmioloader" => !matches!(
+            key.as_str(),
+            "version"
+                | "game_exe"
+                | "trace_reads"
+                | "log_game"
+                | "vfs"
+                | "probe_map"
+                | "probe_texel"
+                | "save_manifest"
+                | "plugins"
+                | "menu_patch"
+                | "version_check"
+                | "menu_tag"
+        ),
+        "plugins" => key != "observatory_probe",
+        _ => true,
+    }) {
+        return false;
+    }
+    let value = |section: &str, key: &str| {
+        values
+            .get(&(section.to_owned(), key.to_owned()))
+            .map(String::as_str)
+    };
+    let expected_version = format!("observatory-{REVIEWED_TESMIO_REVISION}");
+    if value("tesmioloader", "version") != Some(expected_version.as_str())
+        || value("plugins", "observatory_probe") != Some("1")
+    {
+        return false;
+    }
+    let Some(game_executable) = value("tesmioloader", "game_exe") else {
+        return false;
+    };
+    if game_executable.is_empty() || !Path::new(game_executable).is_absolute() {
+        return false;
+    }
+    if let Some(menu_tag) = value("tesmioloader", "menu_tag")
+        && menu_tag != format!("tesmioloader v. {expected_version}")
+    {
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 fn parse_records(text: &str, bytes: &[u8]) -> Result<TesmioProbeStatus, &'static str> {
     Ok(parse_records_full(text, bytes)?.status)
@@ -356,6 +530,7 @@ fn parse_records_full(text: &str, bytes: &[u8]) -> Result<ParsedProbe, &'static 
     let mut resource_entries = BTreeMap::<u32, Vec<ResourceEntryRecord>>::new();
     let mut resource_tokens = BTreeMap::<u32, BTreeSet<String>>::new();
     let mut resource_indices = BTreeMap::<u32, BTreeSet<u32>>::new();
+    let mut collection_stage = None;
     for line in &lines[1..] {
         let value: serde_json::Value = serde_json::from_str(line).map_err(|_| "record_invalid")?;
         match value.get("record_type").and_then(serde_json::Value::as_str) {
@@ -415,6 +590,12 @@ fn parse_records_full(text: &str, bytes: &[u8]) -> Result<ParsedProbe, &'static 
                     .or_default()
                     .push(record);
             }
+            Some("probe_status") => {
+                let record: ProbeStatusRecord =
+                    serde_json::from_value(value).map_err(|_| "probe_status_invalid")?;
+                validate_probe_status(&record)?;
+                collection_stage = Some(record.stage);
+            }
             _ => return Err("unknown_record_type"),
         }
     }
@@ -467,7 +648,12 @@ fn parse_records_full(text: &str, bytes: &[u8]) -> Result<ParsedProbe, &'static 
     // Sequence, not game date, is the session ordering authority. Loading an
     // older save may legitimately make the date move backwards.
     let latest = snapshots.values().next_back();
-    let warnings = Vec::new();
+    let mut warnings = Vec::new();
+    if collection_stage.as_deref() == Some("checked_report_ready_without_resources") {
+        warnings.push("resource_registry_unavailable".to_owned());
+    } else if collection_stage.as_deref() == Some("stopped_at_record_limit") {
+        warnings.push("probe_record_limit_reached".to_owned());
+    }
     let telemetry_content_hash = hex_hash(bytes);
     let status = TesmioProbeStatus {
         state: if warnings.is_empty() {
@@ -489,6 +675,7 @@ fn parse_records_full(text: &str, bytes: &[u8]) -> Result<ParsedProbe, &'static 
         latest_year: latest.map(|record| record.year),
         latest_day: latest.map(|record| record.day),
         latest_population_count: latest.map(|record| record.population_count),
+        collection_stage,
         warnings,
     };
     let resource_registry = registries.iter().next_back().map(|(sequence, registry)| {
@@ -579,7 +766,7 @@ fn resource_content_hash(
 }
 
 fn validate_session(record: &SessionRecord) -> Result<(), &'static str> {
-    if record.schema_version != 2
+    if record.schema_version != PROBE_SCHEMA_VERSION
         || record.record_type != "session"
         || record.probe_id != PROBE_ID
         || record.mode != "read_only"
@@ -588,6 +775,7 @@ fn validate_session(record: &SessionRecord) -> Result<(), &'static str> {
         || record.target_game_version != REVIEWED_GAME_VERSION
         || record.executable_timestamp != REVIEWED_EXECUTABLE_TIMESTAMP
         || record.executable_size != REVIEWED_EXECUTABLE_SIZE
+        || record.game_state_rva != "0x9D4F10"
         || record.person_size != 0x750
         || record.person_vector_rva != "0x9E75B8"
         || record.resource_stride != 0x340
@@ -602,8 +790,25 @@ fn validate_session(record: &SessionRecord) -> Result<(), &'static str> {
     Ok(())
 }
 
+fn validate_probe_status(record: &ProbeStatusRecord) -> Result<(), &'static str> {
+    if record.schema_version != PROBE_SCHEMA_VERSION
+        || record.record_type != "probe_status"
+        || !matches!(
+            record.stage.as_str(),
+            "waiting_for_game_state"
+                | "waiting_for_loaded_republic"
+                | "checked_report_ready"
+                | "checked_report_ready_without_resources"
+                | "stopped_at_record_limit"
+        )
+    {
+        return Err("probe_status_out_of_bounds");
+    }
+    Ok(())
+}
+
 fn validate_snapshot(record: &SnapshotRecord) -> Result<(), &'static str> {
-    if record.schema_version != 2
+    if record.schema_version != PROBE_SCHEMA_VERSION
         || record.record_type != "snapshot"
         || record.sequence == 0
         || !(1900..=10_000).contains(&record.year)
@@ -631,7 +836,7 @@ fn validate_person_sample(record: &PersonSampleRecord) -> Result<(), &'static st
         record.status_electronics,
         record.status_crime,
     ];
-    if record.schema_version != 2
+    if record.schema_version != PROBE_SCHEMA_VERSION
         || record.record_type != "person_sample"
         || record.sequence == 0
         || record.sample_index >= MAX_SAMPLES_PER_SNAPSHOT
@@ -659,7 +864,7 @@ fn validate_person_sample(record: &PersonSampleRecord) -> Result<(), &'static st
 }
 
 fn validate_resource_registry(record: &ResourceRegistryRecord) -> Result<(), &'static str> {
-    if record.schema_version != 2
+    if record.schema_version != PROBE_SCHEMA_VERSION
         || record.record_type != "resource_registry"
         || record.sequence == 0
         || !(1900..=10_000).contains(&record.year)
@@ -687,7 +892,7 @@ fn validate_resource_entry(record: &ResourceEntryRecord) -> Result<(), &'static 
         record.sell_multiplier_usd,
         record.buy_multiplier_usd,
     ];
-    if record.schema_version != 2
+    if record.schema_version != PROBE_SCHEMA_VERSION
         || record.record_type != "resource_entry"
         || record.sequence == 0
         || record.live_index >= 512
@@ -739,32 +944,63 @@ mod tests {
 
     fn session() -> String {
         format!(
-            r#"{{"schema_version":2,"record_type":"session","probe_id":"{PROBE_ID}","probe_version":"0.2.0","mode":"read_only","loader_api_version":4,"target_game_version":"1.1.1.9","executable_timestamp":1782494893,"executable_size":10308608,"person_size":1872,"person_vector_rva":"0x9E75B8","resource_stride":832,"resource_vector_rva":"0x9E11C0","writes_game_state":false,"writes_save_data":false,"writes_observatory_databases":false,"network_access":false}}"#
+            r#"{{"schema_version":3,"record_type":"session","probe_id":"{PROBE_ID}","probe_version":"0.2.3","mode":"read_only","loader_api_version":4,"target_game_version":"1.1.1.9","executable_timestamp":1782494893,"executable_size":11128832,"game_state_rva":"0x9D4F10","person_size":1872,"person_vector_rva":"0x9E75B8","resource_stride":832,"resource_vector_rva":"0x9E11C0","writes_game_state":false,"writes_save_data":false,"writes_observatory_databases":false,"network_access":false}}"#
         )
+    }
+
+    fn probe_status(stage: &str) -> String {
+        format!(r#"{{"schema_version":3,"record_type":"probe_status","stage":"{stage}"}}"#)
     }
 
     fn snapshot(sequence: u32, year: i32, day: u16, count: u32) -> String {
         format!(
-            r#"{{"schema_version":2,"record_type":"snapshot","sequence":{sequence},"year":{year},"day":{day},"population_count":100,"sample_count":{count}}}"#
+            r#"{{"schema_version":3,"record_type":"snapshot","sequence":{sequence},"year":{year},"day":{day},"population_count":100,"sample_count":{count}}}"#
         )
     }
 
     fn sample(sequence: u32, year: i32, day: u16) -> String {
         format!(
-            r#"{{"schema_version":2,"record_type":"person_sample","sequence":{sequence},"sample_index":0,"vector_index":4,"year":{year},"day":{day},"current_building_present":true,"age_years":42.0,"education_level":2.0,"status_happiness":0.5,"status_food":0.5,"status_health":0.5,"status_soviet":0.5,"status_alcohol":0.5,"status_culture":0.5,"status_sport":0.5,"status_religion":0.5,"status_clothing":0.5,"status_electronics":0.5,"status_crime":0.5,"citizen_class":0,"money_spent":0.0}}"#
+            r#"{{"schema_version":3,"record_type":"person_sample","sequence":{sequence},"sample_index":0,"vector_index":4,"year":{year},"day":{day},"current_building_present":true,"age_years":42.0,"education_level":2.0,"status_happiness":0.5,"status_food":0.5,"status_health":0.5,"status_soviet":0.5,"status_alcohol":0.5,"status_culture":0.5,"status_sport":0.5,"status_religion":0.5,"status_clothing":0.5,"status_electronics":0.5,"status_crime":0.5,"citizen_class":0,"money_spent":0.0}}"#
         )
     }
 
     fn resource_registry(sequence: u32, count: u32) -> String {
         format!(
-            r#"{{"schema_version":2,"record_type":"resource_registry","sequence":{sequence},"year":2018,"day":42,"resource_count":{count},"registry_fingerprint":"0123456789abcdef"}}"#
+            r#"{{"schema_version":3,"record_type":"resource_registry","sequence":{sequence},"year":2018,"day":42,"resource_count":{count},"registry_fingerprint":"0123456789abcdef"}}"#
         )
     }
 
     fn resource_entry(sequence: u32, index: u32, token: &str) -> String {
         format!(
-            r#"{{"schema_version":2,"record_type":"resource_entry","sequence":{sequence},"live_index":{index},"source_token":"{token}","caption_id":500,"resource_kind":2,"transport_class_mask":3,"material_family":13,"finished_price_rub":12.5,"finished_price_usd":9.5,"base_price_rub":3.0,"base_price_usd":2.0,"sell_multiplier_rub":0.95,"buy_multiplier_rub":1.05,"sell_multiplier_usd":0.95,"buy_multiplier_usd":1.05}}"#
+            r#"{{"schema_version":3,"record_type":"resource_entry","sequence":{sequence},"live_index":{index},"source_token":"{token}","caption_id":500,"resource_kind":2,"transport_class_mask":3,"material_family":13,"finished_price_rub":12.5,"finished_price_usd":9.5,"base_price_rub":3.0,"base_price_usd":2.0,"sell_multiplier_rub":0.95,"buy_multiplier_rub":1.05,"sell_multiplier_usd":0.95,"buy_multiplier_usd":1.05}}"#
         )
+    }
+
+    #[test]
+    fn reports_the_latest_bounded_collection_stage() {
+        let text = [
+            session(),
+            probe_status("waiting_for_loaded_republic"),
+            snapshot(1, 2022, 16, 1),
+            sample(1, 2022, 16),
+            probe_status("checked_report_ready"),
+        ]
+        .join("\n");
+        let status = parse_records(&text, text.as_bytes()).expect("valid probe");
+        assert_eq!(
+            status.collection_stage.as_deref(),
+            Some("checked_report_ready")
+        );
+        assert_eq!(status.snapshot_count, 1);
+    }
+
+    #[test]
+    fn rejects_an_unreviewed_collection_stage() {
+        let text = [session(), probe_status("read_arbitrary_memory")].join("\n");
+        assert_eq!(
+            parse_records(&text, text.as_bytes()).expect_err("stage must be rejected"),
+            "probe_status_out_of_bounds"
+        );
     }
 
     #[test]

@@ -760,7 +760,7 @@ fn market_index_resume_preserves_completed_archive_checkpoints() {
 }
 
 #[test]
-fn market_and_broadcast_index_progress_are_loaded_independently() {
+fn market_broadcast_and_environment_index_progress_are_loaded_independently() {
     let directory = tempdir().expect("temporary directory");
     let storage = ObservatoryStorage::initialise(directory.path().join("index-progress.sqlite3"))
         .expect("storage");
@@ -777,6 +777,9 @@ fn market_and_broadcast_index_progress_are_loaded_independently() {
     storage
         .start_market_index_job("broadcast-index-fixture", &candidates, false)
         .expect("Broadcast job");
+    storage
+        .start_market_index_job("environment-index-fixture", &candidates, false)
+        .expect("Environment job");
 
     assert_eq!(
         storage
@@ -793,6 +796,14 @@ fn market_and_broadcast_index_progress_are_loaded_independently() {
             .job_id
             .as_deref(),
         Some("broadcast-index-fixture")
+    );
+    assert_eq!(
+        storage
+            .latest_environment_index_progress()
+            .expect("latest Environment progress")
+            .job_id
+            .as_deref(),
+        Some("environment-index-fixture")
     );
 }
 
@@ -853,7 +864,7 @@ fn failed_projection_is_visible_and_rebuild_redelivers_retained_observations() {
         .expect("request rebuild");
     let retry = storage.projection_queue_status().expect("retry health");
     assert_eq!(retry.failed_jobs, 0);
-    assert_eq!(retry.pending_jobs, 5);
+    assert_eq!(retry.pending_jobs, 6);
     assert!(retry.oldest_unresolved_at_ms.is_some());
     assert_eq!(
         storage
@@ -1287,7 +1298,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        22
+        24
     );
     assert_eq!(
         migrated
@@ -1325,7 +1336,18 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
              DROP TABLE broadcast_status_observation_coverage;
              DROP TABLE broadcast_status_observation_records;
              DROP TABLE citizen_status_facts;
-             DROP TABLE citizen_status_records;",
+             DROP TABLE citizen_status_records;
+             DROP TABLE carbon_factor_selection;
+             DROP TABLE carbon_factor_revisions;
+             DROP TABLE environment_facility_readings;
+             DROP TABLE environment_live_snapshots;
+             DROP TABLE environment_live_sessions;
+             DROP TABLE environment_recording_state;
+             DROP TABLE environment_interpretation_variants;
+             DROP TABLE environment_observation_coverage;
+             DROP TABLE environment_observation_records;
+             DROP TABLE environment_activity_facts;
+             DROP TABLE environment_records;",
         )
         .expect("restore version fifteen Broadcast schema");
     connection
@@ -1396,7 +1418,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        22
+        24
     );
     assert_eq!(
         connection
@@ -1612,6 +1634,7 @@ fn inspection(hash: &str, file_name: &str, values: &[u64]) -> SaveInspection {
         records,
         snapshots: Vec::new(),
         citizen_status: crate::model::ParsedCitizenStatusData::default(),
+        environment: crate::model::ParsedEnvironmentData::default(),
         market: crate::model::ParsedMarketData::default(),
         binary_facts: Vec::new(),
     }

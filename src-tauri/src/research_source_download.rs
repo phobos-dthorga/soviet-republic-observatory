@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Component, Path, PathBuf};
@@ -22,8 +22,43 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_TRANSFER_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 1_024;
 const MAX_EXPANDED_BYTES: u64 = 32 * 1024 * 1024;
-const MAX_ENTRY_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_ARCHIVE_ENTRY_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_RETAINED_ENTRY_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_ENTRY_NAME_BYTES: usize = 512;
+
+const REVIEWED_RETAINED_FILES: [(&str, &str); 7] = [
+    ("src/tesmio_plugin.h", REVIEWED_PLUGIN_HEADER_HASH),
+    ("src/tesmio_api.h", REVIEWED_API_HEADER_HASH),
+    (
+        "src/tesmioloader.cpp",
+        "d88d42412c6614935db160e6358283ade9c327d03a752e3662b0841badcdc418",
+    ),
+    (
+        "src/tesmiolauncher.cpp",
+        "dd2753220759d11323e7336d5671b012ef2e53c62d677443edf1318196bfac04",
+    ),
+    (
+        "src/tesmiolauncher.rc",
+        "e2272842f7264f570db7eafae2d73d6ccf21268974745396f739bc07263f779a",
+    ),
+    (
+        "logo.ico",
+        "981a6cc3ac0b6339986d711da95ddb7b24c43f73c4245dac8d8fcfb09463b179",
+    ),
+    (
+        "LICENSE",
+        "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    ),
+];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResearchSourceDownloadPhase {
+    Connecting,
+    Downloading,
+    CheckingArchive,
+    Installing,
+    Verifying,
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct DownloadedResearchSource {
@@ -34,10 +69,7 @@ pub(crate) struct DownloadedResearchSource {
 
 #[derive(Debug)]
 struct ReviewedArchive {
-    plugin_header: Vec<u8>,
-    api_header: Vec<u8>,
-    licence_name: String,
-    licence: Vec<u8>,
+    files: BTreeMap<String, Vec<u8>>,
     archive_hash: String,
 }
 
@@ -49,15 +81,16 @@ struct ResearchSourceProvenance<'a> {
     archive_sha256: &'a str,
     plugin_header_sha256: &'a str,
     api_header_sha256: &'a str,
-    retained_files: [&'a str; 3],
+    retained_files: Vec<String>,
 }
 
 pub(crate) fn download_reviewed_source(
     managed_root: &Path,
-    mut progress: impl FnMut(u64, Option<u64>),
+    mut progress: impl FnMut(ResearchSourceDownloadPhase, u64, Option<u64>),
 ) -> Result<DownloadedResearchSource, ObservatoryError> {
     let destination = managed_root.join(REVIEWED_TESMIO_REVISION);
     if managed_copy_is_reviewed(&destination) {
+        progress(ResearchSourceDownloadPhase::Verifying, 0, None);
         let archive_hash = read_provenance_archive_hash(&destination)
             .unwrap_or_else(|| "unknown_revalidated_managed_copy".to_owned());
         return Ok(DownloadedResearchSource {
@@ -67,6 +100,7 @@ pub(crate) fn download_reviewed_source(
         });
     }
 
+    progress(ResearchSourceDownloadPhase::Connecting, 0, None);
     let client = Client::builder()
         .https_only(true)
         .redirect(Policy::none())
@@ -80,9 +114,19 @@ pub(crate) fn download_reviewed_source(
         .send()
         .map_err(|_| ObservatoryError::ResearchSourceDownloadFailed)?;
     let bytes = read_bounded_response(response, &url, &mut progress)?;
-    let archive =
-        inspect_reviewed_archive(bytes, REVIEWED_PLUGIN_HEADER_HASH, REVIEWED_API_HEADER_HASH)?;
-    install_reviewed_archive(managed_root, archive)
+    progress(
+        ResearchSourceDownloadPhase::CheckingArchive,
+        bytes.len() as u64,
+        Some(bytes.len() as u64),
+    );
+    let archive = inspect_reviewed_archive(bytes, &REVIEWED_RETAINED_FILES)?;
+    progress(ResearchSourceDownloadPhase::Installing, 0, None);
+    let installed = install_reviewed_archive(managed_root, archive)?;
+    progress(ResearchSourceDownloadPhase::Verifying, 0, None);
+    if !managed_copy_is_reviewed(&installed.checkout_path) {
+        return Err(ObservatoryError::ResearchSourceInstallFailed);
+    }
+    Ok(installed)
 }
 
 fn reviewed_download_url() -> String {
@@ -92,7 +136,7 @@ fn reviewed_download_url() -> String {
 fn read_bounded_response(
     mut response: Response,
     expected_url: &str,
-    progress: &mut impl FnMut(u64, Option<u64>),
+    progress: &mut impl FnMut(ResearchSourceDownloadPhase, u64, Option<u64>),
 ) -> Result<Vec<u8>, ObservatoryError> {
     if response.url().as_str() != expected_url
         || response.url().scheme() != "https"
@@ -123,15 +167,18 @@ fn read_bounded_response(
             return Err(ObservatoryError::ResearchSourceArchiveInvalid);
         }
         bytes.extend_from_slice(&buffer[..read]);
-        progress(bytes.len() as u64, content_length);
+        progress(
+            ResearchSourceDownloadPhase::Downloading,
+            bytes.len() as u64,
+            content_length,
+        );
     }
     Ok(bytes)
 }
 
 fn inspect_reviewed_archive(
     bytes: Vec<u8>,
-    expected_plugin_hash: &str,
-    expected_api_hash: &str,
+    expected_files: &[(&str, &str)],
 ) -> Result<ReviewedArchive, ObservatoryError> {
     let archive_hash = sha256(&bytes);
     let mut archive = ZipArchive::new(Cursor::new(bytes))
@@ -142,9 +189,7 @@ fn inspect_reviewed_archive(
 
     let mut names = HashSet::new();
     let mut expanded_bytes = 0_u64;
-    let mut plugin_header = None;
-    let mut api_header = None;
-    let mut licence = None;
+    let mut retained = BTreeMap::<String, Vec<u8>>::new();
     let mut archive_prefix = None::<String>;
 
     for index in 0..archive.len() {
@@ -166,7 +211,7 @@ fn inspect_reviewed_archive(
         expanded_bytes = expanded_bytes
             .checked_add(entry.size())
             .ok_or(ObservatoryError::ResearchSourceArchiveInvalid)?;
-        if expanded_bytes > MAX_EXPANDED_BYTES || entry.size() > MAX_ENTRY_BYTES {
+        if expanded_bytes > MAX_EXPANDED_BYTES || entry.size() > MAX_ARCHIVE_ENTRY_BYTES {
             return Err(ObservatoryError::ResearchSourceArchiveInvalid);
         }
         if entry.is_dir() {
@@ -187,15 +232,15 @@ fn inspect_reviewed_archive(
         }
         archive_prefix.get_or_insert_with(|| prefix.to_owned());
 
-        let target = match relative {
-            "src/tesmio_plugin.h" => Some("plugin"),
-            "src/tesmio_api.h" => Some("api"),
-            "LICENSE" => Some("licence"),
-            _ => None,
-        };
-        let Some(target) = target else {
+        if !expected_files
+            .iter()
+            .any(|(expected, _)| *expected == relative)
+        {
             continue;
-        };
+        }
+        if entry.size() > MAX_RETAINED_ENTRY_BYTES {
+            return Err(ObservatoryError::ResearchSourceArchiveInvalid);
+        }
         let mut contents = Vec::with_capacity(
             usize::try_from(entry.size())
                 .map_err(|_| ObservatoryError::ResearchSourceArchiveInvalid)?,
@@ -203,37 +248,29 @@ fn inspect_reviewed_archive(
         entry
             .read_to_end(&mut contents)
             .map_err(|_| ObservatoryError::ResearchSourceArchiveInvalid)?;
-        match target {
-            "plugin" => assign_once(&mut plugin_header, contents)?,
-            "api" => assign_once(&mut api_header, contents)?,
-            "licence" => assign_once(&mut licence, contents)?,
-            _ => {}
+        if retained.insert(relative.to_owned(), contents).is_some() {
+            return Err(ObservatoryError::ResearchSourceArchiveInvalid);
         }
     }
 
-    let plugin_header = plugin_header.ok_or(ObservatoryError::ResearchSourceArchiveInvalid)?;
-    let api_header = api_header.ok_or(ObservatoryError::ResearchSourceArchiveInvalid)?;
-    let licence = licence.ok_or(ObservatoryError::ResearchSourceArchiveInvalid)?;
-    if reviewed_header_hash(&plugin_header) != expected_plugin_hash
-        || reviewed_header_hash(&api_header) != expected_api_hash
-    {
-        return Err(ObservatoryError::ResearchSourceArchiveInvalid);
+    for (path, expected_hash) in expected_files {
+        let contents = retained
+            .get(*path)
+            .ok_or(ObservatoryError::ResearchSourceArchiveInvalid)?;
+        let actual_hash = if path.ends_with(".ico") {
+            sha256(contents)
+        } else {
+            reviewed_header_hash(contents)
+        };
+        if actual_hash != *expected_hash {
+            return Err(ObservatoryError::ResearchSourceArchiveInvalid);
+        }
     }
 
     Ok(ReviewedArchive {
-        plugin_header,
-        api_header,
-        licence_name: "LICENSE".to_owned(),
-        licence,
+        files: retained,
         archive_hash,
     })
-}
-
-fn assign_once(slot: &mut Option<Vec<u8>>, contents: Vec<u8>) -> Result<(), ObservatoryError> {
-    if slot.replace(contents).is_some() {
-        return Err(ObservatoryError::ResearchSourceArchiveInvalid);
-    }
-    Ok(())
 }
 
 fn safe_archive_name(name: &str) -> bool {
@@ -262,14 +299,15 @@ fn install_reviewed_archive(
     let backup = managed_root.join(format!(".{REVIEWED_TESMIO_REVISION}.{nonce}.backup"));
     fs::create_dir(&staging).map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
     let result = (|| {
-        fs::create_dir(staging.join("src"))
-            .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
-        fs::write(staging.join("src/tesmio_plugin.h"), &archive.plugin_header)
-            .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
-        fs::write(staging.join("src/tesmio_api.h"), &archive.api_header)
-            .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
-        fs::write(staging.join(&archive.licence_name), &archive.licence)
-            .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
+        for (relative, contents) in &archive.files {
+            let target = staging.join(relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
+            }
+            fs::write(target, contents)
+                .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
+        }
         let provenance = ResearchSourceProvenance {
             schema_version: 1,
             upstream_repository: "https://github.com/MaxLegend/TesmioLoader",
@@ -277,7 +315,7 @@ fn install_reviewed_archive(
             archive_sha256: &archive.archive_hash,
             plugin_header_sha256: REVIEWED_PLUGIN_HEADER_HASH,
             api_header_sha256: REVIEWED_API_HEADER_HASH,
-            retained_files: ["src/tesmio_plugin.h", "src/tesmio_api.h", "LICENSE"],
+            retained_files: archive.files.keys().cloned().collect(),
         };
         let provenance = serde_json::to_vec_pretty(&provenance)
             .map_err(|_| ObservatoryError::ResearchSourceInstallFailed)?;
@@ -316,8 +354,22 @@ fn install_reviewed_archive(
 }
 
 pub(crate) fn managed_copy_is_reviewed(path: &Path) -> bool {
-    super::research_setup::checkout_matches_reviewed_headers(path)
-        && read_provenance_archive_hash(path).is_some()
+    reviewed_session_source_is_available(path) && read_provenance_archive_hash(path).is_some()
+}
+
+pub(crate) fn reviewed_session_source_is_available(path: &Path) -> bool {
+    path.is_dir()
+        && REVIEWED_RETAINED_FILES.iter().all(|(relative, expected)| {
+            let actual = if relative.ends_with(".ico") {
+                super::research_setup::bounded_hash(&path.join(relative), MAX_RETAINED_ENTRY_BYTES)
+            } else {
+                super::research_setup::bounded_reviewed_file_hash(
+                    &path.join(relative),
+                    MAX_RETAINED_ENTRY_BYTES,
+                )
+            };
+            actual.as_deref() == Some(*expected)
+        })
 }
 
 fn read_provenance_archive_hash(path: &Path) -> Option<String> {
@@ -348,8 +400,9 @@ mod tests {
     use zip::write::SimpleFileOptions;
 
     use super::{
-        DOWNLOAD_HOST, DOWNLOAD_PATH_PREFIX, DOWNLOAD_TIMEOUT, MAX_ENTRY_BYTES, MAX_TRANSFER_BYTES,
-        inspect_reviewed_archive, install_reviewed_archive, reviewed_download_url, sha256,
+        DOWNLOAD_HOST, DOWNLOAD_PATH_PREFIX, DOWNLOAD_TIMEOUT, MAX_RETAINED_ENTRY_BYTES,
+        MAX_TRANSFER_BYTES, REVIEWED_RETAINED_FILES, inspect_reviewed_archive,
+        install_reviewed_archive, reviewed_download_url, sha256,
     };
 
     fn archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -363,25 +416,32 @@ mod tests {
         writer.finish().expect("archive").into_inner()
     }
 
-    fn valid_archive() -> (Vec<u8>, String, String) {
+    fn valid_archive() -> (Vec<u8>, String, String, String) {
         let plugin = b"reviewed plugin fixture";
         let api = b"reviewed api fixture";
+        let licence = b"GPL fixture";
         (
             archive(&[
                 ("TesmioLoader-reviewed/src/tesmio_plugin.h", plugin),
                 ("TesmioLoader-reviewed/src/tesmio_api.h", api),
-                ("TesmioLoader-reviewed/LICENSE", b"GPL fixture"),
+                ("TesmioLoader-reviewed/LICENSE", licence),
                 ("TesmioLoader-reviewed/ignored.cpp", b"not retained"),
             ]),
             sha256(plugin),
             sha256(api),
+            sha256(licence),
         )
     }
 
     #[test]
-    fn retains_only_reviewed_headers_licence_and_provenance() {
-        let (bytes, plugin_hash, api_hash) = valid_archive();
-        let archive = inspect_reviewed_archive(bytes, &plugin_hash, &api_hash).expect("reviewed");
+    fn retains_only_the_supplied_exact_allowlist_and_provenance() {
+        let (bytes, plugin_hash, api_hash, licence_hash) = valid_archive();
+        let expected = [
+            ("src/tesmio_plugin.h", plugin_hash.as_str()),
+            ("src/tesmio_api.h", api_hash.as_str()),
+            ("LICENSE", licence_hash.as_str()),
+        ];
+        let archive = inspect_reviewed_archive(bytes, &expected).expect("reviewed");
         let root = tempdir().expect("managed root");
         let installed = install_reviewed_archive(root.path(), archive).expect("install");
         assert!(
@@ -403,17 +463,17 @@ mod tests {
 
     #[test]
     fn rejects_traversal_duplicate_aliases_and_wrong_header_identity() {
-        let (bytes, plugin_hash, _api_hash) = valid_archive();
-        assert!(inspect_reviewed_archive(bytes, &plugin_hash, "0").is_err());
+        let (bytes, _plugin_hash, _api_hash, _licence_hash) = valid_archive();
+        assert!(inspect_reviewed_archive(bytes, &[("src/tesmio_plugin.h", "0")]).is_err());
 
         let traversal = archive(&[("../src/tesmio_plugin.h", b"x")]);
-        assert!(inspect_reviewed_archive(traversal, "x", "y").is_err());
+        assert!(inspect_reviewed_archive(traversal, &[("src/tesmio_plugin.h", "x")]).is_err());
 
         let duplicate = archive(&[
             ("root/src/tesmio_plugin.h", b"one"),
             ("root/./src/tesmio_plugin.h", b"two"),
         ]);
-        assert!(inspect_reviewed_archive(duplicate, "x", "y").is_err());
+        assert!(inspect_reviewed_archive(duplicate, &[("src/tesmio_plugin.h", "x")]).is_err());
     }
 
     #[test]
@@ -424,14 +484,55 @@ mod tests {
             ("root/src/tesmio_plugin.h", plugin),
             ("root/src/tesmio_api.h", api),
         ]);
-        assert!(inspect_reviewed_archive(missing_licence, &sha256(plugin), &sha256(api)).is_err());
+        let plugin_hash = sha256(plugin);
+        let api_hash = sha256(api);
+        assert!(
+            inspect_reviewed_archive(
+                missing_licence,
+                &[
+                    ("src/tesmio_plugin.h", plugin_hash.as_str()),
+                    ("src/tesmio_api.h", api_hash.as_str()),
+                    ("LICENSE", "missing"),
+                ],
+            )
+            .is_err()
+        );
 
         let absolute = archive(&[("/root/src/tesmio_plugin.h", b"x")]);
-        assert!(inspect_reviewed_archive(absolute, "x", "y").is_err());
+        assert!(inspect_reviewed_archive(absolute, &[("src/tesmio_plugin.h", "x")]).is_err());
 
-        let oversized_contents = vec![b'x'; MAX_ENTRY_BYTES as usize + 1];
+        let oversized_contents = vec![b'x'; MAX_RETAINED_ENTRY_BYTES as usize + 1];
         let oversized = archive(&[("root/LICENSE", oversized_contents.as_slice())]);
-        assert!(inspect_reviewed_archive(oversized, "x", "y").is_err());
+        assert!(inspect_reviewed_archive(oversized, &[("LICENSE", "x")]).is_err());
+    }
+
+    #[test]
+    fn ignores_large_unretained_assets_from_the_reviewed_upstream_archive() {
+        let plugin = b"reviewed plugin fixture";
+        let api = b"reviewed api fixture";
+        // The reviewed upstream ZIP includes 4 MiB texture assets. They are
+        // inspected for archive safety, then ignored rather than extracted.
+        let ignored_asset = vec![b'x'; 4_194_432];
+        let bytes = archive(&[
+            ("root/src/tesmio_plugin.h", plugin),
+            ("root/src/tesmio_api.h", api),
+            ("root/LICENSE", b"GPL fixture"),
+            ("root/res/irrelevant-texture.dds", ignored_asset.as_slice()),
+        ]);
+        let plugin_hash = sha256(plugin);
+        let api_hash = sha256(api);
+        let licence_hash = sha256(b"GPL fixture");
+        assert!(
+            inspect_reviewed_archive(
+                bytes,
+                &[
+                    ("src/tesmio_plugin.h", plugin_hash.as_str()),
+                    ("src/tesmio_api.h", api_hash.as_str()),
+                    ("LICENSE", licence_hash.as_str()),
+                ],
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -443,6 +544,31 @@ mod tests {
         assert_eq!(
             reviewed_download_url(),
             "https://codeload.github.com/MaxLegend/TesmioLoader/zip/3baa141f9f08921aea9c95f0a400289cabd9960a"
+        );
+    }
+
+    #[test]
+    fn automatic_session_source_is_an_exact_allowlist() {
+        assert_eq!(
+            REVIEWED_RETAINED_FILES
+                .iter()
+                .map(|(path, _)| *path)
+                .collect::<Vec<_>>(),
+            vec![
+                "src/tesmio_plugin.h",
+                "src/tesmio_api.h",
+                "src/tesmioloader.cpp",
+                "src/tesmiolauncher.cpp",
+                "src/tesmiolauncher.rc",
+                "logo.ico",
+                "LICENSE",
+            ]
+        );
+        assert!(
+            REVIEWED_RETAINED_FILES
+                .iter()
+                .all(|(_, hash)| hash.len() == 64
+                    && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
         );
     }
 }

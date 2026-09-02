@@ -31,10 +31,14 @@ keeping the Observatory independent and small.
 TesmioLoader is **not** an application dependency. The repository contains one
 optional GPL-3.0-only companion source experiment. A player may select a
 reviewed local checkout or explicitly ask Observatory to download the exact
-reviewed source revision from GitHub. The managed copy retains only the two
-reviewed headers, upstream licence, and a provenance record. No TesmioLoader
-binary, installer, or plugin DLL is bundled or downloaded. The main application
-remains MIT licensed and fully functional without it. See the
+reviewed source revision from GitHub. The managed copy retains only allowlisted
+build sources, two reviewed headers, the upstream licence, and provenance. No
+TesmioLoader binary, installer, or plugin DLL is bundled or downloaded.
+
+After separate confirmation, Observatory can compile the reviewed loader and
+launcher locally and prepare its dedicated game folder. Launch requires another
+confirmation. The main application remains MIT licensed and fully functional
+without it. See the
 [legal and third-party notice](legal-and-third-party-notices.md) and
 [ADR-0019](architecture/decisions/0019-optional-read-only-native-research-bridge.md).
 

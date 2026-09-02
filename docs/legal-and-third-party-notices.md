@@ -23,6 +23,18 @@ prices observed in one captured game session. It is immutable, deduplicated,
 and labelled as an earlier session after restart. It never replaces save-backed
 Markets history.
 
+Optional live environmental recordings are also app-local. Recording is off by
+default and requires a clear player choice. A future checked report may contain
+snapshot-local facility indices, neutral positions, building type, production,
+pollution, radioactivity, water, and sewage readings. It must not contain raw
+memory, personal identities, or arbitrary paths. A focused deletion action
+removes these recordings without touching saves, installed content, ordinary
+observations, or player carbon-factor revisions.
+
+Carbon factors and their references are supplied by the player. Observatory
+does not download or endorse an emissions-factor library. Its estimates are not
+official game data and do not claim to measure a complete real-world footprint.
+
 Anonymous person samples remain temporary and are not imported into the
 application databases. The current application has no required network service
 and keeps no credentials. Its only optional network action is an explicitly
@@ -40,9 +52,9 @@ under the repository's MIT License.
 The optional source in `research/tesmioloader-probe/observatory_probe.cpp` is
 GPL-3.0-only. It is a separately built companion intended to compile against
 reviewed TesmioLoader headers. TesmioLoader is separate GPL software owned by
-its upstream contributors and governed by its own repository, licence,
-installation instructions, and warranty terms. Republic Observatory does not
-vendor, bundle, silently install, or activate TesmioLoader.
+its upstream contributors and governed by its own repository, licence, and
+warranty terms. Republic Observatory does not vendor it in the desktop
+application or activate it without confirmation.
 
 A distributor of a compiled companion is responsible for satisfying the GPL,
 including supplying the corresponding source and complete licence text. The
@@ -52,16 +64,20 @@ companion is not included in the Observatory desktop application binary.
 After the revised research notice and a separate confirmation, the
 in-application Experimental Research Setup assistant may download source for
 TesmioLoader commit `3baa141f9f08921aea9c95f0a400289cabd9960a` from GitHub.
-It validates the two reviewed header identities, retains only those headers,
-the upstream licence, and a provenance record, then discards the rest of the
-archive. Redirects, arbitrary URLs, loader binaries, installers, and automatic
-execution are not allowed. Manual local selection remains available offline.
+It validates the allowlisted build sources and exact header identities. It
+retains those files, the upstream licence, and a provenance record. Redirects,
+arbitrary URLs, downloaded loader binaries, and installers are not allowed.
+Manual local selection remains available offline.
 
 The assistant may compile the separately licensed probe from those reviewed
-headers. It does not install TesmioLoader, inject into the game, launch W&R, or
-run the probe. A successful build records only the bounded artifact identity
-and must not be interpreted as installation, activation, compatibility, or a
-sandbox claim.
+headers. After another confirmation, it may also build the reviewed loader and
+launcher locally and prepare `W&R/tesmioloader/observatory`. That folder
+contains only the checked session, licence, and ownership manifest.
+
+Launching W&R is a separate confirmed action. It temporarily runs native code
+inside the game process. Preparation never grants launch permission. Neither
+action grants permission to edit game assets, Workshop content, or save data.
+Observatory's probe requests no save write.
 
 ## Read-only research contract
 
@@ -97,6 +113,13 @@ and validated buy and sell multipliers. It emits no raw records, pointers,
 assets, paths, callbacks, or executable configuration. Observatory derives the
 displayed buy and sell quotes and may retain the validated record only after
 the player explicitly enables ingestion.
+
+The checked report may also contain one of a small set of readiness labels.
+These labels explain whether collection is waiting for W&R, a loaded republic,
+or unable to roll its bounded scratch report forward. The report replaces only
+its own temporary samples when nearing its line limit, then continues with a
+fresh checked header. It does not grow without limit. These labels contain no
+memory address, rejected live value, game path, person identity, or save content.
 
 Two assurance modes are available:
 

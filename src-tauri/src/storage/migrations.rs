@@ -114,6 +114,16 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "content-addressed live resource registry snapshots",
         include_str!("../../migrations/0022_resource_registry_snapshots.sql"),
     ),
+    (
+        23,
+        "environmental observations, live recording state, and carbon factor revisions",
+        include_str!("../../migrations/0023_environment_observations.sql"),
+    ),
+    (
+        24,
+        "environmental observation warehouse projection jobs",
+        include_str!("../../migrations/0024_environment_projection_jobs.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

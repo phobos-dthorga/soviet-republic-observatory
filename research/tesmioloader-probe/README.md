@@ -29,10 +29,14 @@ stable across consecutive rendered frames, it also emits one bounded registry
 record. It writes one fixed JSONL file in TesmioLoader's own build directory:
 `republic-observatory-probe.jsonl`.
 
-The records contain a session contract, date/population snapshots, bounded
-anonymous samples of candidate person fields, and a reviewed resource-registry
-contract. The resource record is limited to exact tokens, caption IDs and
-captions, reviewed kind fields, RUB/USD prices, and buy/sell multipliers.
+The records contain a session contract, a bounded collection-stage status,
+date/population snapshots, anonymous samples of candidate person fields, and a
+reviewed resource-registry contract. The stage says whether the probe is waiting
+for W&R, waiting for a loaded republic, ready, or unable to roll its report
+forward.
+It never contains an address or a rejected field value. The resource record is
+limited to exact tokens, caption IDs and captions, reviewed kind fields,
+RUB/USD prices, and buy/sell multipliers.
 `vector_index` is ephemeral and must never be treated as a stable citizen ID.
 
 The probe does **not**:
@@ -84,13 +88,14 @@ The first experiment is pinned to the executable inspected locally for the
 upstream W&R 1.1.1.9 research baseline:
 
 - PE timestamp: `0x6A3EB6AD`
-- executable size: `10,308,608` bytes
+- on-disk executable length: `10,308,608` bytes
+- PE `SizeOfImage` reported by TesmioLoader: `11,128,832` bytes (`0xA9D000`)
 - Tesmio API: 4
 
-If either executable identity value differs, the companion logs a refusal and
-does not install its observation hook. A new build needs a reviewed source
-revision; changing the constants is not evidence that the layouts remained
-valid.
+If either runtime executable identity value differs, the companion logs a
+refusal and does not install its observation hook. A new build needs a reviewed
+source revision; changing the constants is not evidence that the layouts
+remained valid.
 
 ## Build without installing
 
@@ -105,44 +110,65 @@ with C++, and a separate TesmioLoader checkout containing
 This creates ignored files under `build/`. It does not copy anything into the
 game.
 
-## Deliberate manual experiment
+## Guided checked session
 
-Only after reading the in-app **Legal & notices → Read-only research** screen:
+Open **Legal & notices → Read-only research → Open research setup**. The guided
+assistant performs the formerly manual work in distinct steps:
 
-1. Follow TesmioLoader upstream's own installation instructions, but do not
-   install or enable its gameplay plugins.
-2. Use a dedicated TesmioLoader build folder whose `plugins\` directory contains
-   only `build/observatory_probe.dll` and `observatory_probe.ini`.
-3. Merge every setting from
-   `tesmioloader.observation-only.ini.example` into that folder's
-   `tesmioloader.ini`. Preserve upstream `version` and `game_exe` metadata.
-4. Verify the folder before every research launch:
+1. Review and accept the current research notice.
+2. Download the exact reviewed source, or choose an existing reviewed folder.
+3. Build and verify the Observatory probe.
+4. Review the game-folder changes, then prepare the checked session.
+5. Review the live-process change, then launch W&R.
 
-   ```powershell
-   .\verify-observation-only.ps1 -TesmioBuildRoot 'C:\path\to\tesmioloader\build'
-   ```
+Preparation compiles the reviewed loader and launcher locally. It places them,
+the Observatory probe, a restrictive configuration, the GPL licence, and a
+content manifest under `W&R/tesmioloader/observatory`. The app will not replace
+an unmarked folder or another Tesmio installation.
 
-5. If verification does not pass, do not launch the experiment. Do not bypass
-   the upstream or probe executable identity gates.
-6. Keep ordinary save backups and load a non-critical test republic.
-7. Confirm TesmioLoader's log says the probe is armed. An unsupported build must
-   instead say it was refused.
-8. Open the Observatory Population workspace. Rust reads only the fixed JSONL
-   file, validates it, and shows aggregate person-probe status.
-9. To reconcile resources, explicitly enable one assurance mode in the
-   Materials Resource Catalogue. Observatory may then retain the validated
-   resource registry and its prices in local application data.
+Launch uses only the checked dedicated folder. The version gate, disabled VFS,
+disabled save manifest, and sole-plugin rule are verified first. Native code
+still runs inside W&R, so launching has a separate confirmation.
 
-Delete the two manually copied plugin files to remove the companion. Anonymous
-person samples are never retained by Observatory. Opted-in resource readings
-are retained as immutable local snapshots and are labelled **Last verified in
-a game session** after restart. They never become historical save facts.
+TesmioLoader normalises spacing in its configuration and adds its own display
+tag on first launch. On Windows, it may also write the same game executable in
+extended-path form. Observatory accepts only those known semantic rewrites.
+Any new section, plugin, different executable, or changed safety option still
+requires repair. The prepared folder remains tied to the exact probe identity
+recorded by Observatory, even when the local build files are no longer present.
+
+Probe contract 3 (`observatory_probe` 0.2.3) reads the reviewed calendar from
+the executable's in-place game-state object. The earlier 0.2.1 build followed
+an unrelated global pointer and could remain at **Waiting for checked report**
+even while a republic was running. The corrected build reports its current
+waiting stage explicitly.
+
+The checked report is scratch telemetry, not saved analytical history. Version
+0.2.3 samples once per seven game days by default. When the configured line
+limit is near, it clears only that fixed report, writes a fresh checked session
+header, and resumes. The current resource registry is captured again after the
+usual consecutive-frame check. This keeps long or accelerated play sessions
+bounded without requiring a restart.
+
+The probe writes a session check as soon as it loads. Game-data snapshots begin
+only after a republic is loaded and stable rendered frames are available. A
+checked launch that closes at the main menu therefore proves that the loader and
+probe started, but it does not contain a resource or population snapshot.
+Launching W&R later from Steam or its usual shortcut starts an ordinary session;
+it does not retroactively attach the checked probe.
+
+The flow does not change the game executable, game assets, Workshop content,
+or saves. Normal gameplay can still save if the player chooses to continue
+playing and save after launch. Anonymous person samples are never retained.
+Opted-in resource readings remain local session snapshots and never become
+historical save facts.
 
 ## Bounds
 
 The source clamps settings to 1–32 people, 1–365 days, 1,025–8,192 total
 records, at most 512 resource entries, and exactly one fixed output file. The
-Rust reader independently caps the file
-at 4 MiB, 8,192 lines, and 16 KiB per line, rejects unknown fields, rejects
-write/network capability claims, and rejects paths that escape the configured
-game directory.
+fixed report rolls forward in place before it reaches that bound; it never grows
+without limit. A rollover failure stops collection instead of weakening the
+limit. The Rust reader independently caps the file at 4 MiB, 8,192 lines, and
+16 KiB per line, rejects unknown fields, rejects write/network capability
+claims, and rejects paths that escape the configured game directory.

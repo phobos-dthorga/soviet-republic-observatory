@@ -7,7 +7,7 @@
 #include "tesmio_plugin.h"
 
 #define RVA_PERSON_VECTOR 0x9E75B8
-#define RVA_WORLD_PTR 0x9941F0
+#define RVA_GAME_STATE 0x9D4F10
 #define OFF_DAY 0x590
 #define OFF_YEAR 0x594
 #define PERSON_SIZE 0x750
@@ -36,7 +36,8 @@
 #define RESOURCE_CLASS_COUNT 18
 #define RESOURCE_FAMILY 0x30C
 #define TESTED_EXE_TIMESTAMP 0x6A3EB6ADu
-#define TESTED_EXE_SIZE 10308608u
+// TesmioLoader exposes the loaded module's PE SizeOfImage, not the file length.
+#define TESTED_EXE_SIZE 11128832u
 #define SYM_TERRAIN_RENDER "?Render@C3D_TERRAIN@@QEAAX_NPEAVC3D_CAMERA@@0HH@Z"
 #define PROBE_FILE "republic-observatory-probe.jsonl"
 #define MAX_SAMPLES 32
@@ -48,7 +49,7 @@ static t_TerrainRender o_TerrainRender;
 static HANDLE g_output = INVALID_HANDLE_VALUE;
 static int g_enabled = 1;
 static int g_samples = 16;
-static int g_everyDays = 1;
+static int g_everyDays = 7;
 static int g_maxRecords = 4096;
 static int g_records;
 static int g_sequence;
@@ -60,8 +61,10 @@ static BYTE* g_pendingResourceBegin;
 static int g_pendingResourceCount;
 static unsigned long long g_pendingResourceFingerprint;
 static int g_resourceStableFrames;
-static BYTE* g_lastCapturedWorld;
+static BYTE** g_lastCapturedPeopleBegin;
+static int g_lastCapturedPeopleCount;
 static unsigned long long g_lastCapturedResourceFingerprint;
+static int g_lastProbeStage = -1;
 
 static bool WriteLine(const char* line)
 {
@@ -85,12 +88,20 @@ static unsigned ExeTimestamp(void)
     return nt->FileHeader.TimeDateStamp;
 }
 
-static BYTE* World(void)
+static BYTE* GameState(void)
 {
-    BYTE** slot = (BYTE**)(g_exeBase + RVA_WORLD_PTR);
-    if (!ReadablePtr(slot, sizeof(void*))) return NULL;
-    BYTE* world = *slot;
-    return world && ReadablePtr(world, 0x600) ? world : NULL;
+    BYTE* gameState = g_exeBase + RVA_GAME_STATE;
+    return ReadablePtr(gameState, 0x600) ? gameState : NULL;
+}
+
+static void SetProbeStage(int stage, const char* name)
+{
+    if (stage == g_lastProbeStage) return;
+    char line[256];
+    _snprintf_s(line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":3,\"record_type\":\"probe_status\",\"stage\":\"%s\"}",
+        name);
+    if (WriteLine(line)) g_lastProbeStage = stage;
 }
 
 static int People(BYTE*** outBegin)
@@ -194,7 +205,7 @@ static void WriteResourceEntry(const BYTE* record, int index, int sequence)
     char line[2048];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":2,\"record_type\":\"resource_entry\",\"sequence\":%d,\"live_index\":%d,\"source_token\":\"%s\",\"caption_id\":%u,\"resource_kind\":%d,\"transport_class_mask\":%u,\"material_family\":%d,\"finished_price_rub\":%.9g,\"finished_price_usd\":%.9g,\"base_price_rub\":%.9g,\"base_price_usd\":%.9g,\"sell_multiplier_rub\":%.9g,\"buy_multiplier_rub\":%.9g,\"sell_multiplier_usd\":%.9g,\"buy_multiplier_usd\":%.9g}",
+        "{\"schema_version\":3,\"record_type\":\"resource_entry\",\"sequence\":%d,\"live_index\":%d,\"source_token\":\"%s\",\"caption_id\":%u,\"resource_kind\":%d,\"transport_class_mask\":%u,\"material_family\":%d,\"finished_price_rub\":%.9g,\"finished_price_usd\":%.9g,\"base_price_rub\":%.9g,\"base_price_usd\":%.9g,\"sell_multiplier_rub\":%.9g,\"buy_multiplier_rub\":%.9g,\"sell_multiplier_usd\":%.9g,\"buy_multiplier_usd\":%.9g}",
         sequence, index, token, *(const unsigned*)(record + RESOURCE_CAPTION_ID),
         *(const int*)(record + RESOURCE_KIND), classMask,
         *(const int*)(record + RESOURCE_FAMILY),
@@ -216,7 +227,7 @@ static void CaptureResourceRegistry(BYTE* begin, int count, int year, int day,
     int sequence = ++g_sequence;
     char line[512];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":2,\"record_type\":\"resource_registry\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"resource_count\":%d,\"registry_fingerprint\":\"%016llx\"}",
+        "{\"schema_version\":3,\"record_type\":\"resource_registry\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"resource_count\":%d,\"registry_fingerprint\":\"%016llx\"}",
         sequence, year, day, count, fingerprint);
     if (!WriteLine(line)) return;
     for (int i = 0; i < count; i++)
@@ -245,9 +256,46 @@ static void WriteSession(void)
     char line[2048];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":2,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.2.0\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"resource_stride\":832,\"resource_vector_rva\":\"0x9E11C0\",\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
+        "{\"schema_version\":3,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.2.3\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"game_state_rva\":\"0x9D4F10\",\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"resource_stride\":832,\"resource_vector_rva\":\"0x9E11C0\",\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
         TSM_API_VERSION, ExeTimestamp(), (unsigned long long)g_exeSize, PERSON_SIZE);
     WriteLine(line);
+}
+
+static bool RollReportForward(void)
+{
+    if (g_output == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER beginning = {};
+    if (!FlushFileBuffers(g_output) ||
+        !SetFilePointerEx(g_output, beginning, NULL, FILE_BEGIN)) {
+        Logf("observatory_probe could not roll its bounded report forward");
+        return false;
+    }
+    if (!SetEndOfFile(g_output)) {
+        // The file is still intact. Restore append position so the final
+        // bounded failure label cannot overwrite its checked session header.
+        LARGE_INTEGER end = {};
+        SetFilePointerEx(g_output, end, NULL, FILE_END);
+        Logf("observatory_probe could not roll its bounded report forward");
+        return false;
+    }
+
+    // Person samples are temporary research material. Keep the file bounded by
+    // starting a fresh checked report in the same allowlisted file. Force the
+    // resource registry to be captured again after its normal stability check.
+    g_records = 0;
+    g_sequence = 0;
+    g_lastProbeStage = -1;
+    g_pendingResourceBegin = NULL;
+    g_pendingResourceCount = 0;
+    g_pendingResourceFingerprint = 0;
+    g_resourceStableFrames = 0;
+    g_lastCapturedPeopleBegin = NULL;
+    g_lastCapturedPeopleCount = 0;
+    g_lastCapturedResourceFingerprint = 0;
+    WriteSession();
+    if (g_records != 1) return false;
+    Logf("observatory_probe rolled its bounded report forward");
+    return true;
 }
 
 static void WriteSample(BYTE* person, int sequence, int sampleIndex, int vectorIndex, int year, int day)
@@ -256,7 +304,7 @@ static void WriteSample(BYTE* person, int sequence, int sampleIndex, int vectorI
     char line[4096];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":2,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
+        "{\"schema_version\":3,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
         sequence, sampleIndex, vectorIndex, year, day,
         *(BYTE**)(person + PERSON_CURRENT_BUILDING) ? "true" : "false",
         *(float*)(person + PERSON_AGE), *(float*)(person + PERSON_EDUCATION),
@@ -269,9 +317,13 @@ static void WriteSample(BYTE* person, int sequence, int sampleIndex, int vectorI
 static void Snapshot(BYTE** begin, int count, int year, int day)
 {
     int wanted = g_samples < count ? g_samples : count;
-    if (wanted < 1 || g_records + wanted + 1 > g_maxRecords) {
+    if (wanted < 1) return;
+    // Keep one spare line for the next readiness label. Reaching the bound is
+    // a rollover of temporary telemetry, not the end of the checked session.
+    if (g_records + wanted + 2 > g_maxRecords && !RollReportForward()) {
+        SetProbeStage(5, "stopped_at_record_limit");
         g_enabled = 0;
-        Logf("observatory_probe stopped at its bounded record limit");
+        Logf("observatory_probe stopped because its bounded report could not roll forward");
         return;
     }
     int step = count / wanted;
@@ -290,7 +342,7 @@ static void Snapshot(BYTE** begin, int count, int year, int day)
     int sequence = ++g_sequence;
     char line[512];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":2,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
+        "{\"schema_version\":3,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
         sequence, year, day, count, valid);
     WriteLine(line);
     for (int i = 0; i < valid; i++)
@@ -299,14 +351,30 @@ static void Snapshot(BYTE** begin, int count, int year, int day)
 
 static void Tick(void)
 {
-    BYTE* world = World();
-    if (!world) return;
+    BYTE* world = GameState();
+    if (!world) {
+        SetProbeStage(1, "waiting_for_game_state");
+        return;
+    }
     int day = *(const int*)(world + OFF_DAY);
     int year = *(const int*)(world + OFF_YEAR);
-    if (day < 0 || day > 365 || year < 1900 || year > 10000) return;
+    if (day < 0 || day > 365 || year < 1900 || year > 10000) {
+        SetProbeStage(2, "waiting_for_loaded_republic");
+        return;
+    }
+    BYTE** begin = NULL;
+    int count = People(&begin);
+    if (count <= 0) {
+        g_lastCapturedPeopleBegin = NULL;
+        g_lastCapturedPeopleCount = 0;
+        g_lastCapturedResourceFingerprint = 0;
+        SetProbeStage(2, "waiting_for_loaded_republic");
+        return;
+    }
     BYTE* resourceBegin = NULL;
     int resourceCount = 0;
-    if (ResourceVector(&resourceBegin, &resourceCount)) {
+    bool resourceAvailable = ResourceVector(&resourceBegin, &resourceCount);
+    if (resourceAvailable) {
         unsigned long long fingerprint = ResourceFingerprint(resourceBegin, resourceCount);
         if (fingerprint && resourceBegin == g_pendingResourceBegin &&
             resourceCount == g_pendingResourceCount &&
@@ -319,16 +387,18 @@ static void Tick(void)
             g_resourceStableFrames = 1;
         }
         if (fingerprint && g_resourceStableFrames >= 2 &&
-            (world != g_lastCapturedWorld ||
+            (begin != g_lastCapturedPeopleBegin ||
+             count != g_lastCapturedPeopleCount ||
              fingerprint != g_lastCapturedResourceFingerprint)) {
             CaptureResourceRegistry(resourceBegin, resourceCount, year, day, fingerprint);
-            g_lastCapturedWorld = world;
+            g_lastCapturedPeopleBegin = begin;
+            g_lastCapturedPeopleCount = count;
             g_lastCapturedResourceFingerprint = fingerprint;
         }
     }
-    BYTE** begin = NULL;
-    int count = People(&begin);
-    if (count <= 0) return;
+    SetProbeStage(resourceAvailable ? 3 : 4,
+                  resourceAvailable ? "checked_report_ready" :
+                                      "checked_report_ready_without_resources");
     bool worldChanged = begin != g_lastBegin || count != g_lastCount;
     bool dateChanged = day != g_lastDay || year != g_lastYear;
     int absoluteDay = year * 365 + day;
@@ -374,7 +444,7 @@ extern "C" __declspec(dllexport) int TsmPluginInit(const TsmHost* host, TsmPlugi
 {
     TsmBind(host);
     info->name = "Republic Observatory read-only probe";
-    info->version = "0.2.0";
+    info->version = "0.2.3";
     ReadSettings();
     unsigned timestamp = ExeTimestamp();
     if (!g_enabled) return 1;

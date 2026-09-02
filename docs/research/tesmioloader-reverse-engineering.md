@@ -29,11 +29,12 @@ probe. It records explicit acceptance of the current research notice and
 validates the two exact header hashes reviewed at commit
 `3baa141f9f08921aea9c95f0a400289cabd9960a`. A player may select a local checkout
 or explicitly confirm a download of that exact source revision from GitHub.
-The managed download keeps only the reviewed headers, upstream licence, and a
-provenance record. It rejects redirects, arbitrary locations, excessive or
-malformed archives, path traversal, links, duplicate entries, and mismatched
-headers. Header identity is calculated after converting ordinary CRLF checkout
-line endings to the upstream LF form. This accepts the same reviewed text from
+The managed download keeps only allowlisted build sources, reviewed headers,
+the upstream licence, and a provenance record. It rejects redirects, arbitrary
+locations, excessive or malformed archives, path traversal, links, duplicate
+entries, and mismatched headers. Header identity is calculated after converting
+ordinary CRLF checkout line endings to the upstream LF form. This accepts the
+same reviewed text from
 GitHub and Windows Git without accepting changed source. An interrupted or
 rejected download does not replace an existing checkout or built probe.
 
@@ -42,10 +43,11 @@ repository-owned `research/tesmioloader-probe/build.ps1` recipe. Download and
 build progress are separate. Build output is bounded, hashed, and the displayed
 log redacts both local source roots.
 
-This is a source-and-build assistant, not a loader manager. It never downloads
-a loader binary, installs the result, alters loader configuration, elevates,
-launches W&R, injects the probe, or collects telemetry. Missing prerequisites
-fail closed and ordinary save analysis is unaffected.
+The assistant never downloads a loader binary or elevates. With separate
+confirmation, it builds the reviewed host locally and prepares one marked
+`W&R/tesmioloader/observatory` folder. Another confirmation is required before
+it launches W&R through that folder. Missing prerequisites fail closed and
+ordinary save analysis is unaffected.
 
 ## What the loader provides
 
@@ -198,6 +200,7 @@ modification. It:
 - emit a versioned, bounded, local JSON Lines research stream;
 - includes a strict session contract plus sequence, game date, population count,
   and bounded candidate-field samples;
+- emit a bounded readiness stage without exposing addresses or rejected values;
 - exclude complete object dumps, raw saves, filesystem paths, and network
   access by default;
 - never open Republic Observatory's SQLite or DuckDB databases; and
@@ -215,6 +218,17 @@ The GPL companion source and build instructions are in
 [`research/tesmioloader-probe`](../../research/tesmioloader-probe/README.md).
 The app exposes a first-class Legal & notices screen covering ownership,
 licensing, same-process risk, the no-sandbox caveat, and evidence limits.
+
+### Calendar-route correction
+
+Probe 0.2.1 treated the global at RVA `0x9941F0` as a pointer to the game-state
+object. A checked live session proved that its day and year reads were instead
+the two halves of an unrelated pointer, so the bounds check correctly rejected
+every frame and no snapshot followed the session record. Static call-site
+analysis and a bounded read-only live check identified the reviewed in-place
+game-state object at RVA `0x9D4F10`; its day and year remain at offsets `0x590`
+and `0x594`. Probe 0.2.2 and later use that route, keep the executable identity
+gate, and add allowlisted readiness records so this failure class is visible.
 
 ## Priority experiments
 

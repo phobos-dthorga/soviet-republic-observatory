@@ -1,26 +1,31 @@
 //! Bounded native setup and build service for the optional GPL research companion.
 //!
 //! The only network operation retrieves source from one reviewed upstream commit.
-//! It never downloads binaries, installs, injects, launches W&R, or accepts an
-//! arbitrary command. The build still requires the exact reviewed header pair.
+//! It never downloads binaries or accepts an arbitrary command. Game-folder
+//! preparation and live launch use separate, typed consent boundaries.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter};
 
 use crate::diagnostics;
 use crate::error::ObservatoryError;
-use crate::research_source_download::{DownloadedResearchSource, download_reviewed_source};
+use crate::research_source_download::{
+    DownloadedResearchSource, ResearchSourceDownloadPhase as DownloadPhase,
+    download_reviewed_source, reviewed_session_source_is_available,
+};
 use crate::storage::{StoredResearchSetup, now_ms};
 
-pub const RESEARCH_NOTICE_REVISION: u32 = 3;
+pub const RESEARCH_NOTICE_REVISION: u32 = 4;
 pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a";
 pub(crate) const REVIEWED_PLUGIN_HEADER_HASH: &str =
     "d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49";
@@ -30,6 +35,25 @@ const MAX_HEADER_BYTES: u64 = 256 * 1024;
 const MAX_ARTIFACT_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_LOG_LINES: usize = 80;
 const MAX_LOG_LINE_CHARS: usize = 240;
+const PROBE_BUILD_PROVENANCE: &str = "observatory_probe.provenance.json";
+const PROBE_SOURCE_CONTRACT_FILES: [&str; 5] = [
+    "build.ps1",
+    "observatory_probe.cpp",
+    "observatory_probe.ini",
+    "COPYING",
+    "verify-observation-only.ps1",
+];
+const MANAGED_SESSION_DIRECTORY: &str = "observatory";
+const SESSION_MANIFEST: &str = "observatory-install.json";
+const MAX_SESSION_ARTIFACT_BYTES: u64 = 4 * 1024 * 1024;
+const SESSION_FILES: [&str; 6] = [
+    "tesmioloader.dll",
+    "tesmiolauncher.exe",
+    "tesmioloader.ini",
+    "COPYING",
+    "plugins/observatory_probe.dll",
+    "plugins/observatory_probe.ini",
+];
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -75,24 +99,47 @@ pub enum ResearchSourceDownloadState {
     Failed,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSourceDownloadPhase {
+    Idle,
+    Connecting,
+    Downloading,
+    CheckingArchive,
+    Installing,
+    Verifying,
+    Complete,
+    Failed,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ResearchSourceDownloadProgress {
+    pub task_id: String,
+    pub run_id: String,
     pub state: ResearchSourceDownloadState,
+    pub phase: ResearchSourceDownloadPhase,
     pub progress_percent: Option<u8>,
     pub transferred_bytes: u64,
     pub expected_bytes: Option<u64>,
+    pub started_at_ms: Option<i64>,
     pub updated_at_ms: Option<i64>,
+    pub current_item: Option<String>,
     pub error_code: Option<String>,
 }
 
 impl Default for ResearchSourceDownloadProgress {
     fn default() -> Self {
         Self {
+            task_id: "research_source_download".to_owned(),
+            run_id: "not_started".to_owned(),
             state: ResearchSourceDownloadState::Idle,
+            phase: ResearchSourceDownloadPhase::Idle,
             progress_percent: None,
             transferred_bytes: 0,
             expected_bytes: None,
+            started_at_ms: None,
             updated_at_ms: None,
+            current_item: None,
             error_code: None,
         }
     }
@@ -120,6 +167,104 @@ pub struct ResearchSetupStatus {
     pub warnings: Vec<String>,
     pub progress: ResearchBuildProgress,
     pub download_progress: ResearchSourceDownloadProgress,
+    pub session: ResearchSessionStatus,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSessionState {
+    GameNotConfigured,
+    PrerequisitesRequired,
+    ReadyToPrepare,
+    Prepared,
+    ReportAvailable,
+    Invalid,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSessionTaskState {
+    Idle,
+    Running,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSessionPhase {
+    Idle,
+    Preflight,
+    BuildingHost,
+    Installing,
+    Verifying,
+    Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ResearchSessionProgress {
+    pub task_id: String,
+    pub run_id: String,
+    pub state: ResearchSessionTaskState,
+    pub phase: ResearchSessionPhase,
+    pub progress_percent: Option<u8>,
+    pub started_at_ms: Option<i64>,
+    pub updated_at_ms: Option<i64>,
+    pub current_item: Option<String>,
+    pub log_lines: Vec<String>,
+    pub error_code: Option<String>,
+}
+
+impl Default for ResearchSessionProgress {
+    fn default() -> Self {
+        Self {
+            task_id: "research_session_preparation".to_owned(),
+            run_id: "not_started".to_owned(),
+            state: ResearchSessionTaskState::Idle,
+            phase: ResearchSessionPhase::Idle,
+            progress_percent: None,
+            started_at_ms: None,
+            updated_at_ms: None,
+            current_item: None,
+            log_lines: Vec::new(),
+            error_code: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ResearchSessionStatus {
+    pub state: ResearchSessionState,
+    pub game_configured: bool,
+    pub reviewed_loader_source_available: bool,
+    pub probe_ready: bool,
+    pub report_snapshot_count: u32,
+    pub report_collection_stage: Option<String>,
+    pub managed_folder: String,
+    pub can_prepare: bool,
+    pub can_launch: bool,
+    pub writes_game_directory: bool,
+    pub writes_save_data: bool,
+    pub changes_running_game_memory: bool,
+    pub progress: ResearchSessionProgress,
+}
+
+struct SessionBuildCleanup(PathBuf);
+
+impl Drop for SessionBuildCleanup {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchSessionManifest {
+    schema_version: u32,
+    reviewed_revision: String,
+    installed_at_ms: i64,
+    files: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -186,8 +331,10 @@ pub struct ResearchSetupService {
     managed_source_root: PathBuf,
     progress: Mutex<ResearchBuildProgress>,
     download_progress: Mutex<ResearchSourceDownloadProgress>,
+    session_progress: Mutex<ResearchSessionProgress>,
     building: AtomicBool,
     downloading: AtomicBool,
+    preparing_session: AtomicBool,
 }
 
 impl ResearchSetupService {
@@ -199,8 +346,10 @@ impl ResearchSetupService {
                 .join("tesmioloader-reviewed"),
             progress: Mutex::new(ResearchBuildProgress::default()),
             download_progress: Mutex::new(ResearchSourceDownloadProgress::default()),
+            session_progress: Mutex::new(ResearchSessionProgress::default()),
             building: AtomicBool::new(false),
             downloading: AtomicBool::new(false),
+            preparing_session: AtomicBool::new(false),
         }
     }
 
@@ -213,6 +362,13 @@ impl ResearchSetupService {
 
     pub fn download_progress(&self) -> ResearchSourceDownloadProgress {
         self.download_progress
+            .lock()
+            .map(|progress| progress.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn session_progress(&self) -> ResearchSessionProgress {
+        self.session_progress
             .lock()
             .map(|progress| progress.clone())
             .unwrap_or_default()
@@ -231,7 +387,11 @@ impl ResearchSetupService {
         Ok(canonical)
     }
 
-    pub fn status(&self, stored: &StoredResearchSetup) -> ResearchSetupStatus {
+    pub fn status(
+        &self,
+        stored: &StoredResearchSetup,
+        game_media_directory: Option<&Path>,
+    ) -> ResearchSetupStatus {
         let source_available = self.source_root.as_deref().is_some_and(source_ready);
         let compiler_available = compiler_ready();
         let checkout_state = match stored.tesmio_checkout_path.as_deref() {
@@ -268,7 +428,11 @@ impl ResearchSetupService {
             ResearchCheckoutState::Reviewed => {}
         }
         if source_origin == Some(ResearchSourceOrigin::ObservatoryDownloaded)
-            && checkout_state != ResearchCheckoutState::Reviewed
+            && (checkout_state != ResearchCheckoutState::Reviewed
+                || !stored
+                    .tesmio_checkout_path
+                    .as_deref()
+                    .is_some_and(reviewed_session_source_is_available))
         {
             warnings.push("downloaded_source_needs_repair".to_owned());
         }
@@ -297,6 +461,14 @@ impl ResearchSetupService {
             }
             ResearchArtifactState::Absent | ResearchArtifactState::Verified => {}
         }
+        let session = self.session_status(
+            stored,
+            game_media_directory,
+            notice_accepted,
+            source_available,
+            compiler_available,
+            artifact_state == ResearchArtifactState::Verified,
+        );
         ResearchSetupStatus {
             notice_revision: RESEARCH_NOTICE_REVISION,
             notice_accepted,
@@ -324,7 +496,361 @@ impl ResearchSetupService {
             warnings,
             progress: self.progress(),
             download_progress: self.download_progress(),
+            session,
         }
+    }
+
+    fn session_status(
+        &self,
+        stored: &StoredResearchSetup,
+        game_media_directory: Option<&Path>,
+        notice_accepted: bool,
+        source_available: bool,
+        compiler_available: bool,
+        probe_ready: bool,
+    ) -> ResearchSessionStatus {
+        let reviewed_loader_source_available = stored
+            .tesmio_checkout_path
+            .as_deref()
+            .is_some_and(reviewed_session_source_is_available);
+        let paths = game_media_directory.and_then(managed_session_paths);
+        let game_configured = paths.is_some();
+        let preparing = self.preparing_session.load(Ordering::Acquire);
+        let prerequisites_ready = notice_accepted
+            && source_available
+            && compiler_available
+            && probe_ready
+            && reviewed_loader_source_available
+            && game_configured;
+        let mut report_snapshot_count = 0;
+        let mut report_collection_stage = None;
+        let (state, installed) = match paths.as_ref() {
+            None => (ResearchSessionState::GameNotConfigured, false),
+            Some(paths)
+                if managed_session_is_valid(
+                    &paths.session_root,
+                    &paths.game_executable,
+                    stored.last_probe_hash.as_deref(),
+                ) =>
+            {
+                let report = crate::tesmio_probe::inspect(game_media_directory);
+                let report_available = matches!(
+                    report,
+                    crate::model::TesmioProbeStatus {
+                        state: crate::model::TesmioProbeState::Available
+                            | crate::model::TesmioProbeState::Warning,
+                        ..
+                    }
+                );
+                if report_available {
+                    report_snapshot_count = report.snapshot_count;
+                    report_collection_stage = report.collection_stage;
+                }
+                (
+                    if report_available {
+                        ResearchSessionState::ReportAvailable
+                    } else {
+                        ResearchSessionState::Prepared
+                    },
+                    true,
+                )
+            }
+            Some(paths) if paths.session_root.exists() => (ResearchSessionState::Invalid, false),
+            Some(_) if prerequisites_ready => (ResearchSessionState::ReadyToPrepare, false),
+            Some(_) => (ResearchSessionState::PrerequisitesRequired, false),
+        };
+        ResearchSessionStatus {
+            state,
+            game_configured,
+            reviewed_loader_source_available,
+            probe_ready,
+            report_snapshot_count,
+            report_collection_stage,
+            managed_folder: "W&R/tesmioloader/observatory".to_owned(),
+            can_prepare: prerequisites_ready && !preparing,
+            can_launch: installed && notice_accepted && !preparing,
+            writes_game_directory: true,
+            writes_save_data: false,
+            changes_running_game_memory: true,
+            progress: self.session_progress(),
+        }
+    }
+
+    pub fn prepare_observation_session(
+        &self,
+        app: &AppHandle,
+        stored: &StoredResearchSetup,
+        game_media_directory: Option<&Path>,
+        game_directory_write_confirmed: bool,
+    ) -> Result<(), ObservatoryError> {
+        if !game_directory_write_confirmed {
+            return Err(ObservatoryError::ResearchSessionConsentRequired);
+        }
+        if self
+            .preparing_session
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(ObservatoryError::CriticalTaskBusy);
+        }
+        let result = self.prepare_observation_session_inner(app, stored, game_media_directory);
+        self.preparing_session.store(false, Ordering::Release);
+        result
+    }
+
+    fn prepare_observation_session_inner(
+        &self,
+        app: &AppHandle,
+        stored: &StoredResearchSetup,
+        game_media_directory: Option<&Path>,
+    ) -> Result<(), ObservatoryError> {
+        let started = now_ms();
+        self.update_session_progress(
+            app,
+            ResearchSessionProgress {
+                task_id: "research_session_preparation".to_owned(),
+                run_id: format!("research-session-{started}"),
+                state: ResearchSessionTaskState::Running,
+                phase: ResearchSessionPhase::Preflight,
+                progress_percent: Some(10),
+                started_at_ms: Some(started),
+                updated_at_ms: Some(started),
+                current_item: Some("consent_and_paths".to_owned()),
+                log_lines: Vec::new(),
+                error_code: None,
+            },
+        );
+        if stored.accepted_notice_revision != RESEARCH_NOTICE_REVISION {
+            return self.fail_session(app, ObservatoryError::ResearchNoticeRequired);
+        }
+        if !compiler_ready() {
+            return self.fail_session(app, ObservatoryError::ResearchToolchainUnavailable);
+        }
+        let Some(source_root) = self
+            .source_root
+            .as_deref()
+            .filter(|path| source_ready(path))
+        else {
+            return self.fail_session(app, ObservatoryError::ResearchSourceUnavailable);
+        };
+        let Some(checkout) = stored
+            .tesmio_checkout_path
+            .as_deref()
+            .filter(|path| reviewed_session_source_is_available(path))
+        else {
+            return self.fail_session(app, ObservatoryError::InvalidResearchCheckout);
+        };
+        let Some(probe) = inspect_artifact(source_root)
+            .filter(|artifact| stored.last_probe_hash.as_deref() == Some(artifact.hash.as_str()))
+        else {
+            return self.fail_session(app, ObservatoryError::ResearchSessionNotReady);
+        };
+        let Some(paths) = game_media_directory.and_then(managed_session_paths) else {
+            return self.fail_session(app, ObservatoryError::InvalidGameDirectory);
+        };
+        if paths.session_root.exists() && !managed_session_owned(&paths.session_root) {
+            return self.fail_session(app, ObservatoryError::ResearchSessionConflict);
+        }
+        if managed_session_is_valid(
+            &paths.session_root,
+            &paths.game_executable,
+            stored.last_probe_hash.as_deref(),
+        ) {
+            self.complete_session_progress(app, "existing_checked_setup");
+            return Ok(());
+        }
+
+        self.advance_session(
+            app,
+            ResearchSessionPhase::BuildingHost,
+            35,
+            "reviewed_tesmio_host",
+        );
+        let Some(build_parent) = self.managed_source_root.parent() else {
+            return self.fail_session(app, ObservatoryError::ResearchSessionPreparationFailed);
+        };
+        let build_root = build_parent
+            .join("observation-session-build")
+            .join(format!("{}-{started}", std::process::id()));
+        if fs::create_dir_all(&build_root).is_err() {
+            return self.fail_session(app, ObservatoryError::ResearchSessionPreparationFailed);
+        }
+        let _build_cleanup = SessionBuildCleanup(build_root.clone());
+        let Some(powershell) = find_powershell() else {
+            return self.fail_session(app, ObservatoryError::ResearchToolchainUnavailable);
+        };
+        let script = source_root.join("build-observation-session.ps1");
+        let output = Command::new(powershell)
+            .args([
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(&script)
+            .arg("-TesmioLoaderRoot")
+            .arg(compiler_checkout_path(checkout))
+            .arg("-OutputRoot")
+            .arg(&build_root)
+            .current_dir(source_root)
+            .output();
+        let Ok(output) = output else {
+            return self.fail_session(app, ObservatoryError::ResearchSessionPreparationFailed);
+        };
+        let mut logs = sanitise_build_output(&output.stdout, &output.stderr, source_root, checkout);
+        let private_build = build_root.to_string_lossy();
+        for line in &mut logs {
+            *line = line.replace(private_build.as_ref(), "<managed-session-build>");
+        }
+        self.set_session_logs(app, logs);
+        if !output.status.success()
+            || checked_artifact(
+                &build_root.join("tesmioloader.dll"),
+                MAX_SESSION_ARTIFACT_BYTES,
+            )
+            .is_none()
+            || checked_artifact(
+                &build_root.join("tesmiolauncher.exe"),
+                MAX_SESSION_ARTIFACT_BYTES,
+            )
+            .is_none()
+        {
+            return self.fail_session(app, ObservatoryError::ResearchSessionPreparationFailed);
+        }
+
+        self.advance_session(
+            app,
+            ResearchSessionPhase::Installing,
+            70,
+            "isolated_game_folder",
+        );
+        if let Err(error) =
+            install_managed_session(&paths, &build_root, source_root, checkout, &probe)
+        {
+            return self.fail_session(app, error);
+        }
+        self.advance_session(
+            app,
+            ResearchSessionPhase::Verifying,
+            92,
+            "read_only_contract",
+        );
+        if !managed_session_is_valid(
+            &paths.session_root,
+            &paths.game_executable,
+            Some(&probe.hash),
+        ) {
+            return self.fail_session(app, ObservatoryError::ResearchSessionPreparationFailed);
+        }
+        self.complete_session_progress(app, "ready_for_confirmed_launch");
+        diagnostics::record(
+            "info",
+            "research_session.prepared",
+            "prepare_observation_only_session",
+            "Prepared the isolated observation-only Tesmio session after explicit consent. No save file was read or changed.",
+        );
+        Ok(())
+    }
+
+    pub fn launch_observation_session(
+        &self,
+        stored: &StoredResearchSetup,
+        game_media_directory: Option<&Path>,
+        running_game_memory_confirmed: bool,
+    ) -> Result<(), ObservatoryError> {
+        if !running_game_memory_confirmed {
+            return Err(ObservatoryError::ResearchSessionConsentRequired);
+        }
+        if stored.accepted_notice_revision != RESEARCH_NOTICE_REVISION {
+            return Err(ObservatoryError::ResearchNoticeRequired);
+        }
+        let Some(paths) = game_media_directory.and_then(managed_session_paths) else {
+            return Err(ObservatoryError::InvalidGameDirectory);
+        };
+        if !managed_session_is_valid(
+            &paths.session_root,
+            &paths.game_executable,
+            stored.last_probe_hash.as_deref(),
+        ) {
+            return Err(ObservatoryError::ResearchSessionNotReady);
+        }
+        let mut child = Command::new(paths.session_root.join("tesmiolauncher.exe"))
+            .arg("--game")
+            .arg(&paths.game_executable)
+            .arg("--nogui")
+            .current_dir(&paths.session_root)
+            .spawn()
+            .map_err(|_| ObservatoryError::ResearchSessionLaunchFailed)?;
+        for _ in 0..100 {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break,
+                Ok(Some(_)) | Err(_) => {
+                    return Err(ObservatoryError::ResearchSessionLaunchFailed);
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+            }
+        }
+        diagnostics::record(
+            "info",
+            "research_session.launch_requested",
+            "launch_observation_only_session",
+            "The player explicitly launched the checked observation-only session. The launcher may temporarily modify the running game's memory; no save write was requested.",
+        );
+        Ok(())
+    }
+
+    fn advance_session(
+        &self,
+        app: &AppHandle,
+        phase: ResearchSessionPhase,
+        percent: u8,
+        item: &str,
+    ) {
+        let mut progress = self.session_progress();
+        progress.phase = phase;
+        progress.progress_percent = Some(percent);
+        progress.updated_at_ms = Some(now_ms());
+        progress.current_item = Some(item.to_owned());
+        self.update_session_progress(app, progress);
+    }
+
+    fn set_session_logs(&self, app: &AppHandle, logs: Vec<String>) {
+        let mut progress = self.session_progress();
+        progress.log_lines = logs;
+        progress.updated_at_ms = Some(now_ms());
+        self.update_session_progress(app, progress);
+    }
+
+    fn complete_session_progress(&self, app: &AppHandle, item: &str) {
+        let mut progress = self.session_progress();
+        progress.state = ResearchSessionTaskState::Complete;
+        progress.phase = ResearchSessionPhase::Complete;
+        progress.progress_percent = Some(100);
+        progress.updated_at_ms = Some(now_ms());
+        progress.current_item = Some(item.to_owned());
+        self.update_session_progress(app, progress);
+    }
+
+    fn fail_session<T>(
+        &self,
+        app: &AppHandle,
+        error: ObservatoryError,
+    ) -> Result<T, ObservatoryError> {
+        let mut progress = self.session_progress();
+        progress.state = ResearchSessionTaskState::Failed;
+        progress.phase = ResearchSessionPhase::Failed;
+        progress.updated_at_ms = Some(now_ms());
+        progress.error_code = Some(error.code().to_owned());
+        self.update_session_progress(app, progress);
+        diagnostics::record(
+            "error",
+            error.code(),
+            "prepare_observation_only_session",
+            "The checked-session preparation stopped safely. No save file was changed.",
+        );
+        Err(error)
     }
 
     pub fn download_source(
@@ -342,14 +868,20 @@ impl ResearchSetupService {
         {
             return Err(ObservatoryError::CriticalTaskBusy);
         }
+        let started_at_ms = now_ms();
         self.update_download_progress(
             app,
             ResearchSourceDownloadProgress {
+                task_id: "research_source_download".to_owned(),
+                run_id: format!("research-source-{started_at_ms}"),
                 state: ResearchSourceDownloadState::Running,
-                progress_percent: Some(0),
+                phase: ResearchSourceDownloadPhase::Connecting,
+                progress_percent: Some(5),
                 transferred_bytes: 0,
                 expected_bytes: None,
-                updated_at_ms: Some(now_ms()),
+                started_at_ms: Some(started_at_ms),
+                updated_at_ms: Some(started_at_ms),
+                current_item: Some("github_connection".to_owned()),
                 error_code: None,
             },
         );
@@ -360,29 +892,63 @@ impl ResearchSetupService {
             "The reviewed TesmioLoader source download started.",
         );
         let result =
-            download_reviewed_source(&self.managed_source_root, |transferred, expected| {
-                let percent = expected
-                    .filter(|expected| *expected > 0)
-                    .map(|expected| ((transferred.saturating_mul(100) / expected).min(99)) as u8);
-                self.update_download_progress(
-                    app,
-                    ResearchSourceDownloadProgress {
-                        state: ResearchSourceDownloadState::Running,
-                        progress_percent: percent,
-                        transferred_bytes: transferred,
-                        expected_bytes: expected,
-                        updated_at_ms: Some(now_ms()),
-                        error_code: None,
-                    },
-                );
+            download_reviewed_source(&self.managed_source_root, |phase, transferred, expected| {
+                let (phase, percent, current_item) = match phase {
+                    DownloadPhase::Connecting => (
+                        ResearchSourceDownloadPhase::Connecting,
+                        Some(5),
+                        "github_connection",
+                    ),
+                    DownloadPhase::Downloading => {
+                        let percent = expected.filter(|expected| *expected > 0).map(|expected| {
+                            (10 + transferred.saturating_mul(60) / expected).min(70) as u8
+                        });
+                        (
+                            ResearchSourceDownloadPhase::Downloading,
+                            percent,
+                            "reviewed_source_archive",
+                        )
+                    }
+                    DownloadPhase::CheckingArchive => (
+                        ResearchSourceDownloadPhase::CheckingArchive,
+                        Some(76),
+                        "archive_safety_checks",
+                    ),
+                    DownloadPhase::Installing => (
+                        ResearchSourceDownloadPhase::Installing,
+                        Some(88),
+                        "reviewed_source_files",
+                    ),
+                    DownloadPhase::Verifying => (
+                        ResearchSourceDownloadPhase::Verifying,
+                        Some(96),
+                        "reviewed_header_identity",
+                    ),
+                };
+                let mut current = self.download_progress();
+                current.state = ResearchSourceDownloadState::Running;
+                current.phase = phase;
+                current.progress_percent = percent;
+                if transferred > 0 {
+                    current.transferred_bytes = transferred;
+                }
+                if expected.is_some() {
+                    current.expected_bytes = expected;
+                }
+                current.updated_at_ms = Some(now_ms());
+                current.current_item = Some(current_item.to_owned());
+                current.error_code = None;
+                self.update_download_progress(app, current);
             });
         self.downloading.store(false, Ordering::Release);
         match result {
             Ok(source) => {
                 let mut progress = self.download_progress();
                 progress.state = ResearchSourceDownloadState::Complete;
+                progress.phase = ResearchSourceDownloadPhase::Complete;
                 progress.progress_percent = Some(100);
                 progress.updated_at_ms = Some(now_ms());
+                progress.current_item = Some("download_complete".to_owned());
                 self.update_download_progress(app, progress);
                 diagnostics::record(
                     "info",
@@ -398,7 +964,9 @@ impl ResearchSetupService {
             Err(error) => {
                 let mut progress = self.download_progress();
                 progress.state = ResearchSourceDownloadState::Failed;
+                progress.phase = ResearchSourceDownloadPhase::Failed;
                 progress.updated_at_ms = Some(now_ms());
+                progress.current_item = Some("download_stopped".to_owned());
                 progress.error_code = Some(error.code().to_owned());
                 self.update_download_progress(app, progress);
                 diagnostics::record(
@@ -570,6 +1138,22 @@ impl ResearchSetupService {
         }
         self.set_logs(app, logs);
         self.advance(app, ResearchBuildPhase::Verifying, 90, "probe_artifact");
+        let Some(artifact) = inspect_unrecorded_artifact(source_root) else {
+            return self.fail(
+                app,
+                "research_artifact_invalid",
+                "inspect_build_diagnostics",
+                ObservatoryError::ResearchBuildFailed,
+            );
+        };
+        if record_probe_build_provenance(source_root, &artifact).is_err() {
+            return self.fail(
+                app,
+                "research_artifact_invalid",
+                "inspect_build_diagnostics",
+                ObservatoryError::ResearchBuildFailed,
+            );
+        }
         let Some(artifact) = inspect_artifact(source_root) else {
             return self.fail(
                 app,
@@ -680,6 +1264,261 @@ impl ResearchSetupService {
         }
         let _ = app.emit("research-source-download-progress", progress);
     }
+
+    fn update_session_progress(&self, app: &AppHandle, progress: ResearchSessionProgress) {
+        if let Ok(mut current) = self.session_progress.lock() {
+            *current = progress.clone();
+        }
+        let _ = app.emit("research-session-progress", progress);
+    }
+}
+
+#[derive(Debug)]
+struct ManagedSessionPaths {
+    game_executable: PathBuf,
+    session_root: PathBuf,
+}
+
+fn managed_session_paths(media_directory: &Path) -> Option<ManagedSessionPaths> {
+    let canonical_media = media_directory.canonicalize().ok()?;
+    let game_root = canonical_media.parent()?.to_path_buf();
+    let game_executable = game_root.join("SOVIET64.exe");
+    let metadata = fs::symlink_metadata(&game_executable).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    Some(ManagedSessionPaths {
+        game_executable,
+        session_root: game_root
+            .join("tesmioloader")
+            .join(MANAGED_SESSION_DIRECTORY),
+    })
+}
+
+fn session_configuration(game_executable: &Path) -> Option<Vec<u8>> {
+    let game_executable = compiler_checkout_path(game_executable);
+    let game_executable = game_executable.to_string_lossy();
+    if game_executable.len() > 2_048
+        || game_executable
+            .chars()
+            .any(|character| character.is_control())
+    {
+        return None;
+    }
+    Some(
+        format!(
+            "; Prepared by Republic Observatory after explicit player consent.\r\n\
+[tesmioloader]\r\n\
+version = observatory-{REVIEWED_TESMIO_REVISION}\r\n\
+game_exe = {game_executable}\r\n\
+trace_reads = 0\r\n\
+log_game = 0\r\n\
+vfs = 0\r\n\
+probe_map = 0\r\n\
+probe_texel = 0\r\n\
+save_manifest = 0\r\n\
+plugins = 1\r\n\
+menu_patch = 0\r\n\
+version_check = 1\r\n\
+\r\n\
+[plugins]\r\n\
+observatory_probe = 1\r\n"
+        )
+        .into_bytes(),
+    )
+}
+
+fn read_session_manifest(root: &Path) -> Option<ResearchSessionManifest> {
+    let path = root.join(SESSION_MANIFEST);
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 64 * 1024 {
+        return None;
+    }
+    let bytes = fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn managed_session_owned(root: &Path) -> bool {
+    read_session_manifest(root).is_some_and(|manifest| {
+        manifest.schema_version == 1
+            && manifest.reviewed_revision == REVIEWED_TESMIO_REVISION
+            && manifest.files.len() == SESSION_FILES.len()
+            && SESSION_FILES
+                .iter()
+                .all(|path| manifest.files.contains_key(*path))
+    })
+}
+
+fn managed_session_is_valid(
+    root: &Path,
+    game_executable: &Path,
+    expected_probe_hash: Option<&str>,
+) -> bool {
+    let Some(manifest) = read_session_manifest(root) else {
+        return false;
+    };
+    if manifest.schema_version != 1
+        || manifest.reviewed_revision != REVIEWED_TESMIO_REVISION
+        || manifest.files.len() != SESSION_FILES.len()
+        || !crate::tesmio_probe::verify_observation_only_build_root(root)
+    {
+        return false;
+    }
+    let Some(expected_configuration) = session_configuration(game_executable) else {
+        return false;
+    };
+    if !crate::tesmio_probe::observation_only_configuration_matches(root, &expected_configuration) {
+        return false;
+    }
+    if manifest
+        .files
+        .get("plugins/observatory_probe.dll")
+        .map(String::as_str)
+        != expected_probe_hash
+    {
+        return false;
+    }
+    SESSION_FILES
+        .iter()
+        .filter(|relative| **relative != "tesmioloader.ini")
+        .all(|relative| {
+            manifest.files.get(*relative).is_some_and(|expected| {
+                bounded_hash(&root.join(relative), MAX_SESSION_ARTIFACT_BYTES).as_deref()
+                    == Some(expected.as_str())
+            })
+        })
+}
+
+fn checked_artifact(path: &Path, max_bytes: u64) -> Option<BuildArtifact> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() == 0
+        || metadata.len() > max_bytes
+    {
+        return None;
+    }
+    Some(BuildArtifact {
+        hash: bounded_hash(path, max_bytes)?,
+        size: metadata.len(),
+    })
+}
+
+fn install_managed_session(
+    paths: &ManagedSessionPaths,
+    build_root: &Path,
+    source_root: &Path,
+    checkout: &Path,
+    probe: &BuildArtifact,
+) -> Result<(), ObservatoryError> {
+    let parent = paths
+        .session_root
+        .parent()
+        .ok_or(ObservatoryError::ResearchSessionPreparationFailed)?;
+    fs::create_dir_all(parent).map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+    let parent_metadata = fs::symlink_metadata(parent)
+        .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+    if !parent_metadata.is_dir() || parent_metadata.file_type().is_symlink() {
+        return Err(ObservatoryError::ResearchSessionPreparationFailed);
+    }
+    if paths.session_root.exists() && !managed_session_owned(&paths.session_root) {
+        return Err(ObservatoryError::ResearchSessionConflict);
+    }
+
+    let nonce = format!("{}-{}", std::process::id(), now_ms());
+    let staging = parent.join(format!(".{MANAGED_SESSION_DIRECTORY}.{nonce}.staging"));
+    let backup = parent.join(format!(".{MANAGED_SESSION_DIRECTORY}.{nonce}.backup"));
+    fs::create_dir(&staging).map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+    let result = (|| {
+        fs::create_dir(staging.join("plugins"))
+            .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+        copy_session_file(
+            &build_root.join("tesmioloader.dll"),
+            &staging.join("tesmioloader.dll"),
+        )?;
+        copy_session_file(
+            &build_root.join("tesmiolauncher.exe"),
+            &staging.join("tesmiolauncher.exe"),
+        )?;
+        copy_session_file(&checkout.join("LICENSE"), &staging.join("COPYING"))?;
+        copy_session_file(
+            &source_root.join("build/observatory_probe.dll"),
+            &staging.join("plugins/observatory_probe.dll"),
+        )?;
+        copy_session_file(
+            &source_root.join("observatory_probe.ini"),
+            &staging.join("plugins/observatory_probe.ini"),
+        )?;
+        if bounded_hash(
+            &staging.join("plugins/observatory_probe.dll"),
+            MAX_SESSION_ARTIFACT_BYTES,
+        )
+        .as_deref()
+            != Some(probe.hash.as_str())
+        {
+            return Err(ObservatoryError::ResearchSessionPreparationFailed);
+        }
+        let configuration = session_configuration(&paths.game_executable)
+            .ok_or(ObservatoryError::ResearchSessionPreparationFailed)?;
+        fs::write(staging.join("tesmioloader.ini"), configuration)
+            .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+
+        let files = SESSION_FILES
+            .iter()
+            .map(|relative| {
+                bounded_hash(&staging.join(relative), MAX_SESSION_ARTIFACT_BYTES)
+                    .map(|hash| ((*relative).to_owned(), hash))
+                    .ok_or(ObservatoryError::ResearchSessionPreparationFailed)
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        let manifest = ResearchSessionManifest {
+            schema_version: 1,
+            reviewed_revision: REVIEWED_TESMIO_REVISION.to_owned(),
+            installed_at_ms: now_ms(),
+            files,
+        };
+        let manifest = serde_json::to_vec_pretty(&manifest)
+            .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+        fs::write(staging.join(SESSION_MANIFEST), manifest)
+            .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+        if !managed_session_is_valid(&staging, &paths.game_executable, Some(&probe.hash)) {
+            return Err(ObservatoryError::ResearchSessionPreparationFailed);
+        }
+
+        if paths.session_root.exists() {
+            fs::rename(&paths.session_root, &backup)
+                .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+        }
+        if fs::rename(&staging, &paths.session_root).is_err() {
+            if backup.exists() {
+                let _ = fs::rename(&backup, &paths.session_root);
+            }
+            return Err(ObservatoryError::ResearchSessionPreparationFailed);
+        }
+        if backup.exists() && managed_session_owned(&backup) {
+            let _ = fs::remove_dir_all(&backup);
+        }
+        Ok(())
+    })();
+    if staging.exists() {
+        let _ = fs::remove_dir_all(&staging);
+    }
+    result
+}
+
+fn copy_session_file(source: &Path, destination: &Path) -> Result<(), ObservatoryError> {
+    let metadata = fs::symlink_metadata(source)
+        .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)?;
+    if !metadata.is_file()
+        || metadata.file_type().is_symlink()
+        || metadata.len() == 0
+        || metadata.len() > MAX_SESSION_ARTIFACT_BYTES
+    {
+        return Err(ObservatoryError::ResearchSessionPreparationFailed);
+    }
+    fs::copy(source, destination)
+        .map(|_| ())
+        .map_err(|_| ObservatoryError::ResearchSessionPreparationFailed)
 }
 
 fn canonical_checkout_path(path: &Path) -> Result<PathBuf, ObservatoryError> {
@@ -721,6 +1560,14 @@ pub struct BuildArtifact {
     pub size: u64,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ResearchProbeBuildProvenance {
+    schema_version: u32,
+    source_contract_hash: String,
+    artifact_hash: String,
+}
+
 fn discover_source_root() -> Option<PathBuf> {
     let current = std::env::current_dir().ok()?;
     current
@@ -733,6 +1580,7 @@ fn discover_source_root() -> Option<PathBuf> {
 fn source_ready(path: &Path) -> bool {
     [
         "build.ps1",
+        "build-observation-session.ps1",
         "observatory_probe.cpp",
         "observatory_probe.ini",
         "COPYING",
@@ -764,8 +1612,8 @@ pub(crate) fn checkout_matches_reviewed_headers(path: &Path) -> bool {
     let api = path.join("src").join("tesmio_api.h");
     matches!(
         (
-        bounded_reviewed_header_hash(&plugin, MAX_HEADER_BYTES),
-        bounded_reviewed_header_hash(&api, MAX_HEADER_BYTES),
+        bounded_reviewed_file_hash(&plugin, MAX_HEADER_BYTES),
+        bounded_reviewed_file_hash(&api, MAX_HEADER_BYTES),
         ),
         (Some(plugin_hash), Some(api_hash))
             if plugin_hash == REVIEWED_PLUGIN_HEADER_HASH
@@ -800,6 +1648,21 @@ fn find_powershell() -> Option<PathBuf> {
 }
 
 fn inspect_artifact(source_root: &Path) -> Option<BuildArtifact> {
+    let artifact = inspect_unrecorded_artifact(source_root)?;
+    let path = source_root.join("build").join(PROBE_BUILD_PROVENANCE);
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 64 * 1024 {
+        return None;
+    }
+    let provenance: ResearchProbeBuildProvenance =
+        serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    (provenance.schema_version == 1
+        && provenance.artifact_hash == artifact.hash
+        && provenance.source_contract_hash == probe_source_contract_hash(source_root)?)
+    .then_some(artifact)
+}
+
+fn inspect_unrecorded_artifact(source_root: &Path) -> Option<BuildArtifact> {
     let path = source_root.join("build").join("observatory_probe.dll");
     let metadata = fs::symlink_metadata(&path).ok()?;
     if !metadata.is_file()
@@ -815,12 +1678,50 @@ fn inspect_artifact(source_root: &Path) -> Option<BuildArtifact> {
     })
 }
 
-fn bounded_hash(path: &Path, max_bytes: u64) -> Option<String> {
+fn record_probe_build_provenance(
+    source_root: &Path,
+    artifact: &BuildArtifact,
+) -> Result<(), ObservatoryError> {
+    let provenance = ResearchProbeBuildProvenance {
+        schema_version: 1,
+        source_contract_hash: probe_source_contract_hash(source_root)
+            .ok_or(ObservatoryError::ResearchBuildFailed)?,
+        artifact_hash: artifact.hash.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&provenance)
+        .map_err(|_| ObservatoryError::ResearchBuildFailed)?;
+    fs::write(
+        source_root.join("build").join(PROBE_BUILD_PROVENANCE),
+        bytes,
+    )
+    .map_err(|_| ObservatoryError::ResearchBuildFailed)
+}
+
+fn probe_source_contract_hash(source_root: &Path) -> Option<String> {
+    let mut hasher = Sha256::new();
+    hasher.update(b"republic-observatory-probe-source.v1\0");
+    for relative in PROBE_SOURCE_CONTRACT_FILES {
+        let bytes = bounded_read(&source_root.join(relative), MAX_ARTIFACT_BYTES)?;
+        hasher.update(relative.as_bytes());
+        hasher.update([0]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    Some(
+        hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect(),
+    )
+}
+
+pub(crate) fn bounded_hash(path: &Path, max_bytes: u64) -> Option<String> {
     let bytes = bounded_read(path, max_bytes)?;
     Some(sha256(&bytes))
 }
 
-fn bounded_reviewed_header_hash(path: &Path, max_bytes: u64) -> Option<String> {
+pub(crate) fn bounded_reviewed_file_hash(path: &Path, max_bytes: u64) -> Option<String> {
     let bytes = bounded_read(path, max_bytes)?;
     Some(reviewed_header_hash(&bytes))
 }
@@ -895,9 +1796,13 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        MAX_HEADER_BYTES, REVIEWED_API_HEADER_HASH, REVIEWED_PLUGIN_HEADER_HASH,
-        ResearchCheckoutState, bounded_hash, canonical_checkout_path, checkout_state,
-        compiler_checkout_path, reviewed_header_hash, sanitise_build_output,
+        BuildArtifact, MAX_ARTIFACT_BYTES, MAX_HEADER_BYTES, ManagedSessionPaths,
+        REVIEWED_API_HEADER_HASH, REVIEWED_PLUGIN_HEADER_HASH, REVIEWED_TESMIO_REVISION,
+        ResearchCheckoutState, SESSION_FILES, bounded_hash, canonical_checkout_path,
+        checkout_state, compiler_checkout_path, inspect_artifact, inspect_unrecorded_artifact,
+        install_managed_session, managed_session_is_valid, managed_session_owned,
+        record_probe_build_provenance, reviewed_header_hash, sanitise_build_output,
+        session_configuration,
     };
 
     #[test]
@@ -940,6 +1845,38 @@ mod tests {
         );
     }
 
+    #[test]
+    fn probe_build_provenance_rejects_stale_compiled_source() {
+        let directory = tempdir().expect("probe source fixture");
+        for relative in super::PROBE_SOURCE_CONTRACT_FILES {
+            fs::write(
+                directory.path().join(relative),
+                format!("fixture {relative}"),
+            )
+            .expect("source contract file");
+        }
+        fs::create_dir(directory.path().join("build")).expect("build directory");
+        fs::write(
+            directory.path().join("build/observatory_probe.dll"),
+            b"compiled probe",
+        )
+        .expect("probe artifact");
+        assert!(inspect_artifact(directory.path()).is_none());
+        let artifact = inspect_unrecorded_artifact(directory.path()).expect("unrecorded artifact");
+        record_probe_build_provenance(directory.path(), &artifact).expect("build provenance");
+        assert!(inspect_artifact(directory.path()).is_some());
+
+        fs::write(
+            directory.path().join("observatory_probe.cpp"),
+            b"corrected probe source",
+        )
+        .expect("updated probe source");
+        assert!(
+            inspect_artifact(directory.path()).is_none(),
+            "a source correction must force one fresh local probe build"
+        );
+    }
+
     #[cfg(windows)]
     #[test]
     fn preserves_windows_extended_length_checkout_paths() {
@@ -975,6 +1912,178 @@ mod tests {
     }
 
     #[test]
+    fn generated_session_configuration_keeps_every_write_surface_disabled() {
+        let configuration = session_configuration(std::path::Path::new(
+            r"C:\Games\SovietRepublic\SOVIET64.exe",
+        ))
+        .expect("bounded configuration");
+        let configuration = String::from_utf8(configuration).expect("UTF-8 configuration");
+        for required in [
+            "trace_reads = 0",
+            "log_game = 0",
+            "vfs = 0",
+            "save_manifest = 0",
+            "menu_patch = 0",
+            "version_check = 1",
+            "observatory_probe = 1",
+        ] {
+            assert!(configuration.contains(required), "missing {required}");
+        }
+        assert!(!configuration.contains("save_manifest = 1"));
+        assert!(!configuration.contains("version_check = 0"));
+    }
+
+    #[test]
+    fn replacement_requires_a_complete_observatory_owned_manifest() {
+        let directory = tempdir().expect("managed session fixture");
+        fs::write(
+            directory.path().join(super::SESSION_MANIFEST),
+            format!(
+                r#"{{"schema_version":1,"reviewed_revision":"{REVIEWED_TESMIO_REVISION}","installed_at_ms":1,"files":{{"tesmioloader.dll":"hash"}}}}"#,
+            ),
+        )
+        .expect("partial manifest");
+        assert!(!managed_session_owned(directory.path()));
+
+        let files = SESSION_FILES
+            .iter()
+            .map(|path| format!(r#""{path}":"hash""#))
+            .collect::<Vec<_>>()
+            .join(",");
+        fs::write(
+            directory.path().join(super::SESSION_MANIFEST),
+            format!(
+                r#"{{"schema_version":1,"reviewed_revision":"{REVIEWED_TESMIO_REVISION}","installed_at_ms":1,"files":{{{files}}}}}"#,
+            ),
+        )
+        .expect("complete manifest");
+        assert!(managed_session_owned(directory.path()));
+    }
+
+    #[test]
+    fn managed_session_install_changes_only_its_dedicated_folder() {
+        let fixture = tempdir().expect("session fixture");
+        let game_root = fixture.path().join("SovietRepublic");
+        let media = game_root.join("media_soviet");
+        let save = media.join("save_cloud/test-save.zip");
+        fs::create_dir_all(save.parent().expect("save parent")).expect("save directory");
+        fs::write(&save, b"save bytes stay unchanged").expect("save fixture");
+        let game_executable = game_root.join("SOVIET64.exe");
+        fs::write(&game_executable, b"game bytes stay unchanged").expect("game fixture");
+
+        let build_root = fixture.path().join("host-build");
+        fs::create_dir_all(&build_root).expect("host build");
+        fs::write(build_root.join("tesmioloader.dll"), b"reviewed loader").expect("loader fixture");
+        fs::write(build_root.join("tesmiolauncher.exe"), b"reviewed launcher")
+            .expect("launcher fixture");
+
+        let source_root = fixture.path().join("probe-source");
+        fs::create_dir_all(source_root.join("build")).expect("probe build");
+        let probe_path = source_root.join("build/observatory_probe.dll");
+        fs::write(&probe_path, b"reviewed Observatory probe").expect("probe fixture");
+        fs::write(
+            source_root.join("observatory_probe.ini"),
+            b"[observatory]\n",
+        )
+        .expect("probe settings");
+        let checkout = fixture.path().join("reviewed-checkout");
+        fs::create_dir_all(&checkout).expect("checkout fixture");
+        fs::write(checkout.join("LICENSE"), b"GPL fixture").expect("licence fixture");
+        let probe = BuildArtifact {
+            hash: bounded_hash(&probe_path, MAX_ARTIFACT_BYTES).expect("probe hash"),
+            size: fs::metadata(&probe_path).expect("probe metadata").len(),
+        };
+        let paths = ManagedSessionPaths {
+            game_executable: game_executable.clone(),
+            session_root: game_root.join("tesmioloader/observatory"),
+        };
+
+        install_managed_session(&paths, &build_root, &source_root, &checkout, &probe)
+            .expect("managed installation");
+
+        assert!(managed_session_is_valid(
+            &paths.session_root,
+            &game_executable,
+            Some(&probe.hash),
+        ));
+        assert!(
+            !managed_session_is_valid(&paths.session_root, &game_executable, None),
+            "a prepared session cannot become trusted without its recorded probe identity"
+        );
+        assert!(
+            !managed_session_is_valid(
+                &paths.session_root,
+                &game_executable,
+                Some("changed-probe-hash"),
+            ),
+            "a different recorded probe must require a new checked preparation"
+        );
+        let rewritten_configuration = String::from_utf8(
+            session_configuration(&game_executable).expect("generated configuration"),
+        )
+        .expect("UTF-8 configuration")
+        .replace(" = ", "=")
+        .replace(
+            "\r\n\r\n[plugins]",
+            &format!(
+                "\r\nmenu_tag=tesmioloader v. observatory-{REVIEWED_TESMIO_REVISION}\r\n\r\n[plugins]"
+            ),
+        );
+        #[cfg(windows)]
+        let rewritten_configuration = rewritten_configuration.replace(
+            &format!(
+                "game_exe={}",
+                compiler_checkout_path(&game_executable).to_string_lossy()
+            ),
+            &format!(
+                "game_exe={}",
+                game_executable
+                    .canonicalize()
+                    .expect("extended game executable path")
+                    .to_string_lossy()
+            ),
+        );
+        fs::write(
+            paths.session_root.join("tesmioloader.ini"),
+            rewritten_configuration,
+        )
+        .expect("loader-rewritten configuration");
+        assert!(
+            managed_session_is_valid(&paths.session_root, &game_executable, Some(&probe.hash)),
+            "TesmioLoader's safe first-launch rewrite must not create a repair loop"
+        );
+        let unsafe_configuration = fs::read_to_string(paths.session_root.join("tesmioloader.ini"))
+            .expect("rewritten configuration")
+            .replace("menu_patch=0", "menu_patch=1");
+        fs::write(
+            paths.session_root.join("tesmioloader.ini"),
+            unsafe_configuration,
+        )
+        .expect("unsafe configuration fixture");
+        assert!(!managed_session_is_valid(
+            &paths.session_root,
+            &game_executable,
+            Some(&probe.hash),
+        ));
+        assert_eq!(
+            fs::read(&save).expect("save after setup"),
+            b"save bytes stay unchanged"
+        );
+        assert_eq!(
+            fs::read(&game_executable).expect("game after setup"),
+            b"game bytes stay unchanged"
+        );
+        assert_eq!(
+            fs::read_dir(game_root.join("tesmioloader"))
+                .expect("Tesmio directory")
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["observatory"]
+        );
+    }
+
+    #[test]
     #[ignore = "requires an explicitly supplied local reviewed checkout"]
     fn live_reviewed_checkout_uses_the_same_status_and_build_validation() {
         let path = std::env::var_os("RO_REVIEWED_TESMIO_CHECKOUT")
@@ -986,5 +2095,23 @@ mod tests {
         service
             .validate_checkout(&path)
             .expect("status-approved checkout must pass build validation");
+    }
+
+    #[test]
+    #[ignore = "requires an explicitly supplied prepared-session folder"]
+    fn live_prepared_session_uses_the_same_read_only_validity_check() {
+        let root = std::env::var_os("RO_PREPARED_SESSION_ROOT")
+            .map(std::path::PathBuf::from)
+            .expect("RO_PREPARED_SESSION_ROOT");
+        let game_executable = std::env::var_os("RO_GAME_EXECUTABLE")
+            .map(std::path::PathBuf::from)
+            .expect("RO_GAME_EXECUTABLE");
+        let expected_probe_hash =
+            std::env::var("RO_EXPECTED_PROBE_HASH").expect("RO_EXPECTED_PROBE_HASH");
+        assert!(managed_session_is_valid(
+            &root,
+            &game_executable,
+            Some(&expected_probe_hash),
+        ));
     }
 }

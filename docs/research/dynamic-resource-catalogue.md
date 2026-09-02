@@ -36,6 +36,12 @@ resources and reviewed fields. It contains exact tokens, captions, type fields,
 RUB and USD finished and base prices, and buy and sell multipliers. It contains
 no pointers, raw objects, paths, assets, callbacks, or executable settings.
 
+The player must start W&R with Observatory's checked-session action, then load a
+republic. The initial session record confirms that the loader and probe started;
+it is not itself a resource snapshot. Starting W&R later through Steam or a
+normal shortcut creates an ordinary game session and cannot attach the probe to
+that already-running process.
+
 The player must accept the current research notice and explicitly enable one
 mode:
 
@@ -54,7 +60,8 @@ reading.
 ### Reviewed build-specific layout
 
 The initial registry contract is deliberately limited to the inspected W&R
-1.1.1.9 executable with PE timestamp `0x6A3EB6AD` and size `10,308,608` bytes.
+1.1.1.9 executable with PE timestamp `0x6A3EB6AD`, an on-disk length of
+`10,308,608` bytes, and a PE `SizeOfImage` of `11,128,832` bytes.
 For that build, the probe checks the registry vector at RVA `0x9E11C0`, an
 832-byte record stride, exact token storage, caption and type fields, and the
 reviewed RUB/USD price and multiplier offsets. It refuses every other

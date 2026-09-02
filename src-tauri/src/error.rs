@@ -43,6 +43,10 @@ pub enum ObservatoryError {
     StorageContractViolation,
     #[error("The application preferences are invalid.")]
     InvalidApplicationPreferences,
+    #[error("The Observatory data-reset confirmation did not match.")]
+    DatabaseResetConfirmationInvalid,
+    #[error("Observatory could not safely prepare or apply the requested data reset.")]
+    DatabaseResetFailed,
     #[error("The selected timeline branch does not exist.")]
     UnknownBranch,
     #[error("The selected observations cannot be compared on one resolved branch.")]
@@ -79,6 +83,12 @@ pub enum ObservatoryError {
     InvalidMarketDefinition(&'static str),
     #[error("The Broadcast comparison request is invalid: {0}")]
     InvalidBroadcastOutcome(&'static str),
+    #[error("The carbon factor set is invalid: {0}")]
+    InvalidCarbonFactorSet(&'static str),
+    #[error("The selected carbon factor set does not exist.")]
+    UnknownCarbonFactorSet,
+    #[error("Accept the current environmental recording notice before enabling recording.")]
+    EnvironmentRecordingConsentRequired,
     #[error("The selected market basket or scenario does not exist.")]
     UnknownMarketDefinition,
     #[error("The active market basket or scenario cannot be removed.")]
@@ -113,6 +123,16 @@ pub enum ObservatoryError {
     ResearchToolchainUnavailable,
     #[error("The bounded research-probe build failed.")]
     ResearchBuildFailed,
+    #[error("Confirm the checked-session preparation or launch before continuing.")]
+    ResearchSessionConsentRequired,
+    #[error("Build and verify the research probe before preparing a checked session.")]
+    ResearchSessionNotReady,
+    #[error("The dedicated observation folder contains files Observatory does not own.")]
+    ResearchSessionConflict,
+    #[error("The checked observation-only session could not be prepared safely.")]
+    ResearchSessionPreparationFailed,
+    #[error("The checked observation-only game session could not be started.")]
+    ResearchSessionLaunchFailed,
     #[error("That language pack is larger than the 256 KiB safety limit.")]
     LanguageManifestTooLarge,
     #[error("That file does not contain valid JSON.")]
@@ -184,6 +204,8 @@ impl ObservatoryError {
             Self::StorageBusy => "storage_busy",
             Self::StorageContractViolation => "storage_contract_violation",
             Self::InvalidApplicationPreferences => "invalid_application_preferences",
+            Self::DatabaseResetConfirmationInvalid => "database_reset_confirmation_invalid",
+            Self::DatabaseResetFailed => "database_reset_failed",
             Self::UnknownBranch => "unknown_branch",
             Self::IncompatibleComparison => "incompatible_comparison",
             Self::SameObservationComparison => "same_observation_comparison",
@@ -212,6 +234,9 @@ impl ObservatoryError {
             Self::RepublicPlanBranchMismatch => "republic_plan_branch_mismatch",
             Self::InvalidMarketDefinition(_) => "invalid_market_definition",
             Self::InvalidBroadcastOutcome(_) => "invalid_broadcast_outcome",
+            Self::InvalidCarbonFactorSet(_) => "invalid_carbon_factor_set",
+            Self::UnknownCarbonFactorSet => "unknown_carbon_factor_set",
+            Self::EnvironmentRecordingConsentRequired => "environment_recording_consent_required",
             Self::UnknownMarketDefinition => "unknown_market_definition",
             Self::ActiveMarketDefinitionRemove => "active_market_definition_remove",
             Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",
@@ -229,6 +254,11 @@ impl ObservatoryError {
             Self::ResearchSourceInstallFailed => "research_source_install_failed",
             Self::ResearchToolchainUnavailable => "research_toolchain_unavailable",
             Self::ResearchBuildFailed => "research_build_failed",
+            Self::ResearchSessionConsentRequired => "research_session_consent_required",
+            Self::ResearchSessionNotReady => "research_session_not_ready",
+            Self::ResearchSessionConflict => "research_session_conflict",
+            Self::ResearchSessionPreparationFailed => "research_session_preparation_failed",
+            Self::ResearchSessionLaunchFailed => "research_session_launch_failed",
             Self::LanguageManifestTooLarge => "manifest_too_large",
             Self::InvalidLanguageJson => "invalid_json",
             Self::InvalidLanguageManifest => "invalid_manifest",

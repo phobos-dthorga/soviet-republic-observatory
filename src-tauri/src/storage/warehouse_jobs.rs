@@ -72,8 +72,9 @@ impl ObservatoryStorage {
                  ORDER BY CASE projection_kind \
                             WHEN 'rebuild' THEN 0 WHEN 'observation' THEN 1 \
                             WHEN 'broadcast_observation' THEN 2 \
-                            WHEN 'market_observation' THEN 3 \
-                            WHEN 'overlay_state' THEN 4 ELSE 5 END, \
+                            WHEN 'environment_observation' THEN 3 \
+                            WHEN 'market_observation' THEN 4 \
+                            WHEN 'overlay_state' THEN 5 ELSE 6 END, \
                           requested_at_ms, projection_id LIMIT 1",
                 [],
                 |row| {
@@ -168,6 +169,7 @@ impl ObservatoryStorage {
             "UPDATE warehouse_projection_jobs SET status = 'pending', error_code = NULL, \
                  applied_at_ms = NULL, requested_at_ms = ?1 \
              WHERE projection_kind IN ('observation', 'market_observation', 'broadcast_observation', \
+                 'environment_observation', \
                  'resource_registry_snapshot', 'overlay_state', 'branch_membership')",
             [requested_at.saturating_add(1)],
         )?;

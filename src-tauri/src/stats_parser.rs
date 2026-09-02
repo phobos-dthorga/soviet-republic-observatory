@@ -7,11 +7,12 @@ use sha2::{Digest, Sha256};
 use crate::compatibility_profile::{ResolvedCompatibilityProfile, StatsContext, StatsMarkerSlot};
 use crate::error::ObservatoryError;
 use crate::model::{
-    CitizenStatusRecord, CoverageReport, CoverageStatus, CoverageWarning, MarketCurrency,
+    CitizenStatusRecord, CoverageReport, CoverageStatus, CoverageWarning,
+    EnvironmentActivityChannel, EnvironmentActivityRow, EnvironmentHistoryRecord, MarketCurrency,
     MarketFactRows, MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MarketScalarRow,
     MarketSnapshot, MarketTradeChannel, MarketTradeDirection, MarketTradeRow,
-    ParsedCitizenStatusData, ParsedMarketData, ParsedStats, ReceiverRecord, SNAPSHOT_FACTS,
-    SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    ParsedCitizenStatusData, ParsedEnvironmentData, ParsedMarketData, ParsedStats, ReceiverRecord,
+    SNAPSHOT_FACTS, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
 };
 
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
@@ -19,6 +20,8 @@ const MAX_LINE_BYTES: usize = 16 * 1024;
 const DAYS_PER_GAME_YEAR: i64 = 365;
 const MAX_MARKET_ROWS: u32 = 1_500_000;
 const MAX_MARKET_DICTIONARY: usize = 4_096;
+const MAX_ENVIRONMENT_ROWS: u32 = 1_500_000;
+const MAX_ENVIRONMENT_DICTIONARY: usize = 4_096;
 
 #[derive(Clone, Debug)]
 struct FieldValue<T> {
@@ -40,7 +43,27 @@ struct RecordDraft {
     citizen_status_seen: bool,
     citizen_status_malformed: bool,
     market: MarketFactRows,
+    environment: Vec<EnvironmentActivityRow>,
     malformed: bool,
+}
+
+#[derive(Debug)]
+struct ActiveEnvironmentBlock {
+    channel: EnvironmentActivityChannel,
+    source_field_index: u16,
+    row_ordinal: u32,
+}
+
+#[derive(Debug, Default)]
+struct EnvironmentCollector {
+    resources: Vec<String>,
+    resource_lookup: HashMap<String, u16>,
+    source_fields: Vec<String>,
+    source_field_lookup: HashMap<String, u16>,
+    records: Vec<EnvironmentHistoryRecord>,
+    history_records: u32,
+    row_count: u32,
+    warnings: BTreeMap<String, u32>,
 }
 
 #[derive(Debug)]
@@ -130,6 +153,7 @@ impl RecordDraft {
             citizen_status_seen: false,
             citizen_status_malformed: false,
             market: MarketFactRows::default(),
+            environment: Vec::new(),
             malformed: false,
         }
     }
@@ -152,6 +176,8 @@ pub fn parse_stats<R: BufRead>(
     let mut last_record_id = None;
     let mut market = MarketCollector::default();
     let mut active_market_block: Option<ActiveMarketBlock> = None;
+    let mut environment = EnvironmentCollector::default();
+    let mut active_environment_block: Option<ActiveEnvironmentBlock> = None;
     let status_enabled = profile.has_indexed_fields(StatsContext::History);
 
     loop {
@@ -181,6 +207,28 @@ pub fn parse_stats<R: BufRead>(
 
         let directive = directive_name(line);
         let marker = directive.and_then(|directive| profile.marker_for(directive));
+
+        if let Some(block) = active_environment_block.as_mut() {
+            if directive == Some("$end") {
+                active_environment_block = None;
+                continue;
+            }
+            if directive.is_none() {
+                if is_market_block_separator(line) {
+                    continue;
+                }
+                parse_environment_block_row(
+                    block,
+                    line,
+                    line_number,
+                    &mut environment,
+                    current.as_mut(),
+                );
+                continue;
+            }
+            add_warning(&mut environment.warnings, "unterminated_environment_block");
+            active_environment_block = None;
+        }
 
         if let Some(block) = active_market_block.as_mut() {
             if directive == Some("$end") {
@@ -229,6 +277,7 @@ pub fn parse_stats<R: BufRead>(
                 current.take(),
                 &mut record_collector,
                 &mut market,
+                &mut environment,
                 status_enabled,
             )?;
             let record_id: u32 = parse_single_value(line).ok_or(
@@ -254,6 +303,7 @@ pub fn parse_stats<R: BufRead>(
                 current.take(),
                 &mut record_collector,
                 &mut market,
+                &mut environment,
                 status_enabled,
             )?;
             finalise_snapshot(
@@ -271,6 +321,7 @@ pub fn parse_stats<R: BufRead>(
                 current.take(),
                 &mut record_collector,
                 &mut market,
+                &mut environment,
                 status_enabled,
             )?;
             finalise_snapshot(
@@ -324,6 +375,20 @@ pub fn parse_stats<R: BufRead>(
                     current.as_mut(),
                     current_snapshot.as_mut(),
                 );
+            }
+            continue;
+        }
+
+        if let (Some(directive), Some(StatsContext::History)) = (directive, market_context)
+            && let Some(mapping) = profile.field_for(directive, StatsContext::History)
+            && let Some(channel) = environment_block_kind(&mapping.host_slot)
+        {
+            if let Some(source_field_index) = environment.intern_source_field(directive) {
+                active_environment_block = Some(ActiveEnvironmentBlock {
+                    channel,
+                    source_field_index,
+                    row_ordinal: 0,
+                });
             }
             continue;
         }
@@ -441,9 +506,18 @@ pub fn parse_stats<R: BufRead>(
         }
     }
 
-    finalise_record(current, &mut record_collector, &mut market, status_enabled)?;
+    finalise_record(
+        current,
+        &mut record_collector,
+        &mut market,
+        &mut environment,
+        status_enabled,
+    )?;
     if active_market_block.is_some() {
         add_warning(&mut market.warnings, "unterminated_market_block");
+    }
+    if active_environment_block.is_some() {
+        add_warning(&mut environment.warnings, "unterminated_environment_block");
     }
     finalise_snapshot(
         profile,
@@ -506,7 +580,127 @@ pub fn parse_stats<R: BufRead>(
                 .map(|(code, count)| CoverageWarning { code, count })
                 .collect(),
         },
+        environment: ParsedEnvironmentData {
+            resources: environment.resources,
+            source_fields: environment.source_fields,
+            records: environment.records,
+            history_records: environment.history_records,
+            row_count: environment.row_count,
+            warnings: environment
+                .warnings
+                .into_iter()
+                .map(|(code, count)| CoverageWarning { code, count })
+                .collect(),
+        },
     })
+}
+
+impl EnvironmentCollector {
+    fn intern_source_field(&mut self, value: &str) -> Option<u16> {
+        if let Some(index) = self.source_field_lookup.get(value) {
+            return Some(*index);
+        }
+        self.intern(value, false)
+    }
+
+    fn intern_resource(&mut self, value: &str) -> Option<u16> {
+        if let Some(index) = self.resource_lookup.get(value) {
+            return Some(*index);
+        }
+        self.intern(value, true)
+    }
+
+    fn intern(&mut self, value: &str, resource: bool) -> Option<u16> {
+        let values = if resource {
+            &mut self.resources
+        } else {
+            &mut self.source_fields
+        };
+        if values.len() >= MAX_ENVIRONMENT_DICTIONARY || value.is_empty() || value.len() > 128 {
+            add_warning(&mut self.warnings, "environment_dictionary_limit");
+            return None;
+        }
+        let Ok(index) = u16::try_from(values.len()) else {
+            add_warning(&mut self.warnings, "environment_dictionary_limit");
+            return None;
+        };
+        values.push(value.to_owned());
+        if resource {
+            self.resource_lookup.insert(value.to_owned(), index);
+        } else {
+            self.source_field_lookup.insert(value.to_owned(), index);
+        }
+        Some(index)
+    }
+
+    fn reserve_row(&mut self) -> bool {
+        if self.row_count >= MAX_ENVIRONMENT_ROWS {
+            add_warning(&mut self.warnings, "environment_row_limit");
+            return false;
+        }
+        self.row_count += 1;
+        true
+    }
+}
+
+fn environment_block_kind(host_slot: &str) -> Option<EnvironmentActivityChannel> {
+    Some(match host_slot {
+        "environment.activity.production" => EnvironmentActivityChannel::Production,
+        "environment.activity.construction_use" => EnvironmentActivityChannel::ConstructionUse,
+        "environment.activity.factory_use" => EnvironmentActivityChannel::FactoryUse,
+        "environment.activity.shop_use" => EnvironmentActivityChannel::ShopUse,
+        "environment.activity.vehicle_use" => EnvironmentActivityChannel::VehicleUse,
+        "environment.waste.factory" => EnvironmentActivityChannel::FactoryWaste,
+        "environment.waste.citizen" => EnvironmentActivityChannel::CitizenWaste,
+        "environment.waste.demolition" => EnvironmentActivityChannel::DemolitionWaste,
+        _ => return None,
+    })
+}
+
+fn parse_environment_block_row(
+    block: &mut ActiveEnvironmentBlock,
+    line: &str,
+    line_number: u64,
+    collector: &mut EnvironmentCollector,
+    current: Option<&mut RecordDraft>,
+) {
+    let mut parts = line.split_ascii_whitespace();
+    let Some(resource) = parts.next() else { return };
+    let Some(primary_value) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+        add_warning(&mut collector.warnings, "malformed_environment_row");
+        return;
+    };
+    let Some(secondary_value) = parts.next().and_then(|value| value.parse::<f64>().ok()) else {
+        add_warning(&mut collector.warnings, "malformed_environment_row");
+        return;
+    };
+    if parts.next().is_some() || !primary_value.is_finite() || !secondary_value.is_finite() {
+        add_warning(&mut collector.warnings, "malformed_environment_row");
+        return;
+    }
+    let Some(resource_index) = collector.intern_resource(resource) else {
+        return;
+    };
+    if !collector.reserve_row() {
+        return;
+    }
+    let Some(record) = current else {
+        add_warning(
+            &mut collector.warnings,
+            "environment_row_without_history_record",
+        );
+        return;
+    };
+    record.environment.push(EnvironmentActivityRow {
+        resource_index,
+        source_field_index: block.source_field_index,
+        source_line: u32::try_from(line_number).unwrap_or(u32::MAX),
+        row_ordinal: block.row_ordinal,
+        channel: block.channel,
+        primary_value,
+        secondary_value,
+    });
+    block.row_ordinal = block.row_ordinal.saturating_add(1);
 }
 
 fn is_market_block_separator(line: &str) -> bool {
@@ -809,12 +1003,14 @@ fn finalise_record(
     draft: Option<RecordDraft>,
     collector: &mut RecordCollector,
     market: &mut MarketCollector,
+    environment: &mut EnvironmentCollector,
     status_enabled: bool,
 ) -> Result<(), ObservatoryError> {
     let Some(draft) = draft else {
         return Ok(());
     };
     collector.history_records += 1;
+    environment.history_records = environment.history_records.saturating_add(1);
 
     if status_enabled {
         collector.citizen_status_history_records += 1;
@@ -837,6 +1033,18 @@ fn finalise_record(
             day: day.value,
             game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
             rows: draft.market.clone(),
+        });
+    }
+
+    if !draft.environment.is_empty()
+        && let (Some(year), Some(day)) = (&draft.year, &draft.day)
+    {
+        environment.records.push(EnvironmentHistoryRecord {
+            record_id: draft.record_id,
+            year: year.value,
+            day: day.value,
+            game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
+            rows: draft.environment.clone(),
         });
     }
 
@@ -1185,6 +1393,46 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.code == "malformed_market_row")
+        );
+    }
+
+    #[test]
+    fn preserves_environment_rows_and_duplicate_waste_tokens_without_guessing() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let source = "$STATS_FORMAT 1\n$STAT_RECORD 1\n$DATE_YEAR 1980\n$DATE_DAY 77\n\
+$Citizens_EletronicNone 25\n$Citizens_EletrinicRadio 25\n\
+$Citizens_EletronicTV 25\n$Citizens_EletronicComputer 25\n\
+$Resources_Produced\nsteel 12.5 1\n$end\n\
+$Waste_ProductionFactories\nwaste_mixed 18.4 -77.1\n\
+waste_mixed -1 -102.5\n$end\n$STAT_CURRENT\n";
+        let parsed = parse_stats(Cursor::new(source.as_bytes()), &profile)
+            .expect("environment evidence remains isolated");
+        assert_eq!(parsed.records[0].classified_total, 100);
+        assert_eq!(parsed.environment.records.len(), 1);
+        assert_eq!(parsed.environment.records[0].rows.len(), 3);
+        assert_eq!(parsed.environment.row_count, 3);
+        let rows = &parsed.environment.records[0].rows;
+        assert!(rows[0].channel.quantity_is_publishable());
+        assert!(!rows[1].channel.quantity_is_publishable());
+        assert_eq!(rows[1].resource_index, rows[2].resource_index);
+        assert_eq!(rows[1].row_ordinal, 0);
+        assert_eq!(rows[2].row_ordinal, 1);
+    }
+
+    #[test]
+    fn malformed_environment_rows_do_not_invalidate_receiver_history() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let source = "$STATS_FORMAT 1\n$STAT_RECORD 1\n$DATE_YEAR 1980\n$DATE_DAY 77\n\
+$Citizens_EletronicNone 25\n$Citizens_EletrinicRadio 25\n\
+$Citizens_EletronicTV 25\n$Citizens_EletronicComputer 25\n\
+$Resources_Produced\nsteel NaN 1\n$end\n$STAT_CURRENT\n";
+        let parsed = parse_stats(Cursor::new(source.as_bytes()), &profile)
+            .expect("receiver evidence remains usable");
+        assert_eq!(parsed.records.len(), 1);
+        assert!(parsed.environment.records.is_empty());
+        assert_eq!(
+            parsed.environment.coverage_status(),
+            CoverageStatus::Partial
         );
     }
 

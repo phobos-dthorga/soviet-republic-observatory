@@ -719,6 +719,12 @@ impl ObservatoryStorage {
         self.latest_index_progress("broadcast-index-")
     }
 
+    pub(crate) fn latest_environment_index_progress(
+        &self,
+    ) -> Result<MarketIndexingProgress, ObservatoryError> {
+        self.latest_index_progress("environment-index-")
+    }
+
     fn latest_index_progress(
         &self,
         job_prefix: &str,

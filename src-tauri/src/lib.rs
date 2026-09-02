@@ -8,8 +8,10 @@ mod commands;
 mod compatibility_profile;
 mod compatibility_runtime;
 mod compatibility_service;
+mod database_reset;
 mod definition_catalogue;
 mod diagnostics;
+mod environment;
 mod error;
 mod fixed_binary;
 mod game_vocabulary;
@@ -65,6 +67,8 @@ pub fn run() {
                 .clone()
                 .unwrap_or(app.path().app_local_data_dir()?);
             std::fs::create_dir_all(&data_directory)?;
+            database_reset::apply_pending_database_reset(&data_directory)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
             diagnostics::initialize(Some(&data_directory));
             diagnostics::record(
                 "info",
@@ -83,6 +87,7 @@ pub fn run() {
                 application: Arc::clone(&application),
                 research_setup: Arc::new(ResearchSetupService::discover(&data_directory)),
                 ui_review: ui_review.context.clone(),
+                data_directory,
             });
             if !ui_review.context.enabled {
                 recorder_service::spawn(app.handle().clone(), Arc::clone(&application));
@@ -101,13 +106,18 @@ pub fn run() {
             commands::get_application_settings,
             commands::update_application_preferences,
             commands::reset_application_preferences,
+            commands::erase_application_databases,
             commands::get_research_setup,
+            commands::get_research_report_status,
             commands::set_research_notice_accepted,
             commands::configure_research_tesmio_checkout,
             commands::download_reviewed_tesmio_source,
             commands::get_research_source_download_progress,
             commands::get_research_build_progress,
             commands::build_research_probe,
+            commands::get_research_session_progress,
+            commands::prepare_observation_only_session,
+            commands::launch_observation_only_session,
             commands::get_setup_state,
             commands::get_latest_receiver_dataset,
             commands::get_archive_overview,
@@ -115,6 +125,20 @@ pub fn run() {
             commands::get_republic_brief,
             commands::get_broadcast_workspace,
             commands::get_broadcast_outcome,
+            commands::get_environment_workspace,
+            commands::get_environment_history,
+            commands::get_environment_snapshot,
+            commands::save_carbon_factor_set,
+            commands::select_carbon_factor_set,
+            commands::rollback_carbon_factor_set,
+            commands::remove_carbon_factor_set,
+            commands::export_carbon_factor_set,
+            commands::preview_carbon_factor_import,
+            commands::apply_carbon_factor_import,
+            commands::enable_environment_recording,
+            commands::disable_environment_recording,
+            commands::capture_environment_snapshot,
+            commands::delete_live_environmental_recordings,
             commands::get_published_metric_contexts,
             commands::get_republic_plan_workspace,
             commands::get_market_workspace,
@@ -151,6 +175,9 @@ pub fn run() {
             commands::get_broadcast_indexing_progress,
             commands::index_available_saves_for_broadcast,
             commands::resume_broadcast_indexing,
+            commands::get_environment_indexing_progress,
+            commands::index_available_saves_for_environment,
+            commands::resume_environment_indexing,
             commands::get_catalogue_status,
             commands::refresh_definitions,
             commands::diagnostic_log,

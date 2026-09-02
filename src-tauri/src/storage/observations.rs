@@ -115,6 +115,7 @@ impl ObservatoryStorage {
                 &inspection.records,
             )?;
             persist_citizen_status_data(&transaction, &storage_key, inspection)?;
+            super::environment::persist_environment_data(&transaction, &storage_key, inspection)?;
             market = super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
             for fact in &inspection.binary_facts {
                 transaction.execute(
@@ -162,6 +163,13 @@ impl ObservatoryStorage {
                 &transaction,
                 &format!("broadcast:{}", inspection.interpretation_id),
                 "broadcast_observation",
+                &inspection.interpretation_id,
+                now_ms(),
+            )?;
+            super::warehouse_jobs::enqueue_projection_job(
+                &transaction,
+                &format!("environment:{}", inspection.interpretation_id),
+                "environment_observation",
                 &inspection.interpretation_id,
                 now_ms(),
             )?;
@@ -214,6 +222,26 @@ impl ObservatoryStorage {
                     &transaction,
                     &format!("broadcast:{}", inspection.interpretation_id),
                     "broadcast_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
+                )?;
+            }
+            let environment_exists = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM environment_observation_coverage \
+                 WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
+                params![&storage_key, super::ENVIRONMENT_STORAGE_CONTRACT_VERSION,],
+                |row| row.get::<_, bool>(0),
+            )?;
+            if !environment_exists {
+                super::environment::persist_environment_data(
+                    &transaction,
+                    &storage_key,
+                    inspection,
+                )?;
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("environment:{}", inspection.interpretation_id),
+                    "environment_observation",
                     &inspection.interpretation_id,
                     now_ms(),
                 )?;

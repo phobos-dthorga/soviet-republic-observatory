@@ -224,6 +224,271 @@ pub struct ParsedStats {
     pub snapshots: Vec<SaveSnapshot>,
     pub market: ParsedMarketData,
     pub citizen_status: ParsedCitizenStatusData,
+    pub environment: ParsedEnvironmentData,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentActivityChannel {
+    Production,
+    ConstructionUse,
+    FactoryUse,
+    ShopUse,
+    VehicleUse,
+    FactoryWaste,
+    CitizenWaste,
+    DemolitionWaste,
+}
+
+impl EnvironmentActivityChannel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::ConstructionUse => "construction_use",
+            Self::FactoryUse => "factory_use",
+            Self::ShopUse => "shop_use",
+            Self::VehicleUse => "vehicle_use",
+            Self::FactoryWaste => "factory_waste",
+            Self::CitizenWaste => "citizen_waste",
+            Self::DemolitionWaste => "demolition_waste",
+        }
+    }
+
+    pub fn quantity_is_publishable(self) -> bool {
+        !matches!(
+            self,
+            Self::FactoryWaste | Self::CitizenWaste | Self::DemolitionWaste
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EnvironmentActivityRow {
+    pub resource_index: u16,
+    pub source_field_index: u16,
+    pub source_line: u32,
+    pub row_ordinal: u32,
+    pub channel: EnvironmentActivityChannel,
+    pub primary_value: f64,
+    pub secondary_value: f64,
+}
+
+#[derive(Clone, Debug)]
+pub struct EnvironmentHistoryRecord {
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub rows: Vec<EnvironmentActivityRow>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ParsedEnvironmentData {
+    pub resources: Vec<String>,
+    pub source_fields: Vec<String>,
+    pub records: Vec<EnvironmentHistoryRecord>,
+    pub history_records: u32,
+    pub row_count: u32,
+    pub warnings: Vec<CoverageWarning>,
+}
+
+impl ParsedEnvironmentData {
+    pub fn coverage_status(&self) -> CoverageStatus {
+        if self.warnings.is_empty() {
+            CoverageStatus::Complete
+        } else {
+            CoverageStatus::Partial
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentActivityPoint {
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub resource_token: String,
+    pub activity_channel: EnvironmentActivityChannel,
+    pub primary_value: f64,
+    pub secondary_value: f64,
+    pub source_field: String,
+    pub source_line: u32,
+    pub row_ordinal: u32,
+    pub quantity_is_publishable: bool,
+    pub exact_observation: Option<ExactObservationReference>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentActivitySummary {
+    pub activity_channel: EnvironmentActivityChannel,
+    pub row_count: u32,
+    pub resource_count: u32,
+    pub latest_recorded_value: Option<f64>,
+    pub quantity_is_publishable: bool,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentLiveState {
+    Disabled,
+    WaitingForReviewedFacilityContract,
+    Ready,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentRecordingStatus {
+    pub enabled: bool,
+    pub interval_game_days: u16,
+    pub state: EnvironmentLiveState,
+    pub notice_revision: u32,
+    pub latest_snapshot_id: Option<String>,
+    pub latest_game_day: Option<i64>,
+    pub captured_facilities: u32,
+    pub detail_code: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentSourceAvailability {
+    pub save_activity: bool,
+    pub live_pollution: bool,
+    pub live_radiation: bool,
+    pub live_water_and_sewage: bool,
+    pub spatial_pollution_map: bool,
+    pub pollution_units: String,
+    pub radiation_units: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct EnvironmentDefinitionContext {
+    pub available: bool,
+    pub building_count: u32,
+    pub pollution_class_facts: u32,
+    pub sewage_pollution_factors: u32,
+    pub water_quality_facts: u32,
+    pub connection_capability_facts: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CarbonFactorEntry {
+    pub resource_token: String,
+    pub activity_channel: EnvironmentActivityChannel,
+    pub grams_co2e_per_unit: f64,
+    pub source_name: String,
+    pub source_year: u16,
+    pub reason: String,
+    pub reference: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CarbonFactorSetDraft {
+    pub factor_set_id: Option<String>,
+    pub name: String,
+    pub accounting_boundary: String,
+    pub reason: String,
+    pub entries: Vec<CarbonFactorEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct CarbonFactorRevision {
+    pub factor_set_id: String,
+    pub revision: u32,
+    pub name: String,
+    pub accounting_boundary: String,
+    pub reason: String,
+    pub created_at_ms: i64,
+    pub content_hash: String,
+    pub entries: Vec<CarbonFactorEntry>,
+    pub selected: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CarbonEstimateContribution {
+    pub resource_token: String,
+    pub activity_channel: EnvironmentActivityChannel,
+    pub recorded_quantity: f64,
+    pub grams_co2e_per_unit: f64,
+    pub estimated_grams_co2e: f64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CarbonEstimateModel {
+    pub available: bool,
+    pub factor_set_id: Option<String>,
+    pub factor_set_revision: Option<u32>,
+    pub estimated_grams_co2e: Option<f64>,
+    pub covered_rows: u32,
+    pub eligible_rows: u32,
+    pub coverage_percent: f64,
+    pub missing_factors: Vec<String>,
+    pub contributions: Vec<CarbonEstimateContribution>,
+    pub limitation: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct CarbonFactorImportPreview {
+    pub valid: bool,
+    pub row_count: u32,
+    pub errors: Vec<String>,
+    pub draft: Option<CarbonFactorSetDraft>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentWorkspaceModel {
+    pub analysis_context: AnalysisContext,
+    pub coverage_status: Option<CoverageStatus>,
+    pub history_records: u32,
+    pub row_count: u32,
+    pub returned_rows: u32,
+    pub truncated: bool,
+    pub warnings: Vec<CoverageWarning>,
+    pub resources: Vec<String>,
+    pub activity: Vec<EnvironmentActivityPoint>,
+    pub summaries: Vec<EnvironmentActivitySummary>,
+    pub source_availability: EnvironmentSourceAvailability,
+    pub definition_context: EnvironmentDefinitionContext,
+    pub recording: EnvironmentRecordingStatus,
+    pub factor_sets: Vec<CarbonFactorRevision>,
+    pub carbon_estimate: CarbonEstimateModel,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentCaptureResult {
+    pub captured: bool,
+    pub status: EnvironmentRecordingStatus,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentFacilityReading {
+    pub facility_index: u32,
+    pub position_x: f64,
+    pub position_z: f64,
+    pub definition_identity: Option<String>,
+    pub pollution_value: Option<f64>,
+    pub radiation_value: Option<f64>,
+    pub water_amount: Option<f64>,
+    pub water_capacity: Option<f64>,
+    pub water_quality: Option<f64>,
+    pub sewage_amount: Option<f64>,
+    pub sewage_capacity: Option<f64>,
+    pub sewage_quality: Option<f64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentSnapshot {
+    pub snapshot_id: String,
+    pub session_id: String,
+    pub game_day: i64,
+    pub facility_count: u32,
+    pub captured_at_ms: i64,
+    pub readings: Vec<EnvironmentFacilityReading>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EnvironmentHistoryModel {
+    pub recording: EnvironmentRecordingStatus,
+    pub snapshots: Vec<EnvironmentSnapshot>,
+    pub truncated: bool,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -502,6 +767,7 @@ pub struct SaveInspection {
     pub snapshots: Vec<SaveSnapshot>,
     pub market: ParsedMarketData,
     pub citizen_status: ParsedCitizenStatusData,
+    pub environment: ParsedEnvironmentData,
     pub binary_facts: Vec<BinaryMappedFact>,
 }
 
@@ -722,6 +988,52 @@ pub(crate) struct BroadcastWarehouseProjection {
 }
 
 impl BroadcastWarehouseProjection {
+    pub fn row_count(&self) -> u64 {
+        self.records
+            .len()
+            .saturating_add(self.facts.len())
+            .min(u64::MAX as usize) as u64
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EnvironmentWarehouseRecord {
+    pub record_hash: String,
+    pub ordinal: u32,
+    pub record_id: u32,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EnvironmentWarehouseFact {
+    pub record_hash: String,
+    pub source_field: String,
+    pub source_line: u64,
+    pub row_ordinal: u32,
+    pub resource_token: String,
+    pub activity_channel: String,
+    pub primary_value: f64,
+    pub secondary_value: f64,
+    pub quantity_is_publishable: bool,
+    pub mapping_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct EnvironmentWarehouseProjection {
+    pub interpretation_id: String,
+    pub raw_payload_hash: String,
+    pub branch_id: String,
+    pub profile_id: String,
+    pub profile_version: String,
+    pub resolved_profile_hash: String,
+    pub mapping_classification: String,
+    pub records: Vec<EnvironmentWarehouseRecord>,
+    pub facts: Vec<EnvironmentWarehouseFact>,
+}
+
+impl EnvironmentWarehouseProjection {
     pub fn row_count(&self) -> u64 {
         self.records
             .len()
@@ -1224,6 +1536,7 @@ pub struct TesmioProbeStatus {
     pub latest_year: Option<i32>,
     pub latest_day: Option<u16>,
     pub latest_population_count: Option<u32>,
+    pub collection_stage: Option<String>,
     pub warnings: Vec<String>,
 }
 
@@ -1245,6 +1558,7 @@ impl TesmioProbeStatus {
             latest_year: None,
             latest_day: None,
             latest_population_count: None,
+            collection_stage: None,
             warnings: Vec::new(),
         }
     }
@@ -1419,6 +1733,7 @@ pub struct MarketIndexingProgress {
 }
 
 pub type BroadcastIndexingProgress = MarketIndexingProgress;
+pub type EnvironmentIndexingProgress = MarketIndexingProgress;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct MarketMetricContext {
@@ -1997,6 +2312,7 @@ pub enum WarehouseWriteKind {
     ObservationProjection,
     MarketProjection,
     BroadcastProjection,
+    EnvironmentProjection,
     ResourceRegistryProjection,
     OverlayProjection,
     BranchMembershipProjection,
@@ -2276,6 +2592,7 @@ pub struct ResourceRegistryStatus {
     pub state: ResourceRegistryIngestionState,
     pub latest_snapshot: Option<ResourceRegistrySnapshotSummary>,
     pub latest_probe_content_hash: Option<String>,
+    pub collection_stage: Option<String>,
     pub warning_code: Option<String>,
 }
 

@@ -12,22 +12,24 @@ use crate::language_pack::{LanguagePackInspection, LanguageStatus, LegacyLanguag
 use crate::model::{
     AnalysisContextResult, ApplicationPreferencesDraft, ApplicationSettingsView, ArchiveComparison,
     ArchiveOverview, BroadcastIndexingProgress, BroadcastOutcomeModel, BroadcastOutcomeRequest,
-    BroadcastWorkspaceModel, CataloguePage, CatalogueSearchFilter, CatalogueStatus,
-    CompatibilityStatus, CompatibilityUpdate, DefinitionDossier, DiagnosticLogView, DirectoryKind,
-    MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
-    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
-    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
-    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
-    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    BroadcastWorkspaceModel, CarbonFactorImportPreview, CarbonFactorSetDraft, CataloguePage,
+    CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
+    DefinitionDossier, DiagnosticLogView, DirectoryKind, EnvironmentCaptureResult,
+    EnvironmentHistoryModel, EnvironmentIndexingProgress, EnvironmentSnapshot,
+    EnvironmentWorkspaceModel, MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries,
+    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
+    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
+    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
+    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, ResourceCatalogueRequest, ResourceCatalogueView, ResourceDetails,
     ResourceRegistryAssurance, ResourceRegistrySnapshotSummary, ResourceRegistryStatus, SetupState,
-    WarehouseSnapshot,
+    TesmioProbeStatus, WarehouseSnapshot,
 };
 use crate::research_setup::{
-    RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
-    ResearchSourceDownloadProgress, ResearchSourceOrigin,
+    RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSessionProgress, ResearchSetupService,
+    ResearchSetupStatus, ResearchSourceDownloadProgress, ResearchSourceOrigin,
 };
-use crate::setup_discovery::suggest_directory;
+use crate::setup_discovery::{picker_start_directory, suggest_directory};
 use crate::theme::{ThemeInspection, ThemeStatus};
 use crate::ui_review::UiReviewContext;
 
@@ -36,10 +38,31 @@ pub struct AppState {
     pub application: Arc<ObservatoryApplication>,
     pub research_setup: Arc<ResearchSetupService>,
     pub ui_review: UiReviewContext,
+    pub data_directory: PathBuf,
 }
 
 pub const MARKET_INDEXING_PROGRESS_EVENT: &str = "market-indexing-progress";
 pub const BROADCAST_INDEXING_PROGRESS_EVENT: &str = "broadcast-indexing-progress";
+pub const ENVIRONMENT_INDEXING_PROGRESS_EVENT: &str = "environment-indexing-progress";
+
+#[tauri::command]
+pub fn erase_application_databases(
+    confirmation: String,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    if state.ui_review.enabled {
+        return Err(ObservatoryError::DatabaseResetFailed.into());
+    }
+    crate::database_reset::schedule_database_reset(&state.data_directory, &confirmation)?;
+    crate::diagnostics::record(
+        "warning",
+        "database_reset_scheduled",
+        "erase_application_databases",
+        "A confirmed restart-time reset was scheduled for Observatory-owned databases only.",
+    );
+    app.restart()
+}
 
 async fn run_market_workspace_command(
     application: Arc<ObservatoryApplication>,
@@ -155,7 +178,16 @@ pub fn reset_application_preferences(
 #[tauri::command]
 pub fn get_research_setup(state: State<'_, AppState>) -> Result<ResearchSetupStatus, CommandError> {
     let stored = state.application.research_setup()?;
-    Ok(state.research_setup.status(&stored))
+    let media = state.application.catalogue_configuration()?;
+    Ok(state.research_setup.status(&stored, media.as_deref()))
+}
+
+#[tauri::command]
+pub fn get_research_report_status(
+    state: State<'_, AppState>,
+) -> Result<TesmioProbeStatus, CommandError> {
+    let media = state.application.catalogue_configuration()?;
+    Ok(crate::tesmio_probe::inspect(media.as_deref()))
 }
 
 #[tauri::command]
@@ -171,7 +203,8 @@ pub fn set_research_notice_accepted(
             0
         })?;
     let stored = state.application.research_setup()?;
-    Ok(state.research_setup.status(&stored))
+    let media = state.application.catalogue_configuration()?;
+    Ok(state.research_setup.status(&stored, media.as_deref()))
 }
 
 #[tauri::command]
@@ -204,7 +237,8 @@ pub fn configure_research_tesmio_checkout(
         "The selected checkout matched the bounded reviewed-header contract.",
     );
     let stored = state.application.research_setup()?;
-    Ok(state.research_setup.status(&stored))
+    let media = state.application.catalogue_configuration()?;
+    Ok(state.research_setup.status(&stored, media.as_deref()))
 }
 
 #[tauri::command]
@@ -234,7 +268,8 @@ pub async fn download_reviewed_tesmio_source(
             ResearchSourceOrigin::ObservatoryDownloaded.as_str(),
         )?;
         let stored = application.research_setup()?;
-        Ok::<ResearchSetupStatus, ObservatoryError>(service.status(&stored))
+        let media = application.catalogue_configuration()?;
+        Ok::<ResearchSetupStatus, ObservatoryError>(service.status(&stored, media.as_deref()))
     })
     .await
     .map_err(|_| CommandError::from(ObservatoryError::ResearchSourceDownloadFailed))?
@@ -253,10 +288,69 @@ pub async fn build_research_probe(
         let artifact = service.build_probe(&app, &stored)?;
         application.record_research_probe_build(&artifact.hash)?;
         let stored = application.research_setup()?;
-        Ok::<ResearchSetupStatus, crate::error::ObservatoryError>(service.status(&stored))
+        let media = application.catalogue_configuration()?;
+        Ok::<ResearchSetupStatus, crate::error::ObservatoryError>(
+            service.status(&stored, media.as_deref()),
+        )
     })
     .await
     .map_err(|_| CommandError::from(crate::error::ObservatoryError::ResearchBuildFailed))?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_research_session_progress(state: State<'_, AppState>) -> ResearchSessionProgress {
+    state.research_setup.session_progress()
+}
+
+#[tauri::command]
+pub async fn prepare_observation_only_session(
+    game_directory_write_confirmed: bool,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    let application = Arc::clone(&state.application);
+    let service = Arc::clone(&state.research_setup);
+    tauri::async_runtime::spawn_blocking(move || {
+        let stored = application.research_setup()?;
+        let media = application.catalogue_configuration()?;
+        service.prepare_observation_session(
+            &app,
+            &stored,
+            media.as_deref(),
+            game_directory_write_confirmed,
+        )?;
+        application.enable_resource_registry_ingestion(
+            ResourceRegistryAssurance::VerifiedObservationOnly,
+            true,
+        )?;
+        let stored = application.research_setup()?;
+        Ok::<ResearchSetupStatus, ObservatoryError>(service.status(&stored, media.as_deref()))
+    })
+    .await
+    .map_err(|_| CommandError::from(ObservatoryError::ResearchSessionPreparationFailed))?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn launch_observation_only_session(
+    running_game_memory_confirmed: bool,
+    state: State<'_, AppState>,
+) -> Result<ResearchSetupStatus, CommandError> {
+    let application = Arc::clone(&state.application);
+    let service = Arc::clone(&state.research_setup);
+    tauri::async_runtime::spawn_blocking(move || {
+        let media = application.catalogue_configuration()?;
+        let stored = application.research_setup()?;
+        service.launch_observation_session(
+            &stored,
+            media.as_deref(),
+            running_game_memory_confirmed,
+        )?;
+        Ok::<ResearchSetupStatus, ObservatoryError>(service.status(&stored, media.as_deref()))
+    })
+    .await
+    .map_err(|_| CommandError::from(ObservatoryError::ResearchSessionLaunchFailed))?
     .map_err(Into::into)
 }
 
@@ -318,6 +412,174 @@ pub async fn get_broadcast_outcome(
             code: "broadcast_outcome_worker_unavailable".to_owned(),
             diagnostic: "The Broadcast comparison worker stopped unexpectedly.".to_owned(),
         })?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_environment_workspace(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || application.environment_workspace())
+        .await
+        .map_err(|_| CommandError {
+            code: "environment_workspace_worker_unavailable".to_owned(),
+            diagnostic: "The Environment workspace worker stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_environment_history(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentHistoryModel, CommandError> {
+    state.application.environment_history().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_environment_snapshot(
+    snapshot_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<EnvironmentSnapshot>, CommandError> {
+    state
+        .application
+        .environment_snapshot(&snapshot_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn save_carbon_factor_set(
+    draft: CarbonFactorSetDraft,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || application.save_carbon_factor_set(&draft))
+        .await
+        .map_err(|_| CommandError {
+            code: "carbon_factor_worker_unavailable".to_owned(),
+            diagnostic: "The Carbon study worker stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn select_carbon_factor_set(
+    factor_set_id: String,
+    revision: u32,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    state
+        .application
+        .select_carbon_factor_set(&factor_set_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn rollback_carbon_factor_set(
+    factor_set_id: String,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    state
+        .application
+        .rollback_carbon_factor_set(&factor_set_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn remove_carbon_factor_set(
+    factor_set_id: String,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    state
+        .application
+        .remove_carbon_factor_set(&factor_set_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn export_carbon_factor_set(
+    factor_set_id: String,
+    revision: u32,
+    state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    state
+        .application
+        .export_carbon_factor_set(&factor_set_id, revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn preview_carbon_factor_import(
+    csv: String,
+    state: State<'_, AppState>,
+) -> Result<CarbonFactorImportPreview, CommandError> {
+    state
+        .application
+        .preview_carbon_factor_import(&csv)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn apply_carbon_factor_import(
+    csv: String,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    state
+        .application
+        .apply_carbon_factor_import(&csv)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn enable_environment_recording(
+    consent: bool,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    if !consent {
+        return Err(ObservatoryError::EnvironmentRecordingConsentRequired.into());
+    }
+    state
+        .application
+        .enable_environment_recording(crate::environment::ENVIRONMENT_RECORDING_NOTICE_REVISION)?;
+    state
+        .application
+        .environment_workspace()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn disable_environment_recording(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    state.application.disable_environment_recording()?;
+    state
+        .application
+        .environment_workspace()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn capture_environment_snapshot(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentCaptureResult, CommandError> {
+    state
+        .application
+        .capture_environment_snapshot()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn delete_live_environmental_recordings(
+    confirmation: String,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentWorkspaceModel, CommandError> {
+    if confirmation != "DELETE LIVE ENVIRONMENT RECORDINGS" {
+        return Err(ObservatoryError::InvalidApplicationPreferences.into());
+    }
+    state.application.delete_live_environmental_recordings()?;
+    state
+        .application
+        .environment_workspace()
         .map_err(Into::into)
 }
 
@@ -501,7 +763,7 @@ pub async fn choose_and_configure_directory(
         let suggestion = suggest_directory(kind, configured.as_deref());
         let mut picker = app.dialog().file().set_title(title);
         if let Some(suggestion) = suggestion {
-            picker = picker.set_directory(suggestion.path);
+            picker = picker.set_directory(picker_start_directory(&suggestion.path));
         }
         let Some(selected) = picker.blocking_pick_folder() else {
             return application.setup_state();
@@ -768,6 +1030,43 @@ pub async fn resume_broadcast_indexing(
     state: State<'_, AppState>,
 ) -> Result<BroadcastIndexingProgress, CommandError> {
     index_available_saves_for_broadcast(app, state).await
+}
+
+#[tauri::command]
+pub fn get_environment_indexing_progress(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentIndexingProgress, CommandError> {
+    state
+        .application
+        .environment_indexing_progress()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn index_available_saves_for_environment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentIndexingProgress, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.index_available_saves_for_environment(|progress| {
+            let _ = app.emit(ENVIRONMENT_INDEXING_PROGRESS_EVENT, progress);
+        })
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "environment_indexing_worker_unavailable".to_owned(),
+        diagnostic: "The Environment indexing worker stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn resume_environment_indexing(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentIndexingProgress, CommandError> {
+    index_available_saves_for_environment(app, state).await
 }
 
 #[tauri::command]

@@ -846,6 +846,84 @@ fn parse_definition(
                 &raw_arguments,
                 "verified",
             ),
+            Some(DefinitionOperation::BuildingPollutionClass) => {
+                push_text_property(
+                    &mut properties,
+                    &mut property_counts,
+                    "building.environment.pollution_class",
+                    directive.trim_start_matches("$POLLUTION_"),
+                    Some("W&R pollution class"),
+                    &directive,
+                    source_line,
+                    &raw_arguments,
+                    "game_definition",
+                );
+                true
+            }
+            Some(DefinitionOperation::BuildingSewagePollutionFactor) => number_property(
+                &mut properties,
+                &mut property_counts,
+                "building.environment.sewage_pollution_factor",
+                &arguments,
+                Some("source coefficient"),
+                &directive,
+                source_line,
+                &raw_arguments,
+                "source_coefficient",
+            ),
+            Some(DefinitionOperation::BuildingWaterRequiredQuality) => number_property(
+                &mut properties,
+                &mut property_counts,
+                "building.environment.water_required_quality",
+                &arguments,
+                Some("source ratio"),
+                &directive,
+                source_line,
+                &raw_arguments,
+                "source_coefficient",
+            ),
+            Some(DefinitionOperation::BuildingWaterIndustrySubstationDisabled) => {
+                push_text_property(
+                    &mut properties,
+                    &mut property_counts,
+                    "building.environment.water_industry_substation_disabled",
+                    "true",
+                    None,
+                    &directive,
+                    source_line,
+                    &raw_arguments,
+                    "game_definition",
+                );
+                true
+            }
+            Some(DefinitionOperation::BuildingProductionSewageDisabled) => {
+                push_text_property(
+                    &mut properties,
+                    &mut property_counts,
+                    "building.environment.production_sewage_disabled",
+                    "true",
+                    None,
+                    &directive,
+                    source_line,
+                    &raw_arguments,
+                    "game_definition",
+                );
+                true
+            }
+            Some(DefinitionOperation::BuildingSewageDisabled) => {
+                push_text_property(
+                    &mut properties,
+                    &mut property_counts,
+                    "building.environment.sewage_disabled",
+                    "true",
+                    None,
+                    &directive,
+                    source_line,
+                    &raw_arguments,
+                    "game_definition",
+                );
+                true
+            }
             Some(DefinitionOperation::VehicleType) if entity_kind == "vehicle" => text_property(
                 &mut properties,
                 &mut property_counts,
@@ -1866,7 +1944,10 @@ mod tests {
             root,
             mode: ScanMode::BaseBuildings,
         };
-        let oversized_line = format!("$NAME_STR {}\n$TYPE_FACTORY\n", "x".repeat(MAX_LINE_BYTES));
+        let oversized_line = format!(
+            "$NAME_STR {}\n$TYPE_FACTORY\n$POLLUTION_HIGH\n$PRODUCTION_SEWAGE_POLLUTION 0.67\n$CONSUMPTION_WATER_REQUIRED_QUALITY 0.60\n$WATER_NOT_USE_FOR_INDUSTRY_SUBSTATIONS\n$WATER_NOT_PRODUCE_SEWAGE_FROM_PRODUCTION\n$SEWAGE_DISABLE\n",
+            "x".repeat(MAX_LINE_BYTES)
+        );
         let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
         let (definition, warning_count) = parse_definition(
             &source,
@@ -1884,6 +1965,16 @@ mod tests {
                 .iter()
                 .all(|property| property.raw_arguments.len() <= 1_024)
         );
+        let environmental_fields = definition
+            .properties
+            .iter()
+            .filter(|property| property.field_id.starts_with("building.environment."))
+            .map(|property| property.field_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(environmental_fields.len(), 6);
+        assert!(environmental_fields.contains("building.environment.pollution_class"));
+        assert!(environmental_fields.contains("building.environment.sewage_pollution_factor"));
+        assert!(environmental_fields.contains("building.environment.water_required_quality"));
     }
 
     #[test]

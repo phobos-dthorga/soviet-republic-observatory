@@ -31,11 +31,15 @@ artifact identity, build time, and cue dismissal state.
 
 The assistant may download source only after the player accepts the current
 research notice and confirms the GitHub connection. The request is fixed to one
-reviewed commit, redirects are disabled, and the host retains only the exact
-reviewed headers, licence, and provenance. The assistant does not download a
-loader binary, install tools, elevate, configure TesmioLoader, inject code,
-launch W&R, run the probe, or import telemetry. The normal save recorder remains
-independent.
+reviewed commit, redirects are disabled, and the host retains only allowlisted
+reviewed files.
+
+After separate confirmation, the assistant may build the reviewed loader and
+launcher locally. It then prepares only the marked
+`W&R/tesmioloader/observatory` folder. A second confirmation is required before
+launching W&R because that action runs native code inside the game process. The
+assistant does not install tools, elevate, alter game assets, or write saves.
+The normal save recorder remains independent.
 
 ## Consequences
 
@@ -47,3 +51,5 @@ independent.
   previously built artifact.
 - Building a DLL is not evidence that it was installed, run, or safe on an
   unreviewed game executable.
+- Preparation and launch use different consent checks. Declining either leaves
+  the player on the previous safe step.
