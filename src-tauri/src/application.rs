@@ -406,8 +406,10 @@ impl ObservatoryApplication {
 
     pub fn broadcast_workspace(&self) -> Result<BroadcastWorkspaceModel, ObservatoryError> {
         let evidence = self.storage.load_broadcast_evidence()?;
-        let warehouse_projection_available = evidence
-            .analysis_context
+        let mut analysis_context = evidence.analysis_context;
+        analysis_context.resource_catalogue_revision_id =
+            Some(self.current_resource_catalogue_revision_id()?);
+        let warehouse_projection_available = analysis_context
             .head_interpretation_id
             .as_deref()
             .and_then(|interpretation_id| {
@@ -421,7 +423,7 @@ impl ObservatoryApplication {
             .broadcast_station_requirements()
             .unwrap_or_default();
         Ok(crate::broadcast::build_workspace(
-            evidence.analysis_context,
+            analysis_context,
             evidence.receiver,
             evidence.status_coverage,
             evidence.citizen_status_points,
@@ -438,7 +440,9 @@ impl ObservatoryApplication {
     }
 
     pub fn market_workspace(&self) -> Result<MarketWorkspace, ObservatoryError> {
-        let context = self.archive_overview()?.analysis_context;
+        let mut context = self.archive_overview()?.analysis_context;
+        context.resource_catalogue_revision_id =
+            Some(self.current_resource_catalogue_revision_id()?);
         let mut evidence = self.storage.market_evidence(context)?;
         let mut warehouse_history_available = false;
         if let Some(sqlite_projection) = evidence.projection.as_ref()
@@ -1948,6 +1952,18 @@ impl ObservatoryApplication {
         )
     }
 
+    fn current_resource_catalogue_revision_id(&self) -> Result<String, ObservatoryError> {
+        Ok(self
+            .resource_catalogue(&ResourceCatalogueRequest {
+                query: None,
+                origin: None,
+                limit: Some(1),
+                offset: Some(0),
+            })?
+            .revision
+            .revision_id)
+    }
+
     pub fn resource_details(&self, resource_id: &str) -> Result<ResourceDetails, ObservatoryError> {
         let installed = self
             .warehouse
@@ -2031,6 +2047,15 @@ impl ObservatoryApplication {
             Some(assurance),
             crate::research_setup::RESEARCH_NOTICE_REVISION,
         )?;
+        diagnostics::record(
+            "info",
+            "resource_registry.enabled",
+            "resource_registry",
+            &format!(
+                "Enabled optional resource-registry ingestion in {} mode.",
+                assurance.as_str()
+            ),
+        );
         self.sync_resource_registry()?;
         self.resource_registry_status()
     }
@@ -2040,6 +2065,12 @@ impl ObservatoryApplication {
     ) -> Result<ResourceRegistryStatus, ObservatoryError> {
         self.storage
             .configure_resource_registry_ingestion(false, None, 0)?;
+        diagnostics::record(
+            "info",
+            "resource_registry.disabled",
+            "resource_registry",
+            "Disabled optional resource-registry ingestion; retained snapshots remain local.",
+        );
         self.resource_registry_status()
     }
 

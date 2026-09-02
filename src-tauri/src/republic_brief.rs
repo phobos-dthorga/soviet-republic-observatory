@@ -564,6 +564,7 @@ mod tests {
                 compatibility_profile_hash: Some("hash".to_owned()),
                 observation_watermark: Some("watermark".to_owned()),
                 catalogue_generation_id: Some("generation".to_owned()),
+                resource_catalogue_revision_id: None,
                 overlay_revision: None,
             },
             observations: vec![

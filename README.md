@@ -28,8 +28,10 @@ questions:
 > aggregate Population laboratory. Individual citizen histories remain behind
 > a documented stable-identity evidence gate. An optional, separately built
 > GPL Tesmio research companion can now supply strictly bounded anonymous live
-> samples; it is never auto-installed, is not persisted into Observatory
-> databases, and is governed by an in-app legal/risk screen. The Republic
+> samples and an optional checked resource-registry reading. Person samples are
+> never retained; resource names and prices are stored only after explicit
+> consent. The companion is never auto-installed and is governed by an in-app
+> legal/risk screen. The Republic
 > Briefing is now an exact-head, save-backed summary with deterministic findings,
 > and the first branch-bound Five-Year Plan slice records immutable player
 > targets, schedules, guardrails, and attainment in SQLite;
@@ -119,7 +121,10 @@ future. **Population** shows exact-head republic and numeric city snapshots,
 including their direct source fields, while refusing unsupported individual
 biographies or unverified rates. Configure the game installation
 folder to build the Industrial Catalogue from local base, DLC, subscribed
-Workshop, and WIP definitions. A separate Workshop-folder selector is available
+Workshop, and WIP definitions. Materials now combines those definitions with
+exact resource tokens found in recorded saves. It can optionally compare them
+with one checked Tesmio game-session reading without changing Markets history.
+A separate Workshop-folder selector is available
 when Steam discovery cannot resolve external Workshop content. The header shows
 active critical work; **Materials** provides the staged Catalogue ledger with
 bounded per-file detail, and **Diagnostics** exposes the local operational

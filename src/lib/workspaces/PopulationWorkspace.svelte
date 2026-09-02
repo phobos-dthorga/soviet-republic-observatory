@@ -175,6 +175,7 @@
         compatibility_profile_hash: null,
         observation_watermark: null,
         catalogue_generation_id: null,
+        resource_catalogue_revision_id: null,
         overlay_revision: null,
       },
       observations: [],

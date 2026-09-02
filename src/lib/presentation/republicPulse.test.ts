@@ -36,6 +36,7 @@ const archive: ArchiveOverview = {
     compatibility_profile_hash: null,
     observation_watermark: "latest-interpretation",
     catalogue_generation_id: null,
+    resource_catalogue_revision_id: null,
     overlay_revision: null,
   },
 };

@@ -221,6 +221,7 @@ export type AnalysisContext = {
   compatibility_profile_hash: string | null;
   observation_watermark: string | null;
   catalogue_generation_id: string | null;
+  resource_catalogue_revision_id: string | null;
   overlay_revision: string | null;
 };
 

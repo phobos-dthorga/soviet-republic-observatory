@@ -13,7 +13,111 @@ import type {
   ReceiverDataset,
   RepublicBrief,
   RepublicPlanWorkspace,
+  ResourceCatalogueView,
+  ResourceDetails,
+  ResourceRegistryStatus,
 } from "../observations/types";
+
+export function reviewResourceCatalogue(): ResourceCatalogueView {
+  const snapshotId = "c".repeat(64);
+  const entry = (
+    sourceToken: string,
+    displayName: string,
+    liveIndex: number | null,
+  ) => ({
+    resource_id: `resource::${sourceToken}`,
+    source_token: sourceToken,
+    display_name: displayName,
+    label_source: liveIndex == null ? "installed_definition" : "installed_btf",
+    caption_id: liveIndex == null ? null : 70_000 + liveIndex,
+    live_index: liveIndex,
+    resource_kind: liveIndex == null ? null : 3,
+    transport_classes: liveIndex == null ? [] : [0, 2],
+    material_family: liveIndex == null ? null : 2,
+    origin: {
+      installed_content: sourceToken !== "player_polymer",
+      recorded_save: sourceToken !== "player_polymer",
+      live_game: liveIndex != null,
+      runtime_extension: sourceToken === "player_polymer",
+      player_overlay: false,
+      installed_reference_count: sourceToken === "ecomponents" ? 18 : 31,
+    },
+    live_prices:
+      liveIndex == null
+        ? []
+        : [
+            {
+              currency: "RUB",
+              finished_price: 225.5,
+              base_price: 180,
+              buy_multiplier: 1.1,
+              sell_multiplier: 0.82,
+              buy_quote: 248.05,
+              sell_quote: 184.91,
+            },
+            {
+              currency: "USD",
+              finished_price: 45.1,
+              base_price: 36,
+              buy_multiplier: 1.1,
+              sell_multiplier: 0.82,
+              buy_quote: 49.61,
+              sell_quote: 36.98,
+            },
+          ],
+    latest_live_snapshot_id: liveIndex == null ? null : snapshotId,
+  });
+  const entries = [
+    entry("eletronics", "Electronics", 12),
+    entry("ecomponents", "Electronic components", 13),
+    entry("player_polymer", "Player polymer", 57),
+  ];
+  return {
+    revision: {
+      revision_id: "review-resource-catalogue",
+      definition_generation_id: "review-catalogue-generation",
+      overlay_revision: null,
+      live_snapshot_id: snapshotId,
+      entry_count: entries.length,
+    },
+    total: entries.length,
+    limit: 150,
+    offset: 0,
+    entries,
+  };
+}
+
+export function reviewResourceDetails(): ResourceDetails {
+  const catalogue = reviewResourceCatalogue();
+  return {
+    revision_id: catalogue.revision.revision_id,
+    entry: catalogue.entries[0],
+    installed_sources: ["base-game-resource-definitions"],
+    recorded_profile_count: 1,
+    live_snapshot: reviewResourceRegistryStatus().latest_snapshot,
+  };
+}
+
+export function reviewResourceRegistryStatus(): ResourceRegistryStatus {
+  return {
+    enabled: true,
+    assurance: "player_managed_modded",
+    state: "available",
+    latest_snapshot: {
+      snapshot_id: "c".repeat(64),
+      assurance: "player_managed_modded",
+      game_build_id: "1.1.1.9:6a3eb6ad:10308608",
+      probe_version: "0.2.0",
+      loader_api_version: 4,
+      captured_year: 2020,
+      captured_day: 92,
+      captured_at_ms: 1_725_000_001_000,
+      resource_count: 58,
+    },
+    latest_probe_content_hash: "d".repeat(64),
+    warning_code: null,
+  };
+}
 
 export function reviewReceiverDataset(): ReceiverDataset {
   const point = (
@@ -487,6 +591,7 @@ const reviewContext = {
   compatibility_profile_hash: "reviewed-profile-fixture",
   observation_watermark: "review-watermark-077",
   catalogue_generation_id: "review-catalogue-generation",
+  resource_catalogue_revision_id: "review-resource-catalogue",
   overlay_revision: null,
 };
 

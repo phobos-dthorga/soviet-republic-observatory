@@ -314,6 +314,7 @@ pub(crate) fn load_analysis_context_from(
         compatibility_profile_hash: profile.as_ref().map(|value| value.2.clone()),
         observation_watermark: head,
         catalogue_generation_id: None,
+        resource_catalogue_revision_id: None,
         overlay_revision,
     })
 }

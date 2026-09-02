@@ -81,6 +81,9 @@
     reviewReceiverDataset,
     reviewRepublicPlanWorkspace,
     reviewRepublicBrief,
+    reviewResourceCatalogue,
+    reviewResourceDetails,
+    reviewResourceRegistryStatus,
     reviewWarehouseAttention,
   } from "./lib/ui-review/fixtures";
   import {
@@ -139,6 +142,9 @@
     RecorderUpdate,
     RepublicBrief,
     RepublicPlanWorkspace,
+    ResourceCatalogueView,
+    ResourceDetails,
+    ResourceRegistryStatus,
     ReinterpretationProgress,
     SetupState,
     WarehouseWriteActivity,
@@ -202,6 +208,13 @@
   let publishedMetricContexts = $state<PublishedMetricContext[]>([]);
   let reviewRouteFixture = $state<ProductionRouteModel | null>(null);
   let reviewPathwayFixture = $state<ProductionPathwayModel | null>(null);
+  let reviewResourceCatalogueFixture = $state<ResourceCatalogueView | null>(
+    null,
+  );
+  let reviewResourceDetailsFixture = $state<ResourceDetails | null>(null);
+  let reviewResourceRegistryFixture = $state<ResourceRegistryStatus | null>(
+    null,
+  );
   const latestReceiverPoint = $derived(receiverDataset?.points.at(-1));
 
   function openDialog(route: DialogRoute): void {
@@ -720,6 +733,9 @@
     broadcastOutcome = null;
     reviewRouteFixture = null;
     reviewPathwayFixture = null;
+    reviewResourceCatalogueFixture = null;
+    reviewResourceDetailsFixture = null;
+    reviewResourceRegistryFixture = null;
     receiverDataset = null;
 
     switch (request.scenario) {
@@ -788,6 +804,12 @@
         break;
       case "workspace-materials":
         openWorkspace("materials");
+        break;
+      case "materials-resource-catalogue":
+        openWorkspace("materials");
+        reviewResourceCatalogueFixture = reviewResourceCatalogue();
+        reviewResourceDetailsFixture = reviewResourceDetails();
+        reviewResourceRegistryFixture = reviewResourceRegistryStatus();
         break;
       case "materials-warehouse-attention":
         openWorkspace("materials");
@@ -1433,8 +1455,12 @@
       location={activeLocation}
       onlocationchange={updateActiveFilters}
       onrelatednavigate={requestRelatedNavigation}
+      onopenresearch={() => openDialog("research")}
       reviewRoute={reviewRouteFixture}
       reviewPathway={reviewPathwayFixture}
+      reviewResourceCatalogue={reviewResourceCatalogueFixture}
+      reviewResourceDetails={reviewResourceDetailsFixture}
+      reviewResourceRegistry={reviewResourceRegistryFixture}
     />
   {:else if activeWorkspace === "population"}
     <PopulationWorkspace

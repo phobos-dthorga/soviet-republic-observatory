@@ -32,6 +32,9 @@ an engineering requirement.
 - [TesmioLoader reverse-engineering assessment](research/tesmioloader-reverse-engineering.md)
   — live instrumentation, binary-serializer research, upstream citizen-field
   candidates, safety boundaries, and the proposed read-only research bridge
+- [Dynamic resource catalogue and live reconciliation](research/dynamic-resource-catalogue.md)
+  — exact-token discovery, installed labels, optional session readings, and the
+  boundary between live prices and recorded history
 - [Broadcast telemetry research findings](research/broadcast-telemetry-findings.md)
   — positive and negative station-field findings, experiment protocol, and the
   promotion gate for audience and programme data

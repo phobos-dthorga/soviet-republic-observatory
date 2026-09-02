@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 52,
+  "source_catalog_revision": 53,
   "messages": {
     "settings-introduction": "Configure Observatory's private local sources, accessible presentation, and bounded background-work behaviour.",
     "settings-recorder-priority-detail": "These preferences change how patiently and quickly resumable maintenance runs. They cannot weaken evidence checks, database limits, or recorder priority.",
@@ -18,6 +18,8 @@
     "population-probe-read-only-detail": "One chained observation hook reads loaded fields after the game renders a frame. The separate observation-only loader configuration must also be verified before launch.",
     "population-probe-ephemeral-detail": "Person sample records are not imported into SQLite or DuckDB. Validated resource-registry snapshots use a separate opt-in storage contract.",
     "population-probe-samples": "Bounded person samples",
+    "resources-live-detail": "The host may persist one validated, content-addressed resource-registry snapshot from the optional Tesmio probe. Offline catalogue discovery remains authoritative.",
+    "resources-live-boundary-detail": "A live registry snapshot is session evidence. It never replaces save-backed price history or becomes a historical observation after restart.",
     "population-probe-missing-detail": "The companion remains entirely optional. Ordinary save observation and aggregate Population analytics continue without it.",
     "settings-sources-title": "Sources and observation",
     "settings-background-eyebrow": "Bounded local maintenance",

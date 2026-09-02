@@ -29,6 +29,7 @@ const scenarios = [
   "workspace-extensions",
   "workspace-plan",
   "workspace-materials",
+  "materials-resource-catalogue",
   "materials-warehouse-attention",
   "production-pathway",
   "workspace-population",

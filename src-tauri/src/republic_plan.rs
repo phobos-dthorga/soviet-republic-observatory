@@ -495,6 +495,7 @@ mod tests {
                 compatibility_profile_hash: Some("profile".to_owned()),
                 observation_watermark: Some("later".to_owned()),
                 catalogue_generation_id: None,
+                resource_catalogue_revision_id: None,
                 overlay_revision: None,
             },
             observations: vec![observation("start", 0, 100), observation("later", 100, 130)],

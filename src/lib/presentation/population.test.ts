@@ -25,6 +25,7 @@ const dataset: PopulationDataset = {
     compatibility_profile_hash: "a".repeat(64),
     observation_watermark: "observation-2",
     catalogue_generation_id: null,
+    resource_catalogue_revision_id: null,
     overlay_revision: null,
   },
   observations: [

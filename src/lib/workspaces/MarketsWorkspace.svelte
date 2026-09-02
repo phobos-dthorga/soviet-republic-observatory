@@ -15,6 +15,8 @@
   import { notify, type RecoveryProposal } from "../notifications/service";
   import {
     clearMarketSelection,
+    getResourceCatalogue,
+    getResourceDetails,
     getMarketPriceSeries,
     indexAvailableSavesForMarkets,
     refreshChangedMarketData,
@@ -31,6 +33,7 @@
     MarketPriceSeries,
     MarketScenarioDraft,
     MarketWorkspace,
+    ResourceDetails,
   } from "../observations/types";
   import {
     createCityTradeChart,
@@ -99,6 +102,9 @@
   let priceResource = $state("");
   let priceSeries = $state<MarketPriceSeries | null>(null);
   let priceSeriesLoading = $state(false);
+  let selectedResourceDetails = $state<ResourceDetails | null>(null);
+  let resourceDetailsRequest = 0;
+  let resourceLabels = $state<Record<string, string>>({});
   let priceRequest = 0;
   let smartDefaultContext = $state("");
   let basketDirty = $state(false);
@@ -219,6 +225,11 @@
     workspace?.metric_contexts.find(
       (context) => context.metric_id === `market.price.${selectedCurrency}`,
     ),
+  );
+  const selectedLivePrice = $derived(
+    selectedResourceDetails?.entry.live_prices.find(
+      (price) => price.currency.toLowerCase() === selectedCurrency,
+    ) ?? null,
   );
   const scalarHelp = $derived(
     workspace?.metric_contexts.find(
@@ -350,6 +361,32 @@
     );
   }
 
+  function resourceLabel(resourceToken: string): string {
+    const label = resourceLabels[resourceToken];
+    return label && label !== resourceToken
+      ? `${label} · ${resourceToken}`
+      : resourceToken;
+  }
+
+  async function loadResourceLabels(): Promise<void> {
+    if (!desktopAvailable) return;
+    const labels: Record<string, string> = {};
+    let offset = 0;
+    for (let pageIndex = 0; pageIndex < 4; pageIndex += 1) {
+      const page = await getResourceCatalogue({
+        origin: "recorded_save",
+        limit: 250,
+        offset,
+      });
+      for (const entry of page.entries) {
+        labels[entry.source_token] = entry.display_name;
+      }
+      offset += page.entries.length;
+      if (offset >= page.total || page.entries.length === 0) break;
+    }
+    resourceLabels = labels;
+  }
+
   $effect(() => {
     if (!baseRecords.some((record) => record.hash === basketBase)) {
       basketBase = baseRecords[0]?.hash ?? "";
@@ -372,7 +409,18 @@
       return;
     }
     void loadPriceSeries(currency, resource);
+    void loadSelectedResourceDetails(resource);
   });
+
+  async function loadSelectedResourceDetails(resource: string): Promise<void> {
+    const request = ++resourceDetailsRequest;
+    try {
+      const details = await getResourceDetails(`resource::${resource}`);
+      if (request === resourceDetailsRequest) selectedResourceDetails = details;
+    } catch {
+      if (request === resourceDetailsRequest) selectedResourceDetails = null;
+    }
+  }
 
   async function loadPriceSeries(
     currency: "rub" | "usd",
@@ -405,6 +453,7 @@
         compatibility_profile_hash: null,
         observation_watermark: null,
         catalogue_generation_id: null,
+        resource_catalogue_revision_id: null,
         overlay_revision: null,
       },
       available: false,
@@ -746,12 +795,13 @@
     );
   }
 
-  onMount(() =>
-    registerNavigationGuard(
+  onMount(() => {
+    void loadResourceLabels();
+    return registerNavigationGuard(
       "markets-drafts",
       () => basketDirty || scenarioDirty,
-    ),
-  );
+    );
+  });
 
   function coverageFacetLabel(facetId: string): string {
     const keys = {
@@ -1169,7 +1219,12 @@
                       class="related-data-link"
                       onclick={(event) =>
                         openResource(row.resource_token, event.currentTarget)}
-                      ><code>{row.resource_token}</code></button
+                      ><strong
+                        >{resourceLabels[row.resource_token] ??
+                          row.resource_token}</strong
+                      >{#if resourceLabels[row.resource_token] && resourceLabels[row.resource_token] !== row.resource_token}<code
+                          >{row.resource_token}</code
+                        >{/if}</button
                     ></th
                   ><td>{money(row.import_quantity)}</td><td
                     >{money(row.import_account_value)}</td
@@ -1205,11 +1260,31 @@
               onchange={() => publishFilters({ resourceToken: priceResource })}
             >
               {#each availableWeightResources as resource}
-                <option value={resource}>{resource}</option>
+                <option value={resource}>{resourceLabel(resource)}</option>
               {/each}
             </select>
           </label>
         </header>
+        {#if selectedLivePrice && selectedResourceDetails?.live_snapshot}
+          <GuidanceSurface kind="instruction" layout="compact">
+            <strong
+              >{$translation("markets-live-price-title", {
+                resource: selectedResourceDetails.entry.display_name,
+              })}</strong
+            >
+            <span
+              >{$translation("markets-live-price-detail", {
+                currency: selectedLivePrice.currency,
+                buy: money(selectedLivePrice.buy_quote),
+                sell: money(selectedLivePrice.sell_quote),
+                year: selectedResourceDetails.live_snapshot.captured_year,
+                day: String(
+                  selectedResourceDetails.live_snapshot.captured_day,
+                ).padStart(3, "0"),
+              })}</span
+            >
+          </GuidanceSurface>
+        {/if}
         {#if priceSeriesLoading}
           <GuidanceSurface kind="instruction" layout="compact">
             <strong>{$translation("markets-price-history-loading")}</strong>
@@ -1260,7 +1335,12 @@
                       class="related-data-link"
                       onclick={(event) =>
                         openResource(row.resource_token, event.currentTarget)}
-                      ><code>{row.resource_token}</code></button
+                      ><strong
+                        >{resourceLabels[row.resource_token] ??
+                          row.resource_token}</strong
+                      >{#if resourceLabels[row.resource_token] && resourceLabels[row.resource_token] !== row.resource_token}<code
+                          >{row.resource_token}</code
+                        >{/if}</button
                     ></th
                   ><td>{money(row.purchase_price)}</td><td
                     >{money(row.sell_price)}</td
@@ -1494,7 +1574,7 @@
                 ><span>{$translation("markets-resource-token")}</span><select
                   bind:value={weightResource}
                   >{#each availableWeightResources as resource}<option
-                      value={resource}>{resource}</option
+                      value={resource}>{resourceLabel(resource)}</option
                     >{/each}</select
                 ></label
               ><label
@@ -1516,7 +1596,8 @@
                       (entry) => entry.resource_token !== weight.resource_token,
                     );
                     basketDirty = true;
-                  }}>{weight.resource_token} · {weight.weight} ×</button
+                  }}
+                  >{resourceLabel(weight.resource_token)} · {weight.weight} ×</button
                 >{/each}
             </div>
             <div class="form-actions">

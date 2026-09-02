@@ -18,6 +18,9 @@
     exportPlanningOverlay,
     getCatalogueStatus,
     getDefinitionDossier,
+    getResourceCatalogue,
+    getResourceDetails,
+    getResourceRegistryStatus,
     importPlanningOverlay,
     inspectPlanningOverlay,
     listenForCatalogueProgress,
@@ -29,6 +32,8 @@
     removePlanningOverlay,
     rollbackPlanningOverlay,
     searchCatalogue,
+    disableResourceRegistryIngestion,
+    enableResourceRegistryIngestion,
   } from "../observations/desktopClient";
   import type {
     CataloguePage,
@@ -40,6 +45,11 @@
     OverlayProfileSummary,
     ProductionPathwayModel,
     ProductionRouteModel,
+    ResourceCatalogueOriginFilter,
+    ResourceCatalogueView,
+    ResourceDetails,
+    ResourceRegistryAssurance,
+    ResourceRegistryStatus,
     WarehouseWriteActivity,
   } from "../observations/types";
   import { formatDate, formatNumber } from "../i18n/format";
@@ -57,8 +67,12 @@
     location,
     onlocationchange,
     onrelatednavigate,
+    onopenresearch,
     reviewRoute = null,
     reviewPathway = null,
+    reviewResourceCatalogue = null,
+    reviewResourceDetails = null,
+    reviewResourceRegistry = null,
   } = $props<{
     desktopAvailable: boolean;
     gameConfigured: boolean;
@@ -68,13 +82,28 @@
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
     ) => void;
+    onopenresearch: () => void;
     reviewRoute?: ProductionRouteModel | null;
     reviewPathway?: ProductionPathwayModel | null;
+    reviewResourceCatalogue?: ResourceCatalogueView | null;
+    reviewResourceDetails?: ResourceDetails | null;
+    reviewResourceRegistry?: ResourceRegistryStatus | null;
   }>();
   let status = $state<CatalogueStatus | null>(null);
   let refreshProgress = $state<CatalogueRefreshProgress | null>(null);
   let page = $state<CataloguePage | null>(null);
   let dossier = $state<DefinitionDossier | null>(null);
+  let resourceCatalogue = $state<ResourceCatalogueView | null>(null);
+  let resourceDetails = $state<ResourceDetails | null>(null);
+  let resourceRegistry = $state<ResourceRegistryStatus | null>(null);
+  let resourceQuery = $state("");
+  let resourceOrigin = $state<ResourceCatalogueOriginFilter | "">("");
+  let resourceBusy = $state(false);
+  let resourceMessage = $state("");
+  let resourceAssurance = $state<ResourceRegistryAssurance>(
+    "verified_observation_only",
+  );
+  let resourceAcknowledged = $state(false);
   let profiles = $state<OverlayProfileSummary[]>([]);
   let query = $state("");
   let kind = $state("");
@@ -196,6 +225,109 @@
       await runSearch(accepted.generationId);
   }
 
+  async function loadResourceCatalogue(): Promise<void> {
+    if (reviewResourceCatalogue) {
+      resourceCatalogue = reviewResourceCatalogue;
+      resourceDetails = reviewResourceDetails;
+      return;
+    }
+    if (!desktopAvailable) return;
+    resourceCatalogue = await getResourceCatalogue({
+      query: resourceQuery || undefined,
+      origin: resourceOrigin || undefined,
+      limit: 150,
+    });
+    const selected = resourceDetails?.entry.resource_id;
+    const next = resourceCatalogue.entries.find(
+      (entry) => entry.resource_id === selected,
+    );
+    if (next) await selectResource(next.resource_id);
+    else if (resourceCatalogue.entries[0]) {
+      await selectResource(resourceCatalogue.entries[0].resource_id);
+    } else resourceDetails = null;
+  }
+
+  async function loadResourceRegistryStatus(): Promise<void> {
+    if (reviewResourceRegistry) {
+      resourceRegistry = reviewResourceRegistry;
+      resourceAssurance = reviewResourceRegistry.assurance ?? resourceAssurance;
+      return;
+    }
+    if (!desktopAvailable) return;
+    resourceRegistry = await getResourceRegistryStatus();
+    if (resourceRegistry.assurance) {
+      resourceAssurance = resourceRegistry.assurance;
+    }
+  }
+
+  async function selectResource(resourceId: string): Promise<void> {
+    if (reviewResourceCatalogue) {
+      const entry = reviewResourceCatalogue.entries.find(
+        (candidate: ResourceCatalogueView["entries"][number]) =>
+          candidate.resource_id === resourceId,
+      );
+      if (!entry) return;
+      resourceDetails = {
+        revision_id: reviewResourceCatalogue.revision.revision_id,
+        entry,
+        installed_sources: [],
+        recorded_profile_count: Number(entry.origin.recorded_save),
+        live_snapshot: entry.origin.live_game
+          ? (reviewResourceRegistry?.latest_snapshot ?? null)
+          : null,
+      };
+    } else {
+      if (!desktopAvailable) return;
+      resourceDetails = await getResourceDetails(resourceId);
+    }
+    onlocationchange?.({ resourceToken: resourceDetails.entry.source_token });
+  }
+
+  function resourceErrorCode(error: unknown): string {
+    return typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "resource_registry_unavailable";
+  }
+
+  function resourceRegistryStateLabel(
+    state: ResourceRegistryStatus["state"] | undefined,
+  ): string {
+    const keys = {
+      disabled: "resources-live-state-disabled",
+      waiting_for_game: "resources-live-state-waiting-for-game",
+      available: "resources-live-state-available",
+      invalid: "resources-live-state-invalid",
+    } as const;
+    return $translation(keys[state ?? "disabled"]);
+  }
+
+  async function setResourceRegistryEnabled(enabled: boolean): Promise<void> {
+    if (!desktopAvailable || resourceBusy) return;
+    resourceBusy = true;
+    resourceMessage = "";
+    try {
+      resourceRegistry = enabled
+        ? await enableResourceRegistryIngestion(
+            resourceAssurance,
+            resourceAcknowledged,
+          )
+        : await disableResourceRegistryIngestion();
+      resourceAcknowledged = false;
+      await loadResourceCatalogue();
+    } catch (error) {
+      const code = resourceErrorCode(error);
+      resourceMessage = $translation(
+        code === "research_notice_required"
+          ? "resources-live-notice-required"
+          : code === "invalid_research_setup"
+            ? "resources-live-setup-invalid"
+            : "resources-live-action-failed",
+      );
+    } finally {
+      resourceBusy = false;
+    }
+  }
+
   function catalogueSnapshotIdentity(
     catalogueStatus: CatalogueStatus | null,
   ): string | null {
@@ -294,6 +426,28 @@
     if (!next || next === requestedEntityId || !status?.generation) return;
     requestedEntityId = next;
     void openRequestedEntity(next);
+  });
+
+  $effect(() => {
+    if (reviewResourceCatalogue) {
+      resourceCatalogue = reviewResourceCatalogue;
+      resourceDetails = reviewResourceDetails;
+    }
+    if (reviewResourceRegistry) {
+      resourceRegistry = reviewResourceRegistry;
+      resourceAssurance = reviewResourceRegistry.assurance ?? resourceAssurance;
+    }
+  });
+
+  $effect(() => {
+    const token = location.filters.resourceToken;
+    if (!token || !resourceCatalogue) return;
+    const match = resourceCatalogue.entries.find(
+      (entry) => entry.source_token === token,
+    );
+    if (match && resourceDetails?.entry.resource_id !== match.resource_id) {
+      void selectResource(match.resource_id);
+    }
   });
 
   async function runAction(action: () => Promise<unknown>): Promise<void> {
@@ -421,7 +575,11 @@
       if (disposed) stop();
       else {
         stops.push(stop);
-        await loadStatus();
+        await Promise.all([
+          loadStatus(),
+          loadResourceCatalogue(),
+          loadResourceRegistryStatus(),
+        ]);
       }
     })();
     return () => {
@@ -466,14 +624,17 @@
       <a href="#material-flow-laboratory" use:containedSectionNavigation
         ><span>01</span>{$translation("catalogue-flow-laboratory")}</a
       >
+      <a href="#resource-catalogue" use:containedSectionNavigation
+        ><span>02</span>{$translation("resources-title")}</a
+      >
       <a href="#catalogue-browser" use:containedSectionNavigation
-        ><span>02</span>{$translation("catalogue-browser")}</a
+        ><span>03</span>{$translation("catalogue-browser")}</a
       >
       <a href="#definition-dossier" use:containedSectionNavigation
-        ><span>03</span>{$translation("catalogue-dossier")}</a
+        ><span>04</span>{$translation("catalogue-dossier")}</a
       >
       <a href="#overlay-laboratory" use:containedSectionNavigation
-        ><span>04</span>{$translation("catalogue-overlays")}</a
+        ><span>05</span>{$translation("catalogue-overlays")}</a
       >
     </div>
     <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
@@ -542,12 +703,18 @@
       />
     </div>
 
-    {#if !desktopAvailable || !gameConfigured}
+    {#if !desktopAvailable && !reviewResourceCatalogue}
       <section class="empty-catalogue">
         <h2>{$translation("catalogue-setup-title")}</h2>
         <p>{$translation("catalogue-setup-description")}</p>
       </section>
     {:else}
+      {#if !gameConfigured}
+        <GuidanceSurface kind="instruction" layout="compact">
+          <strong>{$translation("catalogue-setup-title")}</strong>
+          <span>{$translation("catalogue-setup-description")}</span>
+        </GuidanceSurface>
+      {/if}
       <section
         class="catalogue-health"
         aria-label={$translation("catalogue-health-label")}
@@ -577,6 +744,237 @@
             >{formatBytes(status?.warehouse.database_size_bytes)}</strong
           >
         </article>
+      </section>
+
+      <section class="resource-catalogue" id="resource-catalogue">
+        <header class="panel-heading">
+          <div>
+            <span class="eyebrow">{$translation("resources-eyebrow")}</span>
+            <h2>{$translation("resources-title")}</h2>
+            <p>{$translation("resources-detail")}</p>
+          </div>
+          <span class="coverage">{resourceCatalogue?.total ?? 0}</span>
+        </header>
+
+        <div class="resource-registry-card">
+          <div>
+            <span class="eyebrow">{$translation("resources-live-eyebrow")}</span
+            >
+            <h3>{$translation("resources-live-title")}</h3>
+            <p>{$translation("resources-live-detail")}</p>
+          </div>
+          <span
+            class="status-chip"
+            data-status={resourceRegistry?.state === "available"
+              ? "stable"
+              : resourceRegistry?.state === "invalid"
+                ? "risk"
+                : "watch"}
+          >
+            {resourceRegistryStateLabel(resourceRegistry?.state)}
+          </span>
+          {#if resourceRegistry?.latest_snapshot}
+            <GuidanceSurface kind="instruction" layout="compact">
+              <strong>{$translation("resources-live-retained")}</strong>
+              <span
+                >{$translation("observation-game-date-compact", {
+                  year: resourceRegistry.latest_snapshot.captured_year,
+                  day: String(
+                    resourceRegistry.latest_snapshot.captured_day,
+                  ).padStart(3, "0"),
+                })} · {resourceRegistry.latest_snapshot.resource_count}
+                {$translation("resources-count-suffix")}</span
+              >
+            </GuidanceSurface>
+          {/if}
+          <div class="resource-registry-controls">
+            <label>
+              <span>{$translation("resources-live-mode")}</span>
+              <select
+                bind:value={resourceAssurance}
+                disabled={resourceRegistry?.enabled || resourceBusy}
+              >
+                <option value="verified_observation_only"
+                  >{$translation("resources-live-mode-verified")}</option
+                >
+                <option value="player_managed_modded"
+                  >{$translation("resources-live-mode-modded")}</option
+                >
+              </select>
+            </label>
+            {#if !resourceRegistry?.enabled}
+              <label class="resource-acknowledgement">
+                <input type="checkbox" bind:checked={resourceAcknowledged} />
+                <span
+                  >{$translation(
+                    resourceAssurance === "verified_observation_only"
+                      ? "resources-live-ack-verified"
+                      : "resources-live-ack-modded",
+                  )}</span
+                >
+              </label>
+              <button
+                type="button"
+                disabled={resourceBusy || !resourceAcknowledged}
+                onclick={() => void setResourceRegistryEnabled(true)}
+                >{$translation("resources-live-enable")}</button
+              >
+            {:else}
+              <button
+                type="button"
+                disabled={resourceBusy}
+                onclick={() => void setResourceRegistryEnabled(false)}
+                >{$translation("resources-live-disable")}</button
+              >
+            {/if}
+            <button type="button" onclick={onopenresearch}
+              >{$translation("research-setup-open")}</button
+            >
+          </div>
+          <GuidanceSurface kind="boundary" layout="compact">
+            <strong>{$translation("resources-live-boundary")}</strong>
+            <span>{$translation("resources-live-boundary-detail")}</span>
+          </GuidanceSurface>
+          {#if resourceMessage}
+            <p class="resource-message" role="alert">{resourceMessage}</p>
+          {/if}
+        </div>
+
+        <form
+          class="resource-filter"
+          onsubmit={(event) => {
+            event.preventDefault();
+            void loadResourceCatalogue();
+          }}
+        >
+          <label>
+            <span>{$translation("resources-search")}</span>
+            <input
+              bind:value={resourceQuery}
+              placeholder={$translation("resources-search-placeholder")}
+            />
+          </label>
+          <label>
+            <span>{$translation("resources-origin")}</span>
+            <select bind:value={resourceOrigin}>
+              <option value="">{$translation("resources-origin-all")}</option>
+              <option value="installed_content"
+                >{$translation("resources-origin-installed")}</option
+              >
+              <option value="recorded_save"
+                >{$translation("resources-origin-save")}</option
+              >
+              <option value="live_game"
+                >{$translation("resources-origin-live")}</option
+              >
+              <option value="player_overlay"
+                >{$translation("resources-origin-overlay")}</option
+              >
+            </select>
+          </label>
+          <button type="submit">{$translation("catalogue-search")}</button>
+        </form>
+
+        <div class="resource-browser">
+          <div class="resource-list" role="list">
+            {#each resourceCatalogue?.entries ?? [] as resource}
+              <button
+                type="button"
+                class:selected={resourceDetails?.entry.resource_id ===
+                  resource.resource_id}
+                onclick={() => void selectResource(resource.resource_id)}
+              >
+                <span>
+                  <strong>{resource.display_name}</strong>
+                  <code>{resource.source_token}</code>
+                </span>
+                <span class="resource-origins">
+                  {#if resource.origin.installed_content}<small
+                      >{$translation("resources-origin-installed")}</small
+                    >{/if}
+                  {#if resource.origin.recorded_save}<small
+                      >{$translation("resources-origin-save")}</small
+                    >{/if}
+                  {#if resource.origin.live_game}<small
+                      >{$translation("resources-origin-live")}</small
+                    >{/if}
+                  {#if resource.origin.player_overlay}<small
+                      >{$translation("resources-origin-overlay")}</small
+                    >{/if}
+                </span>
+              </button>
+            {/each}
+          </div>
+          <article class="resource-details">
+            {#if resourceDetails}
+              <header>
+                <div>
+                  <span class="eyebrow"
+                    >{$translation("resources-details-eyebrow")}</span
+                  >
+                  <h3>{resourceDetails.entry.display_name}</h3>
+                  <code>{resourceDetails.entry.source_token}</code>
+                </div>
+                {#if resourceDetails.entry.origin.runtime_extension}
+                  <span class="status-chip" data-status="watch"
+                    >{$translation("resources-runtime-added")}</span
+                  >
+                {/if}
+              </header>
+              <dl>
+                <div>
+                  <dt>{$translation("resources-installed-references")}</dt>
+                  <dd>
+                    {resourceDetails.entry.origin.installed_reference_count}
+                  </dd>
+                </div>
+                <div>
+                  <dt>{$translation("resources-live-index")}</dt>
+                  <dd>{resourceDetails.entry.live_index ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt>{$translation("resources-caption-id")}</dt>
+                  <dd>{resourceDetails.entry.caption_id ?? "—"}</dd>
+                </div>
+              </dl>
+              {#if resourceDetails.entry.live_prices.length}
+                <div class="live-price-grid">
+                  {#each resourceDetails.entry.live_prices as price}
+                    <article>
+                      <strong>{price.currency}</strong>
+                      <span
+                        >{$translation("resources-live-buy")}: {formatNumber(
+                          price.buy_quote,
+                          $activeLocale,
+                        )}</span
+                      >
+                      <span
+                        >{$translation("resources-live-sell")}: {formatNumber(
+                          price.sell_quote,
+                          $activeLocale,
+                        )}</span
+                      >
+                      <small
+                        >{$translation("resources-live-finished")}: {formatNumber(
+                          price.finished_price,
+                          $activeLocale,
+                        )}</small
+                      >
+                    </article>
+                  {/each}
+                </div>
+              {:else}
+                <GuidanceSurface kind="instruction" layout="compact">
+                  <strong>{$translation("resources-live-price-none")}</strong>
+                  <span>{$translation("resources-live-price-none-detail")}</span
+                  >
+                </GuidanceSurface>
+              {/if}
+            {:else}
+              <p>{$translation("resources-empty")}</p>
+            {/if}
+          </article>
+        </div>
       </section>
 
       <section class="catalogue-browser" id="catalogue-browser">
@@ -1037,6 +1435,7 @@
     font-size: 20px;
   }
   .catalogue-browser,
+  .resource-catalogue,
   .definition-dossier,
   .overlay-laboratory,
   .empty-catalogue {
@@ -1044,6 +1443,149 @@
     padding: 14px;
     border: 1px solid var(--colour-line-faint);
     background: var(--colour-surface);
+  }
+  .resource-registry-card {
+    display: grid;
+    grid-template-columns: minmax(280px, 1fr) auto;
+    gap: 12px;
+    align-items: start;
+    margin: 12px 0;
+    padding: 12px;
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface-raised);
+  }
+  .resource-registry-card h3,
+  .resource-registry-card p {
+    margin: 3px 0 0;
+  }
+  .resource-registry-card :global(.guidance-surface),
+  .resource-registry-controls,
+  .resource-message {
+    grid-column: 1 / -1;
+  }
+  .resource-registry-controls {
+    display: flex;
+    gap: 8px;
+    align-items: end;
+    flex-wrap: wrap;
+  }
+  .resource-registry-controls label:not(.resource-acknowledgement),
+  .resource-filter label {
+    display: grid;
+    gap: 4px;
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+  }
+  .resource-registry-controls select,
+  .resource-filter input,
+  .resource-filter select {
+    min-height: 34px;
+    padding: 7px;
+  }
+  .resource-acknowledgement {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 600px;
+  }
+  .resource-acknowledgement input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+  .resource-message {
+    padding: 9px;
+    border: 1px solid var(--colour-risk);
+    color: var(--colour-risk);
+  }
+  .resource-filter {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 220px auto;
+    gap: 8px;
+    align-items: end;
+    margin: 12px 0;
+  }
+  .resource-browser {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
+    gap: 10px;
+  }
+  .resource-list {
+    max-height: 420px;
+    overflow: auto;
+    border: 1px solid var(--colour-line-faint);
+  }
+  .resource-list > button {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(120px, auto);
+    gap: 8px;
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--colour-line-faint);
+    text-align: start;
+  }
+  .resource-list > button.selected {
+    box-shadow: inset 3px 0 var(--colour-gold);
+    background: var(--colour-gold-soft);
+  }
+  .resource-list strong,
+  .resource-list code {
+    display: block;
+  }
+  .resource-list code {
+    margin-top: 4px;
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+  }
+  .resource-origins {
+    display: flex;
+    justify-content: flex-end;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .resource-origins small {
+    align-self: center;
+    padding: 3px 5px;
+    border: 1px solid var(--colour-line-faint);
+    color: var(--colour-observed);
+  }
+  .resource-details {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface-raised);
+  }
+  .resource-details > header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .resource-details h3 {
+    margin: 3px 0;
+  }
+  .resource-details dl,
+  .live-price-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(100px, 1fr));
+    gap: 7px;
+    margin: 12px 0 0;
+  }
+  .resource-details dl div,
+  .live-price-grid article {
+    padding: 9px;
+    border: 1px solid var(--colour-line-faint);
+  }
+  .resource-details dt,
+  .live-price-grid small {
+    color: var(--colour-muted);
+    font-size: var(--type-caption);
+  }
+  .resource-details dd {
+    margin: 4px 0 0;
+  }
+  .live-price-grid article > * {
+    display: block;
+    margin-top: 3px;
   }
   .flow-laboratory {
     margin-bottom: 10px;
@@ -1260,7 +1802,8 @@
       grid-template-columns: repeat(3, 1fr);
     }
     .fact-ledger,
-    .overlay-editor {
+    .overlay-editor,
+    .resource-browser {
       grid-template-columns: 1fr;
     }
     .relation-ledger {
@@ -1269,13 +1812,17 @@
   }
   @media (max-width: 760px) {
     .catalogue-filter,
+    .resource-filter,
     .catalogue-table button,
     .overlay-profiles article {
       grid-template-columns: 1fr;
     }
     .catalogue-health,
     .relation-ledger,
-    .overlay-fields {
+    .overlay-fields,
+    .resource-details dl,
+    .live-price-grid,
+    .resource-registry-card {
       grid-template-columns: 1fr;
     }
   }

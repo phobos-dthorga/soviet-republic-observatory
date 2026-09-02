@@ -473,6 +473,7 @@ mod tests {
             compatibility_profile_hash: Some("hash".to_owned()),
             observation_watermark: Some("watermark".to_owned()),
             catalogue_generation_id: None,
+            resource_catalogue_revision_id: None,
             overlay_revision: None,
         };
         let mut receiver_points = Vec::new();

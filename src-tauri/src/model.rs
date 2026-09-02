@@ -802,6 +802,7 @@ pub struct AnalysisContext {
     pub compatibility_profile_hash: Option<String>,
     pub observation_watermark: Option<String>,
     pub catalogue_generation_id: Option<String>,
+    pub resource_catalogue_revision_id: Option<String>,
     pub overlay_revision: Option<String>,
 }
 

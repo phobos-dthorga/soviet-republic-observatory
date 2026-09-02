@@ -7,6 +7,7 @@ const reviewScenarios = [
   "workspace-extensions",
   "workspace-plan",
   "workspace-materials",
+  "materials-resource-catalogue",
   "workspace-population",
   "workspace-markets",
   "archive-latest",
@@ -87,6 +88,20 @@ test("native review can exercise both English wording modes without changing the
     "data-wording-mode",
     "technical",
   );
+});
+
+test("resource catalogue review uses dynamic origins and retained live evidence", async ({
+  page,
+}) => {
+  await openReview(page);
+  await selectScenario(page, "materials-resource-catalogue");
+
+  await expect(
+    page.getByRole("heading", { name: "Resource Catalogue" }),
+  ).toBeVisible();
+  await expect(page.getByText("Last verified in a game session")).toBeVisible();
+  await expect(page.getByText("ecomponents")).toBeVisible();
+  await expect(page.getByText("player_polymer")).toBeVisible();
 });
 
 async function openReview(page: Page): Promise<void> {

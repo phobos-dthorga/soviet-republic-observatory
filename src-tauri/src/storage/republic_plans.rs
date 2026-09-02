@@ -501,6 +501,7 @@ mod tests {
                 compatibility_profile_hash: Some(profile.clone()),
                 observation_watermark: Some("head".to_owned()),
                 catalogue_generation_id: None,
+                resource_catalogue_revision_id: None,
                 overlay_revision: None,
             },
             observations: vec![PopulationObservation {
