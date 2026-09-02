@@ -40,6 +40,15 @@ const MAX_PRODUCTION_PATHWAY_NODES: usize = 128;
 const MAX_PRODUCTION_PATHWAY_LINKS: usize = 256;
 pub type CatalogueRuntime = (Option<i64>, Option<i64>, Option<String>);
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct InstalledResourceEvidence {
+    pub source_token: String,
+    pub display_name: String,
+    pub installed_reference_count: u32,
+    pub installed_sources: Vec<String>,
+    pub player_overlay: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 struct WarehouseStatusCache {
     catalogue_generation: Option<CatalogueGenerationSummary>,
@@ -1949,6 +1958,85 @@ impl AnalyticalWarehouse {
             offset,
             items,
         })
+    }
+
+    pub(crate) fn installed_resource_evidence(
+        &self,
+    ) -> Result<Vec<InstalledResourceEvidence>, ObservatoryError> {
+        let connection = self.lock()?;
+        let mut references = BTreeMap::<String, (u32, BTreeSet<String>)>::new();
+        let mut reference_statement = connection.prepare(
+            "SELECT relations.target_id, revisions.source_id \
+             FROM catalogue_generation_entities membership \
+             JOIN warehouse_metadata metadata \
+               ON membership.generation_id = metadata.current_catalogue_generation_id \
+             JOIN definition_entity_revisions revisions USING(revision_hash) \
+             JOIN definition_relations relations USING(revision_hash) \
+             WHERE metadata.singleton_id = 1 \
+               AND relations.target_id LIKE 'resource::%' \
+             ORDER BY relations.target_id, revisions.source_id",
+        )?;
+        for row in reference_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (resource_id, source_id) = row?;
+            let Some(token) = resource_id.strip_prefix("resource::") else {
+                continue;
+            };
+            let entry = references.entry(token.to_owned()).or_default();
+            entry.0 = entry.0.saturating_add(1);
+            entry.1.insert(source_id);
+        }
+        drop(reference_statement);
+
+        let mut entries = Vec::new();
+        let mut statement = connection.prepare(
+            "SELECT revisions.source_object_id, revisions.display_name \
+             FROM catalogue_generation_entities membership \
+             JOIN warehouse_metadata metadata \
+               ON membership.generation_id = metadata.current_catalogue_generation_id \
+             JOIN definition_entity_revisions revisions USING(revision_hash) \
+             WHERE metadata.singleton_id = 1 \
+               AND revisions.entity_kind = 'resource' \
+             ORDER BY revisions.source_object_id",
+        )?;
+        for row in statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (source_token, display_name) = row?;
+            let (installed_reference_count, sources) =
+                references.remove(&source_token).unwrap_or_default();
+            entries.push(InstalledResourceEvidence {
+                source_token,
+                display_name,
+                installed_reference_count,
+                installed_sources: sources.into_iter().collect(),
+                player_overlay: false,
+            });
+        }
+        drop(statement);
+
+        let mut overlay_statement = connection.prepare(
+            "SELECT entity_id, display_name FROM active_overlay_entities \
+             WHERE entity_kind = 'resource' ORDER BY entity_id",
+        )?;
+        for row in overlay_statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })? {
+            let (entity_id, display_name) = row?;
+            let Some(source_token) = entity_id.rsplit("::").next() else {
+                continue;
+            };
+            entries.push(InstalledResourceEvidence {
+                source_token: source_token.to_owned(),
+                display_name,
+                installed_reference_count: 0,
+                installed_sources: Vec::new(),
+                player_overlay: true,
+            });
+        }
+        entries.sort_by(|left, right| left.source_token.cmp(&right.source_token));
+        Ok(entries)
     }
 
     pub fn production_route(

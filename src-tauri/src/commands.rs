@@ -19,7 +19,8 @@ use crate::model::{
     PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
     RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
-    RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
+    RepublicPlanWorkspace, ResourceCatalogueRequest, ResourceCatalogueView, ResourceDetails,
+    SetupState, WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -815,6 +816,28 @@ pub fn search_catalogue(
     state
         .application
         .catalogue_search(&filter)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_resource_catalogue(
+    request: ResourceCatalogueRequest,
+    state: State<'_, AppState>,
+) -> Result<ResourceCatalogueView, CommandError> {
+    state
+        .application
+        .resource_catalogue(&request)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_resource_details(
+    resource_id: String,
+    state: State<'_, AppState>,
+) -> Result<ResourceDetails, CommandError> {
+    state
+        .application
+        .resource_details(&resource_id)
         .map_err(Into::into)
 }
 

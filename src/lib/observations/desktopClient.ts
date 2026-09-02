@@ -46,6 +46,9 @@ import type {
   BroadcastOutcomeModel,
   BroadcastOutcomeRequest,
   BroadcastWorkspaceModel,
+  ResourceCatalogueRequest,
+  ResourceCatalogueView,
+  ResourceDetails,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -381,6 +384,18 @@ export function searchCatalogue(
   filter: CatalogueSearchFilter,
 ): Promise<CataloguePage> {
   return invoke<CataloguePage>("search_catalogue", { filter });
+}
+
+export function getResourceCatalogue(
+  request: ResourceCatalogueRequest,
+): Promise<ResourceCatalogueView> {
+  return invoke<ResourceCatalogueView>("get_resource_catalogue", { request });
+}
+
+export function getResourceDetails(
+  resourceId: string,
+): Promise<ResourceDetails> {
+  return invoke<ResourceDetails>("get_resource_details", { resourceId });
 }
 
 export function getDefinitionDossier(

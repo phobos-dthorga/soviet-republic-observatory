@@ -117,13 +117,13 @@ const route: ProductionRouteModel = {
 };
 
 describe("production route Sankey transformation", () => {
-  it("presents the exact electronics source tokens with player-friendly labels", () => {
+  it("uses the host-supplied label without maintaining a fixed inventory", () => {
     expect(
       productionResourceLabel("resource::eletronics", "eletronics", t),
-    ).toBe("production-resource-electronics");
+    ).toBe("eletronics");
     expect(
       productionResourceLabel("resource::ecomponents", "ecomponents", t),
-    ).toBe("production-resource-electronic-components");
+    ).toBe("ecomponents");
   });
 
   it("renders compatible definition coefficients as an open-boundary flow", () => {

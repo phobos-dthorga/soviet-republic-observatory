@@ -24,6 +24,21 @@ pub(crate) struct MarketPersistenceStats {
 }
 
 impl ObservatoryStorage {
+    pub(crate) fn recorded_market_resource_tokens(&self) -> Result<Vec<String>, ObservatoryError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT resource_token FROM market_price_facts \
+             UNION SELECT resource_token FROM market_trade_facts \
+             UNION SELECT resource_token FROM market_snapshot_price_facts \
+             UNION SELECT resource_token FROM market_snapshot_trade_facts \
+             ORDER BY resource_token LIMIT 8192",
+        )?;
+        statement
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
     pub(crate) fn market_cache_totals(&self) -> Result<(u64, u64, u64), ObservatoryError> {
         let connection = self.connect()?;
         let counts = connection

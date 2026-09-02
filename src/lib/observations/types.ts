@@ -943,6 +943,89 @@ export type CataloguePage = {
   items: DefinitionSummary[];
 };
 
+export type ResourceCatalogueOriginFilter =
+  "installed_content" | "recorded_save" | "live_game" | "player_overlay";
+
+export type ResourceCatalogueRequest = {
+  query?: string;
+  origin?: ResourceCatalogueOriginFilter;
+  limit?: number;
+  offset?: number;
+};
+
+export type ResourceOriginEvidence = {
+  installed_content: boolean;
+  recorded_save: boolean;
+  live_game: boolean;
+  runtime_extension: boolean;
+  player_overlay: boolean;
+  installed_reference_count: number;
+};
+
+export type ResourceLivePrice = {
+  currency: string;
+  finished_price: number;
+  base_price: number;
+  buy_multiplier: number;
+  sell_multiplier: number;
+  buy_quote: number;
+  sell_quote: number;
+};
+
+export type ResourceRegistryAssurance =
+  "verified_observation_only" | "player_managed_modded";
+
+export type ResourceRegistrySnapshotSummary = {
+  snapshot_id: string;
+  assurance: ResourceRegistryAssurance;
+  game_build_id: string;
+  probe_version: string;
+  loader_api_version: number;
+  captured_year: number;
+  captured_day: number;
+  captured_at_ms: number;
+  resource_count: number;
+};
+
+export type ResourceCatalogueEntry = {
+  resource_id: string;
+  source_token: string;
+  display_name: string;
+  label_source: string;
+  caption_id: number | null;
+  live_index: number | null;
+  resource_kind: number | null;
+  transport_classes: number[];
+  material_family: number | null;
+  origin: ResourceOriginEvidence;
+  live_prices: ResourceLivePrice[];
+  latest_live_snapshot_id: string | null;
+};
+
+export type ResourceCatalogueRevision = {
+  revision_id: string;
+  definition_generation_id: string | null;
+  overlay_revision: string | null;
+  live_snapshot_id: string | null;
+  entry_count: number;
+};
+
+export type ResourceCatalogueView = {
+  revision: ResourceCatalogueRevision;
+  total: number;
+  limit: number;
+  offset: number;
+  entries: ResourceCatalogueEntry[];
+};
+
+export type ResourceDetails = {
+  revision_id: string;
+  entry: ResourceCatalogueEntry;
+  installed_sources: string[];
+  recorded_profile_count: number;
+  live_snapshot: ResourceRegistrySnapshotSummary | null;
+};
+
 export type DefinitionValue = {
   value_kind: string;
   number: number | null;

@@ -23,6 +23,7 @@ mod republic_brief;
 mod republic_plan;
 mod research_setup;
 mod research_source_download;
+mod resource_catalogue;
 mod save_archive;
 mod setup_discovery;
 mod stats_parser;
@@ -156,6 +157,8 @@ pub fn run() {
             commands::clear_diagnostic_log,
             commands::rebuild_warehouse,
             commands::search_catalogue,
+            commands::get_resource_catalogue,
+            commands::get_resource_details,
             commands::get_definition_dossier,
             commands::get_production_route,
             commands::get_production_pathway,

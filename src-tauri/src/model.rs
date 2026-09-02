@@ -2180,6 +2180,107 @@ pub struct CataloguePage {
     pub items: Vec<DefinitionSummary>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceCatalogueOriginFilter {
+    InstalledContent,
+    RecordedSave,
+    LiveGame,
+    PlayerOverlay,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ResourceCatalogueRequest {
+    pub query: Option<String>,
+    pub origin: Option<ResourceCatalogueOriginFilter>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ResourceOriginEvidence {
+    pub installed_content: bool,
+    pub recorded_save: bool,
+    pub live_game: bool,
+    pub runtime_extension: bool,
+    pub player_overlay: bool,
+    pub installed_reference_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceLivePrice {
+    pub currency: String,
+    pub finished_price: f64,
+    pub base_price: f64,
+    pub buy_multiplier: f64,
+    pub sell_multiplier: f64,
+    pub buy_quote: f64,
+    pub sell_quote: f64,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceRegistryAssurance {
+    VerifiedObservationOnly,
+    PlayerManagedModded,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceRegistrySnapshotSummary {
+    pub snapshot_id: String,
+    pub assurance: ResourceRegistryAssurance,
+    pub game_build_id: String,
+    pub probe_version: String,
+    pub loader_api_version: u32,
+    pub captured_year: i32,
+    pub captured_day: u16,
+    pub captured_at_ms: i64,
+    pub resource_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceCatalogueEntry {
+    pub resource_id: String,
+    pub source_token: String,
+    pub display_name: String,
+    pub label_source: String,
+    pub caption_id: Option<u32>,
+    pub live_index: Option<u32>,
+    pub resource_kind: Option<i32>,
+    pub transport_classes: Vec<i32>,
+    pub material_family: Option<i32>,
+    pub origin: ResourceOriginEvidence,
+    pub live_prices: Vec<ResourceLivePrice>,
+    pub latest_live_snapshot_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct ResourceCatalogueRevision {
+    pub revision_id: String,
+    pub definition_generation_id: Option<String>,
+    pub overlay_revision: Option<String>,
+    pub live_snapshot_id: Option<String>,
+    pub entry_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceCatalogueView {
+    pub revision: ResourceCatalogueRevision,
+    pub total: u32,
+    pub limit: u32,
+    pub offset: u32,
+    pub entries: Vec<ResourceCatalogueEntry>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceDetails {
+    pub revision_id: String,
+    pub entry: ResourceCatalogueEntry,
+    pub installed_sources: Vec<String>,
+    pub recorded_profile_count: u32,
+    pub live_snapshot: Option<ResourceRegistrySnapshotSummary>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct DefinitionValue {
     pub value_kind: String,

@@ -26,38 +26,12 @@ export function productionRouteUnit(unit: string, t: Translator): string {
   return boundedPlainText(unit, 32);
 }
 
-/**
- * Presentation aliases are deliberately keyed by the exact source identifier.
- * They improve readability without rewriting or claiming a new semantic ID.
- */
 export function productionResourceLabel(
-  resourceId: string,
+  _resourceId: string,
   fallback: string,
-  t: Translator,
+  _t: Translator,
 ): string {
-  switch (resourceId) {
-    case "resource::eletric":
-    case "resource::electric":
-    case "resource::power":
-      return boundedPlainText(t("production-resource-electricity"), 100);
-    case "resource::water":
-      return boundedPlainText(t("production-resource-water"), 100);
-    case "resource::plants":
-      return boundedPlainText(t("production-resource-plants"), 100);
-    case "resource::oil":
-      return boundedPlainText(t("production-resource-oil"), 100);
-    case "resource::chemicals":
-      return boundedPlainText(t("production-resource-chemicals"), 100);
-    case "resource::eletronics":
-      return boundedPlainText(t("production-resource-electronics"), 100);
-    case "resource::ecomponents":
-      return boundedPlainText(
-        t("production-resource-electronic-components"),
-        100,
-      );
-    default:
-      return boundedPlainText(fallback, 100);
-  }
+  return boundedPlainText(fallback, 100);
 }
 
 function coverageFor(route: ProductionRouteModel): EvidenceCoverage {

@@ -34,7 +34,8 @@ use crate::model::{
     ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
-    RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, SetupState, WarehouseSnapshot,
+    RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, ResourceCatalogueRequest,
+    ResourceCatalogueView, ResourceDetails, SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::{hash_save_stats_payload, inspect_save_archive};
@@ -1916,6 +1917,45 @@ impl ObservatoryApplication {
         filter: &CatalogueSearchFilter,
     ) -> Result<CataloguePage, ObservatoryError> {
         self.warehouse.search(filter)
+    }
+
+    pub fn resource_catalogue(
+        &self,
+        request: &ResourceCatalogueRequest,
+    ) -> Result<ResourceCatalogueView, ObservatoryError> {
+        let installed = self
+            .warehouse
+            .installed_resource_evidence()
+            .unwrap_or_default();
+        let recorded = self.storage.recorded_market_resource_tokens()?;
+        let generation = self
+            .warehouse
+            .catalogue_generation_if_ready()
+            .map(|generation| generation.generation_id);
+        let overlay = self.storage.active_overlay_summary()?.and_then(|summary| {
+            summary
+                .active_revision
+                .map(|revision| format!("{}:{revision}", summary.profile_id))
+        });
+        crate::resource_catalogue::catalogue(installed, recorded, generation, overlay, request)
+    }
+
+    pub fn resource_details(&self, resource_id: &str) -> Result<ResourceDetails, ObservatoryError> {
+        let installed = self
+            .warehouse
+            .installed_resource_evidence()
+            .unwrap_or_default();
+        let recorded = self.storage.recorded_market_resource_tokens()?;
+        let generation = self
+            .warehouse
+            .catalogue_generation_if_ready()
+            .map(|generation| generation.generation_id);
+        let overlay = self.storage.active_overlay_summary()?.and_then(|summary| {
+            summary
+                .active_revision
+                .map(|revision| format!("{}:{revision}", summary.profile_id))
+        });
+        crate::resource_catalogue::details(installed, recorded, generation, overlay, resource_id)
     }
 
     pub fn catalogue_dossier(
