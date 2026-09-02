@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
@@ -17,7 +18,9 @@ use crate::definition_catalogue::{
 };
 use crate::diagnostics;
 use crate::error::ObservatoryError;
-use crate::game_vocabulary::{discover_game_vocabularies, resolve_game_media_directory};
+use crate::game_vocabulary::{
+    discover_game_vocabularies, load_game_vocabulary_catalogue, resolve_game_media_directory,
+};
 use crate::language_pack::{
     LanguagePackInspection, LanguageStatus, LegacyLanguageHandover, inspect_community_manifest,
 };
@@ -35,7 +38,9 @@ use crate::model::{
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
     RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, ResourceCatalogueRequest,
-    ResourceCatalogueView, ResourceDetails, SetupState, WarehouseSnapshot,
+    ResourceCatalogueView, ResourceDetails, ResourceRegistryAssurance,
+    ResourceRegistryIngestionState, ResourceRegistrySnapshotSummary, ResourceRegistryStatus,
+    SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
 use crate::save_archive::{hash_save_stats_payload, inspect_save_archive};
@@ -1937,7 +1942,10 @@ impl ObservatoryApplication {
                 .active_revision
                 .map(|revision| format!("{}:{revision}", summary.profile_id))
         });
-        crate::resource_catalogue::catalogue(installed, recorded, generation, overlay, request)
+        let live = self.storage.latest_live_resources()?;
+        crate::resource_catalogue::catalogue(
+            installed, recorded, generation, overlay, live, request,
+        )
     }
 
     pub fn resource_details(&self, resource_id: &str) -> Result<ResourceDetails, ObservatoryError> {
@@ -1955,7 +1963,144 @@ impl ObservatoryApplication {
                 .active_revision
                 .map(|revision| format!("{}:{revision}", summary.profile_id))
         });
-        crate::resource_catalogue::details(installed, recorded, generation, overlay, resource_id)
+        let live = self.storage.latest_live_resources()?;
+        crate::resource_catalogue::details(
+            installed,
+            recorded,
+            generation,
+            overlay,
+            live,
+            resource_id,
+        )
+    }
+
+    pub fn resource_registry_status(&self) -> Result<ResourceRegistryStatus, ObservatoryError> {
+        let settings = self.storage.resource_registry_settings()?;
+        let latest_snapshot = self.storage.latest_resource_registry_snapshot()?;
+        if !settings.enabled {
+            return Ok(ResourceRegistryStatus {
+                enabled: false,
+                assurance: settings.assurance,
+                state: ResourceRegistryIngestionState::Disabled,
+                latest_snapshot,
+                latest_probe_content_hash: None,
+                warning_code: None,
+            });
+        }
+        let media = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
+        let probe = tesmio_probe::inspect(media.as_deref());
+        let warning_code = probe.warnings.first().cloned();
+        let state = match probe.state {
+            crate::model::TesmioProbeState::Invalid => ResourceRegistryIngestionState::Invalid,
+            crate::model::TesmioProbeState::Missing
+            | crate::model::TesmioProbeState::NotConfigured => {
+                ResourceRegistryIngestionState::WaitingForGame
+            }
+            _ if latest_snapshot.is_some() => ResourceRegistryIngestionState::Available,
+            _ => ResourceRegistryIngestionState::WaitingForGame,
+        };
+        Ok(ResourceRegistryStatus {
+            enabled: true,
+            assurance: settings.assurance,
+            state,
+            latest_snapshot,
+            latest_probe_content_hash: probe.content_hash,
+            warning_code,
+        })
+    }
+
+    pub fn enable_resource_registry_ingestion(
+        &self,
+        assurance: ResourceRegistryAssurance,
+        acknowledged: bool,
+    ) -> Result<ResourceRegistryStatus, ObservatoryError> {
+        if !acknowledged
+            || self.storage.research_setup()?.accepted_notice_revision
+                != crate::research_setup::RESEARCH_NOTICE_REVISION
+        {
+            return Err(ObservatoryError::ResearchNoticeRequired);
+        }
+        let media = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
+        if assurance == ResourceRegistryAssurance::VerifiedObservationOnly
+            && !tesmio_probe::verify_observation_only_session(media.as_deref())
+        {
+            return Err(ObservatoryError::InvalidResearchSetup);
+        }
+        self.storage.configure_resource_registry_ingestion(
+            true,
+            Some(assurance),
+            crate::research_setup::RESEARCH_NOTICE_REVISION,
+        )?;
+        self.sync_resource_registry()?;
+        self.resource_registry_status()
+    }
+
+    pub fn disable_resource_registry_ingestion(
+        &self,
+    ) -> Result<ResourceRegistryStatus, ObservatoryError> {
+        self.storage
+            .configure_resource_registry_ingestion(false, None, 0)?;
+        self.resource_registry_status()
+    }
+
+    pub fn list_resource_registry_snapshots(
+        &self,
+    ) -> Result<Vec<ResourceRegistrySnapshotSummary>, ObservatoryError> {
+        self.storage.list_resource_registry_snapshots()
+    }
+
+    pub(crate) fn sync_resource_registry(&self) -> Result<(), ObservatoryError> {
+        let settings = self.storage.resource_registry_settings()?;
+        if !settings.enabled {
+            return Ok(());
+        }
+        if settings.acknowledged_notice_revision != crate::research_setup::RESEARCH_NOTICE_REVISION
+        {
+            return Err(ObservatoryError::ResearchNoticeRequired);
+        }
+        let Some(assurance) = settings.assurance else {
+            return Err(ObservatoryError::StorageContractViolation);
+        };
+        let media = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
+        if assurance == ResourceRegistryAssurance::VerifiedObservationOnly
+            && !tesmio_probe::verify_observation_only_session(media.as_deref())
+        {
+            return Err(ObservatoryError::InvalidResearchSetup);
+        }
+        let Some(registry) = tesmio_probe::inspect_resource_registry(media.as_deref())
+            .map_err(|_| ObservatoryError::InvalidResearchSetup)?
+        else {
+            return Ok(());
+        };
+        let media = media.ok_or(ObservatoryError::InvalidGameDirectory)?;
+        let requested = registry
+            .entries
+            .iter()
+            .map(|entry| entry.caption_id)
+            .collect::<BTreeSet<_>>();
+        let locale = self.storage.language_status()?.active_pack.locale;
+        let vocabulary = load_game_vocabulary_catalogue(&media, &locale, &requested)?;
+        let labels = requested
+            .into_iter()
+            .filter_map(|caption_id| {
+                vocabulary
+                    .resolve(caption_id)
+                    .map(|resolved| (caption_id, resolved))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let revisions = vocabulary.revisions().cloned().collect::<Vec<_>>();
+        self.storage
+            .persist_resource_registry(&registry, assurance, &labels, &revisions)?;
+        diagnostics::record(
+            "info",
+            "resource_registry.snapshot_saved",
+            "resource_registry",
+            &format!(
+                "Saved one validated live resource snapshot with {} exact resource identities.",
+                registry.entries.len()
+            ),
+        );
+        Ok(())
     }
 
     pub fn catalogue_dossier(
@@ -2116,6 +2261,18 @@ impl ObservatoryApplication {
                     self.warehouse.project_broadcast_observation(
                         &job.projection_id,
                         &projection,
+                        now_ms(),
+                    )
+                }),
+            "resource_registry_snapshot" => self
+                .run_coordinated_background_storage(|| {
+                    self.storage.live_resources(&job.source_identity)
+                })
+                .and_then(|resources| {
+                    let resources = resources.ok_or(ObservatoryError::StorageContractViolation)?;
+                    self.warehouse.project_resource_registry(
+                        &job.projection_id,
+                        &resources,
                         now_ms(),
                     )
                 }),

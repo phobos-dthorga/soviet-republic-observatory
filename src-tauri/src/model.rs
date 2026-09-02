@@ -1996,6 +1996,7 @@ pub enum WarehouseWriteKind {
     ObservationProjection,
     MarketProjection,
     BroadcastProjection,
+    ResourceRegistryProjection,
     OverlayProjection,
     BranchMembershipProjection,
     ObservationRebuild,
@@ -2228,6 +2229,32 @@ pub enum ResourceRegistryAssurance {
     PlayerManagedModded,
 }
 
+impl ResourceRegistryAssurance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::VerifiedObservationOnly => "verified_observation_only",
+            Self::PlayerManagedModded => "player_managed_modded",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "verified_observation_only" => Some(Self::VerifiedObservationOnly),
+            "player_managed_modded" => Some(Self::PlayerManagedModded),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceRegistryIngestionState {
+    Disabled,
+    WaitingForGame,
+    Available,
+    Invalid,
+}
+
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct ResourceRegistrySnapshotSummary {
     pub snapshot_id: String,
@@ -2239,6 +2266,16 @@ pub struct ResourceRegistrySnapshotSummary {
     pub captured_day: u16,
     pub captured_at_ms: i64,
     pub resource_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct ResourceRegistryStatus {
+    pub enabled: bool,
+    pub assurance: Option<ResourceRegistryAssurance>,
+    pub state: ResourceRegistryIngestionState,
+    pub latest_snapshot: Option<ResourceRegistrySnapshotSummary>,
+    pub latest_probe_content_hash: Option<String>,
+    pub warning_code: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]

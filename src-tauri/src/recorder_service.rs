@@ -31,6 +31,7 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
     .ok();
     let mut watched_directory: Option<PathBuf> = None;
     let mut last_reconciliation_ms = 0;
+    let mut last_resource_registry_sync_ms = 0;
     let mut last_enabled = false;
 
     loop {
@@ -49,6 +50,10 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
 
         let filesystem_event = receive_relevant_event(&event_receiver);
         let now = now_ms();
+        if now - last_resource_registry_sync_ms >= RECONCILIATION_INTERVAL_MS {
+            let _ = application.sync_resource_registry();
+            last_resource_registry_sync_ms = now;
+        }
         if filesystem_event {
             let _ = application.note_recorder_filesystem_event(now);
         }

@@ -17,6 +17,7 @@ mod recorder;
 mod related_navigation;
 mod republic_plans;
 mod research_setup;
+mod resource_registry;
 mod settings;
 mod snapshots;
 mod themes;
@@ -25,6 +26,7 @@ mod warehouse_jobs;
 pub(crate) use broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION;
 pub(crate) use markets::MARKET_STORAGE_CONTRACT_VERSION;
 pub(crate) use research_setup::StoredResearchSetup;
+pub(crate) use resource_registry::StoredLiveResources;
 
 #[cfg(test)]
 mod tests;

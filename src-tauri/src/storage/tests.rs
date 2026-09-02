@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use rusqlite::{Connection, params};
 use tempfile::tempdir;
 
@@ -5,12 +7,100 @@ use super::ObservatoryStorage;
 use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
     AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
-    BackgroundWorkPriority, CitizenStatusRecord, CoverageReport, CoverageStatus, MarketCurrency,
-    MarketFactRows, MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference,
-    ParsedCitizenStatusData, ParsedMarketData, ReceiverRecord, RecorderCandidateStatus,
-    RecorderDiscoverySource, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
-    SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset, WordingMode,
+    BackgroundWorkPriority, CitizenStatusRecord, CoverageReport, CoverageStatus,
+    GameVocabularySource, MarketCurrency, MarketFactRows, MarketHistoryRecord, MarketPriceRow,
+    MarketPriceSide, MotionPreference, ParsedCitizenStatusData, ParsedMarketData, ReceiverRecord,
+    RecorderCandidateStatus, RecorderDiscoverySource, ResourceRegistryAssurance, SNAPSHOT_FACTS,
+    SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    StoragePatiencePreset, WordingMode,
 };
+use crate::tesmio_probe::{ValidatedResourceEntry, ValidatedResourceRegistry};
+
+#[test]
+fn resource_registry_snapshots_are_deduplicated_without_reclassifying_assurance() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("resources.sqlite3"))
+        .expect("storage");
+    let registry = ValidatedResourceRegistry {
+        source_content_hash: "a".repeat(64),
+        probe_version: "0.2.0".to_owned(),
+        loader_api_version: 4,
+        target_game_version: "1.1.1.9".to_owned(),
+        executable_timestamp: 0x6A3E_B6AD,
+        executable_size: 10_308_608,
+        year: 2020,
+        day: 92,
+        registry_fingerprint: "0123456789abcdef".to_owned(),
+        entries: vec![ValidatedResourceEntry {
+            live_index: 57,
+            source_token: "player_resource".to_owned(),
+            caption_id: 70001,
+            resource_kind: 3,
+            transport_class_mask: 5,
+            material_family: 2,
+            finished_price_rub: 120.0,
+            finished_price_usd: 24.0,
+            base_price_rub: 80.0,
+            base_price_usd: 16.0,
+            sell_multiplier_rub: 0.8,
+            buy_multiplier_rub: 1.2,
+            sell_multiplier_usd: 0.75,
+            buy_multiplier_usd: 1.25,
+        }],
+    };
+    let labels = BTreeMap::from([(
+        70001,
+        ("Player resource".to_owned(), "runtime_caption".to_owned()),
+    )]);
+    let vocabulary = vec![GameVocabularySource {
+        source_id: "runtime-caption".to_owned(),
+        file_name: "soviet_en.btf".to_owned(),
+        locale_hint: Some("en-AU".to_owned()),
+        format: "btf".to_owned(),
+        readable: true,
+        content_hash: Some("b".repeat(64)),
+        entry_count: Some(1),
+        warning_count: 0,
+    }];
+
+    let first = storage
+        .persist_resource_registry(
+            &registry,
+            ResourceRegistryAssurance::PlayerManagedModded,
+            &labels,
+            &vocabulary,
+        )
+        .expect("first snapshot");
+    let repeated = storage
+        .persist_resource_registry(
+            &registry,
+            ResourceRegistryAssurance::PlayerManagedModded,
+            &labels,
+            &vocabulary,
+        )
+        .expect("repeated snapshot");
+    assert_eq!(first.snapshot_id, repeated.snapshot_id);
+
+    let verified = storage
+        .persist_resource_registry(
+            &registry,
+            ResourceRegistryAssurance::VerifiedObservationOnly,
+            &labels,
+            &vocabulary,
+        )
+        .expect("separately assured snapshot");
+    assert_ne!(first.snapshot_id, verified.snapshot_id);
+    assert_eq!(storage.list_resource_registry_snapshots().unwrap().len(), 2);
+
+    let live = storage
+        .live_resources(&first.snapshot_id)
+        .expect("live resource query")
+        .expect("stored live resource");
+    assert_eq!(live.entries[0].source_token, "player_resource");
+    assert!(live.entries[0].origin.runtime_extension);
+    assert_eq!(live.entries[0].live_prices[0].buy_quote, 120.0 * 1.2);
+    assert_eq!(live.entries[0].live_prices[1].sell_quote, 24.0 * 0.75);
+}
 
 #[test]
 fn application_preferences_are_bounded_atomic_and_restart_safe() {
@@ -1197,7 +1287,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        21
+        22
     );
     assert_eq!(
         migrated
@@ -1306,7 +1396,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        21
+        22
     );
     assert_eq!(
         connection

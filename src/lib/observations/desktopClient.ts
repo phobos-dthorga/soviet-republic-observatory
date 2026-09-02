@@ -49,6 +49,9 @@ import type {
   ResourceCatalogueRequest,
   ResourceCatalogueView,
   ResourceDetails,
+  ResourceRegistryAssurance,
+  ResourceRegistrySnapshotSummary,
+  ResourceRegistryStatus,
 } from "./types";
 
 export function desktopHostAvailable(): boolean {
@@ -396,6 +399,32 @@ export function getResourceDetails(
   resourceId: string,
 ): Promise<ResourceDetails> {
   return invoke<ResourceDetails>("get_resource_details", { resourceId });
+}
+
+export function getResourceRegistryStatus(): Promise<ResourceRegistryStatus> {
+  return invoke<ResourceRegistryStatus>("get_resource_registry_status");
+}
+
+export function listResourceRegistrySnapshots(): Promise<
+  ResourceRegistrySnapshotSummary[]
+> {
+  return invoke<ResourceRegistrySnapshotSummary[]>(
+    "list_resource_registry_snapshots",
+  );
+}
+
+export function enableResourceRegistryIngestion(
+  assurance: ResourceRegistryAssurance,
+  acknowledged: boolean,
+): Promise<ResourceRegistryStatus> {
+  return invoke<ResourceRegistryStatus>("enable_resource_registry_ingestion", {
+    assurance,
+    acknowledged,
+  });
+}
+
+export function disableResourceRegistryIngestion(): Promise<ResourceRegistryStatus> {
+  return invoke<ResourceRegistryStatus>("disable_resource_registry_ingestion");
 }
 
 export function getDefinitionDossier(

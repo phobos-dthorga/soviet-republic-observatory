@@ -7,6 +7,7 @@ use crate::model::{
     ResourceCatalogueEntry, ResourceCatalogueOriginFilter, ResourceCatalogueRequest,
     ResourceCatalogueRevision, ResourceCatalogueView, ResourceDetails, ResourceOriginEvidence,
 };
+use crate::storage::StoredLiveResources;
 use crate::warehouse::InstalledResourceEvidence;
 
 const MAX_RESOURCE_ENTRIES: usize = 8_192;
@@ -22,10 +23,17 @@ pub(crate) fn catalogue(
     recorded_tokens: Vec<String>,
     definition_generation_id: Option<String>,
     overlay_revision: Option<String>,
+    live: Option<StoredLiveResources>,
     request: &ResourceCatalogueRequest,
 ) -> Result<ResourceCatalogueView, ObservatoryError> {
-    let all = build_entries(installed, recorded_tokens)?;
-    let revision = revision(&all, definition_generation_id, overlay_revision);
+    let live_snapshot_id = live.as_ref().map(|live| live.summary.snapshot_id.clone());
+    let all = build_entries(installed, recorded_tokens, live.map(|live| live.entries))?;
+    let revision = revision(
+        &all,
+        definition_generation_id,
+        overlay_revision,
+        live_snapshot_id,
+    );
     let query = request.query.as_deref().unwrap_or("").trim();
     if query.len() > 120 {
         return Err(ObservatoryError::InvalidCatalogueRequest);
@@ -74,13 +82,23 @@ pub(crate) fn details(
     recorded_tokens: Vec<String>,
     definition_generation_id: Option<String>,
     overlay_revision: Option<String>,
+    live: Option<StoredLiveResources>,
     resource_id: &str,
 ) -> Result<ResourceDetails, ObservatoryError> {
     if resource_id.len() > 160 || !resource_id.starts_with("resource::") {
         return Err(ObservatoryError::InvalidCatalogueRequest);
     }
-    let all = build_entries(installed, recorded_tokens)?;
-    let revision = revision(&all, definition_generation_id, overlay_revision);
+    let live_summary = live.as_ref().map(|live| live.summary.clone());
+    let live_snapshot_id = live_summary
+        .as_ref()
+        .map(|summary| summary.snapshot_id.clone());
+    let all = build_entries(installed, recorded_tokens, live.map(|live| live.entries))?;
+    let revision = revision(
+        &all,
+        definition_generation_id,
+        overlay_revision,
+        live_snapshot_id,
+    );
     let candidate = all
         .get(resource_id)
         .ok_or(ObservatoryError::InvalidCatalogueRequest)?;
@@ -89,13 +107,19 @@ pub(crate) fn details(
         entry: candidate.entry.clone(),
         installed_sources: candidate.installed_sources.clone(),
         recorded_profile_count: u32::from(candidate.entry.origin.recorded_save),
-        live_snapshot: None,
+        live_snapshot: candidate
+            .entry
+            .origin
+            .live_game
+            .then_some(live_summary)
+            .flatten(),
     })
 }
 
 fn build_entries(
     installed: Vec<InstalledResourceEvidence>,
     recorded_tokens: Vec<String>,
+    live_entries: Option<Vec<ResourceCatalogueEntry>>,
 ) -> Result<BTreeMap<String, ResourceBuildEntry>, ObservatoryError> {
     let mut entries = BTreeMap::<String, ResourceBuildEntry>::new();
     for evidence in installed {
@@ -142,6 +166,29 @@ fn build_entries(
             .origin
             .recorded_save = true;
     }
+    for live in live_entries.unwrap_or_default() {
+        validate_token(&live.source_token)?;
+        let resource_id = live.resource_id.clone();
+        let candidate = entries
+            .entry(resource_id)
+            .or_insert_with(|| ResourceBuildEntry {
+                entry: empty_entry(&live.source_token),
+                installed_sources: Vec::new(),
+            });
+        candidate.entry.origin.live_game = true;
+        candidate.entry.origin.runtime_extension = live.origin.runtime_extension;
+        candidate.entry.caption_id = live.caption_id;
+        candidate.entry.live_index = live.live_index;
+        candidate.entry.resource_kind = live.resource_kind;
+        candidate.entry.transport_classes = live.transport_classes;
+        candidate.entry.material_family = live.material_family;
+        candidate.entry.live_prices = live.live_prices;
+        candidate.entry.latest_live_snapshot_id = live.latest_live_snapshot_id;
+        if live.label_source != "source_token" {
+            candidate.entry.display_name = live.display_name;
+            candidate.entry.label_source = live.label_source;
+        }
+    }
     if entries.len() > MAX_RESOURCE_ENTRIES {
         return Err(ObservatoryError::InvalidCatalogueRequest);
     }
@@ -176,6 +223,7 @@ fn revision(
     entries: &BTreeMap<String, ResourceBuildEntry>,
     definition_generation_id: Option<String>,
     overlay_revision: Option<String>,
+    live_snapshot_id: Option<String>,
 ) -> ResourceCatalogueRevision {
     let mut hasher = Sha256::new();
     hasher.update(b"republic-observatory-resource-catalogue.v1\0");
@@ -184,6 +232,10 @@ fn revision(
     }
     hasher.update([0]);
     if let Some(value) = &overlay_revision {
+        hasher.update(value.as_bytes());
+    }
+    hasher.update([0]);
+    if let Some(value) = &live_snapshot_id {
         hasher.update(value.as_bytes());
     }
     for candidate in entries.values() {
@@ -203,7 +255,7 @@ fn revision(
         revision_id,
         definition_generation_id,
         overlay_revision,
-        live_snapshot_id: None,
+        live_snapshot_id,
         entry_count: entries.len().min(u32::MAX as usize) as u32,
     }
 }
@@ -265,6 +317,7 @@ mod tests {
             ],
             Some("definitions".to_owned()),
             None,
+            None,
             &ResourceCatalogueRequest {
                 query: None,
                 origin: None,
@@ -288,6 +341,7 @@ mod tests {
         let view = catalogue(
             vec![installed("electronics")],
             vec!["eletronics".to_owned()],
+            None,
             None,
             None,
             &ResourceCatalogueRequest {

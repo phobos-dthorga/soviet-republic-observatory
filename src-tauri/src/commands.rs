@@ -20,7 +20,8 @@ use crate::model::{
     ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
     RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, ResourceCatalogueRequest, ResourceCatalogueView, ResourceDetails,
-    SetupState, WarehouseSnapshot,
+    ResourceRegistryAssurance, ResourceRegistrySnapshotSummary, ResourceRegistryStatus, SetupState,
+    WarehouseSnapshot,
 };
 use crate::research_setup::{
     RESEARCH_NOTICE_REVISION, ResearchBuildProgress, ResearchSetupService, ResearchSetupStatus,
@@ -838,6 +839,48 @@ pub fn get_resource_details(
     state
         .application
         .resource_details(&resource_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn get_resource_registry_status(
+    state: State<'_, AppState>,
+) -> Result<ResourceRegistryStatus, CommandError> {
+    state
+        .application
+        .resource_registry_status()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn list_resource_registry_snapshots(
+    state: State<'_, AppState>,
+) -> Result<Vec<ResourceRegistrySnapshotSummary>, CommandError> {
+    state
+        .application
+        .list_resource_registry_snapshots()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn enable_resource_registry_ingestion(
+    assurance: ResourceRegistryAssurance,
+    acknowledged: bool,
+    state: State<'_, AppState>,
+) -> Result<ResourceRegistryStatus, CommandError> {
+    state
+        .application
+        .enable_resource_registry_ingestion(assurance, acknowledged)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn disable_resource_registry_ingestion(
+    state: State<'_, AppState>,
+) -> Result<ResourceRegistryStatus, CommandError> {
+    state
+        .application
+        .disable_resource_registry_ingestion()
         .map_err(Into::into)
 }
 

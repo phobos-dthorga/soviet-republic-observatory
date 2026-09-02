@@ -17,6 +17,24 @@
 #define PERSON_STATUS 0xD8
 #define PERSON_CLASS 0x71C
 #define PERSON_MONEY_SPENT 0x734
+#define RVA_RESOURCE_VECTOR 0x9E11C0
+#define RESOURCE_STRIDE 0x340
+#define RESOURCE_MAX_RECORDS 512
+#define RESOURCE_TOKEN_BYTES 32
+#define RESOURCE_CAPTION_ID 0x40
+#define RESOURCE_KIND 0x44
+#define RESOURCE_PRICE_RUB 0x58
+#define RESOURCE_PRICE_USD 0x5C
+#define RESOURCE_BASE_RUB 0x78
+#define RESOURCE_BASE_USD 0x7C
+#define RESOURCE_MARKET_RUB 0x88
+#define RESOURCE_MARKET_USD 0xA8
+#define RESOURCE_MARKET_SELL 0x00
+#define RESOURCE_MARKET_BUY 0x04
+#define RESOURCE_CLASS_BASE 0xCC
+#define RESOURCE_CLASS_STRIDE 0x20
+#define RESOURCE_CLASS_COUNT 18
+#define RESOURCE_FAMILY 0x30C
 #define TESTED_EXE_TIMESTAMP 0x6A3EB6ADu
 #define TESTED_EXE_SIZE 10308608u
 #define SYM_TERRAIN_RENDER "?Render@C3D_TERRAIN@@QEAAX_NPEAVC3D_CAMERA@@0HH@Z"
@@ -38,6 +56,12 @@ static int g_lastDay = -1;
 static int g_lastYear = -1;
 static BYTE** g_lastBegin;
 static int g_lastCount;
+static BYTE* g_pendingResourceBegin;
+static int g_pendingResourceCount;
+static unsigned long long g_pendingResourceFingerprint;
+static int g_resourceStableFrames;
+static BYTE* g_lastCapturedWorld;
+static unsigned long long g_lastCapturedResourceFingerprint;
 
 static bool WriteLine(const char* line)
 {
@@ -89,6 +113,116 @@ static bool Finite(float value)
     return value == value && value < 3.0e38f && value > -3.0e38f;
 }
 
+static unsigned long long HashByte(unsigned long long hash, BYTE value)
+{
+    return (hash ^ value) * 1099511628211ull;
+}
+
+static bool ResourceVector(BYTE** outBegin, int* outCount)
+{
+    BYTE** vector = (BYTE**)(g_exeBase + RVA_RESOURCE_VECTOR);
+    if (!ReadablePtr(vector, 16)) return false;
+    BYTE* begin = vector[0];
+    BYTE* end = vector[1];
+    if (!begin || !end || end < begin) return false;
+    size_t bytes = (size_t)(end - begin);
+    if (bytes % RESOURCE_STRIDE) return false;
+    size_t count = bytes / RESOURCE_STRIDE;
+    if (count < 1 || count > RESOURCE_MAX_RECORDS) return false;
+    if (!ReadablePtr(begin, bytes)) return false;
+    *outBegin = begin;
+    *outCount = (int)count;
+    return true;
+}
+
+static bool ResourceToken(const BYTE* record, char* token, size_t tokenSize)
+{
+    size_t length = 0;
+    while (length < RESOURCE_TOKEN_BYTES && record[length]) length++;
+    if (length == 0 || length >= RESOURCE_TOKEN_BYTES || length + 1 > tokenSize) return false;
+    for (size_t i = 0; i < length; i++) {
+        unsigned char c = record[i];
+        if (!(isalnum(c) || c == '_' || c == '-' || c == '.')) return false;
+        token[i] = (char)c;
+    }
+    token[length] = 0;
+    return true;
+}
+
+static bool SaneResource(const BYTE* record, char* token, size_t tokenSize)
+{
+    if (!ResourceToken(record, token, tokenSize)) return false;
+    int kind = *(const int*)(record + RESOURCE_KIND);
+    int family = *(const int*)(record + RESOURCE_FAMILY);
+    if (kind < -64 || kind > 64 || family < -1 || family > 255) return false;
+    const int offsets[] = {
+        RESOURCE_PRICE_RUB, RESOURCE_PRICE_USD, RESOURCE_BASE_RUB, RESOURCE_BASE_USD,
+        RESOURCE_MARKET_RUB + RESOURCE_MARKET_SELL,
+        RESOURCE_MARKET_RUB + RESOURCE_MARKET_BUY,
+        RESOURCE_MARKET_USD + RESOURCE_MARKET_SELL,
+        RESOURCE_MARKET_USD + RESOURCE_MARKET_BUY
+    };
+    for (int offset : offsets) {
+        float value = *(const float*)(record + offset);
+        if (!Finite(value) || value < 0.0f || value > 1.0e12f) return false;
+    }
+    return true;
+}
+
+static unsigned long long ResourceFingerprint(BYTE* begin, int count)
+{
+    unsigned long long hash = 1469598103934665603ull;
+    for (int i = 0; i < count; i++) {
+        const BYTE* record = begin + (size_t)i * RESOURCE_STRIDE;
+        char token[RESOURCE_TOKEN_BYTES + 1];
+        if (!SaneResource(record, token, sizeof(token))) return 0;
+        for (const char* p = token; *p; p++) hash = HashByte(hash, (BYTE)*p);
+        hash = HashByte(hash, 0);
+    }
+    return hash ^ (unsigned long long)count;
+}
+
+static void WriteResourceEntry(const BYTE* record, int index, int sequence)
+{
+    char token[RESOURCE_TOKEN_BYTES + 1];
+    if (!ResourceToken(record, token, sizeof(token))) return;
+    unsigned classMask = 0;
+    for (int i = 0; i < RESOURCE_CLASS_COUNT; i++) {
+        float factor = *(const float*)(record + RESOURCE_CLASS_BASE + i * RESOURCE_CLASS_STRIDE);
+        if (Finite(factor) && factor > 0.0f) classMask |= 1u << i;
+    }
+    char line[2048];
+    _snprintf_s(
+        line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":2,\"record_type\":\"resource_entry\",\"sequence\":%d,\"live_index\":%d,\"source_token\":\"%s\",\"caption_id\":%u,\"resource_kind\":%d,\"transport_class_mask\":%u,\"material_family\":%d,\"finished_price_rub\":%.9g,\"finished_price_usd\":%.9g,\"base_price_rub\":%.9g,\"base_price_usd\":%.9g,\"sell_multiplier_rub\":%.9g,\"buy_multiplier_rub\":%.9g,\"sell_multiplier_usd\":%.9g,\"buy_multiplier_usd\":%.9g}",
+        sequence, index, token, *(const unsigned*)(record + RESOURCE_CAPTION_ID),
+        *(const int*)(record + RESOURCE_KIND), classMask,
+        *(const int*)(record + RESOURCE_FAMILY),
+        *(const float*)(record + RESOURCE_PRICE_RUB),
+        *(const float*)(record + RESOURCE_PRICE_USD),
+        *(const float*)(record + RESOURCE_BASE_RUB),
+        *(const float*)(record + RESOURCE_BASE_USD),
+        *(const float*)(record + RESOURCE_MARKET_RUB + RESOURCE_MARKET_SELL),
+        *(const float*)(record + RESOURCE_MARKET_RUB + RESOURCE_MARKET_BUY),
+        *(const float*)(record + RESOURCE_MARKET_USD + RESOURCE_MARKET_SELL),
+        *(const float*)(record + RESOURCE_MARKET_USD + RESOURCE_MARKET_BUY));
+    WriteLine(line);
+}
+
+static void CaptureResourceRegistry(BYTE* begin, int count, int year, int day,
+                                    unsigned long long fingerprint)
+{
+    if (g_records + count + 1 > g_maxRecords) return;
+    int sequence = ++g_sequence;
+    char line[512];
+    _snprintf_s(line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":2,\"record_type\":\"resource_registry\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"resource_count\":%d,\"registry_fingerprint\":\"%016llx\"}",
+        sequence, year, day, count, fingerprint);
+    if (!WriteLine(line)) return;
+    for (int i = 0; i < count; i++)
+        WriteResourceEntry(begin + (size_t)i * RESOURCE_STRIDE, i, sequence);
+}
+
 static bool SanePerson(BYTE* person)
 {
     if (!person || !ReadablePtr(person, PERSON_SIZE)) return false;
@@ -111,7 +245,7 @@ static void WriteSession(void)
     char line[2048];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":1,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.1.0\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
+        "{\"schema_version\":2,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.2.0\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"resource_stride\":832,\"resource_vector_rva\":\"0x9E11C0\",\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
         TSM_API_VERSION, ExeTimestamp(), (unsigned long long)g_exeSize, PERSON_SIZE);
     WriteLine(line);
 }
@@ -122,7 +256,7 @@ static void WriteSample(BYTE* person, int sequence, int sampleIndex, int vectorI
     char line[4096];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":1,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
+        "{\"schema_version\":2,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
         sequence, sampleIndex, vectorIndex, year, day,
         *(BYTE**)(person + PERSON_CURRENT_BUILDING) ? "true" : "false",
         *(float*)(person + PERSON_AGE), *(float*)(person + PERSON_EDUCATION),
@@ -156,7 +290,7 @@ static void Snapshot(BYTE** begin, int count, int year, int day)
     int sequence = ++g_sequence;
     char line[512];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":1,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
+        "{\"schema_version\":2,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
         sequence, year, day, count, valid);
     WriteLine(line);
     for (int i = 0; i < valid; i++)
@@ -170,6 +304,28 @@ static void Tick(void)
     int day = *(const int*)(world + OFF_DAY);
     int year = *(const int*)(world + OFF_YEAR);
     if (day < 0 || day > 365 || year < 1900 || year > 10000) return;
+    BYTE* resourceBegin = NULL;
+    int resourceCount = 0;
+    if (ResourceVector(&resourceBegin, &resourceCount)) {
+        unsigned long long fingerprint = ResourceFingerprint(resourceBegin, resourceCount);
+        if (fingerprint && resourceBegin == g_pendingResourceBegin &&
+            resourceCount == g_pendingResourceCount &&
+            fingerprint == g_pendingResourceFingerprint) {
+            g_resourceStableFrames++;
+        } else {
+            g_pendingResourceBegin = resourceBegin;
+            g_pendingResourceCount = resourceCount;
+            g_pendingResourceFingerprint = fingerprint;
+            g_resourceStableFrames = 1;
+        }
+        if (fingerprint && g_resourceStableFrames >= 2 &&
+            (world != g_lastCapturedWorld ||
+             fingerprint != g_lastCapturedResourceFingerprint)) {
+            CaptureResourceRegistry(resourceBegin, resourceCount, year, day, fingerprint);
+            g_lastCapturedWorld = world;
+            g_lastCapturedResourceFingerprint = fingerprint;
+        }
+    }
     BYTE** begin = NULL;
     int count = People(&begin);
     if (count <= 0) return;
@@ -208,7 +364,7 @@ static void ReadSettings(void)
     if (g_samples > MAX_SAMPLES) g_samples = MAX_SAMPLES;
     if (g_everyDays < 1) g_everyDays = 1;
     if (g_everyDays > 365) g_everyDays = 365;
-    if (g_maxRecords < 257) g_maxRecords = 257;
+    if (g_maxRecords < 1025) g_maxRecords = 1025;
     if (g_maxRecords > 8192) g_maxRecords = 8192;
 }
 
@@ -218,7 +374,7 @@ extern "C" __declspec(dllexport) int TsmPluginInit(const TsmHost* host, TsmPlugi
 {
     TsmBind(host);
     info->name = "Republic Observatory read-only probe";
-    info->version = "0.1.0";
+    info->version = "0.2.0";
     ReadSettings();
     unsigned timestamp = ExeTimestamp();
     if (!g_enabled) return 1;

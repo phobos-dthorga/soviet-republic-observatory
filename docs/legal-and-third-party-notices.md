@@ -16,14 +16,21 @@ assets, save archives, installed definitions, or proprietary binaries.
 ## Local application data
 
 Observed-save metadata, normalized facts, settings, catalogue generations,
-planning overlays, language packs, themes, and analytical databases remain
-local to the player's computer. The current application has no required
-network service and keeps no credentials. Its only optional network action is
-an explicitly confirmed download of one reviewed TesmioLoader source revision
-from GitHub. GitHub receives normal connection details, including the player's
-IP address. Its SQLite and DuckDB files are therefore intentionally
-unencrypted; future credentials, if any, require an operating-system credential
-vault and a new threat model.
+planning overlays, language packs, themes, analytical databases, and optional
+validated resource-registry readings remain local to the player's computer.
+The retained resource reading contains only reviewed resource fields and the
+prices observed in one captured game session. It is immutable, deduplicated,
+and labelled as an earlier session after restart. It never replaces save-backed
+Markets history.
+
+Anonymous person samples remain temporary and are not imported into the
+application databases. The current application has no required network service
+and keeps no credentials. Its only optional network action is an explicitly
+confirmed download of one reviewed TesmioLoader source revision from GitHub.
+GitHub receives normal connection details, including the player's IP address.
+Its SQLite and DuckDB files are therefore intentionally unencrypted; future
+credentials, if any, require an operating-system credential vault and a new
+threat model.
 
 ## Software licences
 
@@ -58,7 +65,7 @@ sandbox claim.
 
 ## Read-only research contract
 
-The reviewed experiment:
+The reviewed probe:
 
 - reads bounded fields from objects already loaded by the game;
 - installs one chainable observation hook and calls the original function;
@@ -77,23 +84,47 @@ test republic for initial experiments.
 TesmioLoader is a general modding platform and is not inherently read-only. Its
 compiled defaults enable virtual-file redirection, save-manifest handling, and
 the loading of plugin DLLs; upstream gameplay plugins may intentionally alter
-the simulation or write content. The Observatory experiment is within this
-contract only when its documented observation-only settings are active, the
-Observatory companion is the sole plugin DLL, both executable identity gates
-remain enabled, and the supplied configuration verifier passes before launch.
-The verifier does not convert the process into a sandbox.
+the simulation or write content. The complete loader session qualifies for
+Observatory's observation-only badge only when the restricted settings are
+active, the Observatory companion is the sole plugin DLL, both identity gates
+remain enabled, and the supplied check passes. The check does not convert the
+process into a sandbox.
 
-The experiment is optional. An unavailable, invalid, incompatible, or absent
-probe cannot block save observation, Archive, catalogue refresh, or aggregate
-Population analytics.
+The probe can also emit one bounded resource-registry record after the game
+registry remains stable across consecutive rendered frames. It contains exact
+resource tokens, a bounded caption, reviewed type fields, RUB and USD prices,
+and validated buy and sell multipliers. It emits no raw records, pointers,
+assets, paths, callbacks, or executable configuration. Observatory derives the
+displayed buy and sell quotes and may retain the validated record only after
+the player explicitly enables ingestion.
+
+Two assurance modes are available:
+
+- **Verified observation-only session** requires the documented restricted
+  loader settings, the Observatory companion as the sole plugin DLL, both
+  executable identity gates, and a fresh successful verification before each
+  reading.
+- **Player-managed modded session** validates Observatory's own probe and
+  telemetry contract but does not install, enable, disable, or certify other
+  plugins. The whole TesmioLoader session is not described as observation-only.
+
+Both modes are optional. An unavailable, invalid, incompatible, disabled, or
+absent probe cannot block save observation, Archive, installed-resource
+browsing, catalogue refresh, Markets history, or aggregate Population
+analytics.
 
 ## Evidence boundary
 
 Probe records are reverse-engineering evidence. A vector position is not a
-stable citizen identity. Sampled fields do not prove family relationships,
-causal effects, or a continuous life history. Republic Observatory must keep
-those features unavailable until independent save/runtime observations and
-fixtures establish a safe contract.
+stable citizen identity. Sampled person fields do not prove family
+relationships, causal effects, or a continuous life history. They are not
+retained by Observatory.
+
+A retained resource-registry reading describes only the captured session. It
+does not prove that the same resources or prices remain active after restart,
+and it is never attached to an earlier save as historical evidence. Exact
+source tokens establish resource identity; captions, live indices, and similar
+names do not.
 
 ## Warranty
 

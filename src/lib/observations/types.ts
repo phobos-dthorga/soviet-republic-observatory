@@ -978,6 +978,9 @@ export type ResourceLivePrice = {
 export type ResourceRegistryAssurance =
   "verified_observation_only" | "player_managed_modded";
 
+export type ResourceRegistryIngestionState =
+  "disabled" | "waiting_for_game" | "available" | "invalid";
+
 export type ResourceRegistrySnapshotSummary = {
   snapshot_id: string;
   assurance: ResourceRegistryAssurance;
@@ -988,6 +991,15 @@ export type ResourceRegistrySnapshotSummary = {
   captured_day: number;
   captured_at_ms: number;
   resource_count: number;
+};
+
+export type ResourceRegistryStatus = {
+  enabled: boolean;
+  assurance: ResourceRegistryAssurance | null;
+  state: ResourceRegistryIngestionState;
+  latest_snapshot: ResourceRegistrySnapshotSummary | null;
+  latest_probe_content_hash: string | null;
+  warning_code: string | null;
 };
 
 export type ResourceCatalogueEntry = {

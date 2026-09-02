@@ -24,12 +24,16 @@ for the plain-language boundary. That document is not legal advice.
 
 The probe installs one chainable IAT observation hook on the engine's render
 call. It calls the original function first, then periodically reads a bounded,
-spread sample from the live `Person*` vector. It emits one fixed JSONL file in
-TesmioLoader's own build directory: `republic-observatory-probe.jsonl`.
+spread sample from the live `Person*` vector. After the resource registry is
+stable across consecutive rendered frames, it also emits one bounded registry
+record. It writes one fixed JSONL file in TesmioLoader's own build directory:
+`republic-observatory-probe.jsonl`.
 
-The records contain a session contract, date/population snapshots, and bounded
-anonymous samples of candidate person fields. `vector_index` is ephemeral and
-must never be treated as a stable citizen ID.
+The records contain a session contract, date/population snapshots, bounded
+anonymous samples of candidate person fields, and a reviewed resource-registry
+contract. The resource record is limited to exact tokens, caption IDs and
+captions, reviewed kind fields, RUB/USD prices, and buy/sell multipliers.
+`vector_index` is ephemeral and must never be treated as a stable citizen ID.
 
 The probe does **not**:
 
@@ -39,6 +43,7 @@ The probe does **not**:
 - open SQLite or DuckDB;
 - use the network;
 - emit names, raw pointers, full objects, or arbitrary paths;
+- emit raw resource records, callbacks, assets, or executable configuration;
 - establish family links, stable identity, causality, or life histories.
 
 The app's source and configuration audits are regression guardrails, not proof
@@ -52,8 +57,10 @@ defaults enable virtual-file redirection, save-manifest reads and writes, and
 the loading of every plugin DLL that has not been explicitly disabled. Some
 upstream example plugins intentionally change the simulation or write content.
 
-Republic Observatory's read-only contract therefore applies only when all of
-the following are true:
+Republic Observatory provides two explicit assurance modes.
+
+**Verified observation-only session** applies only when all of the following
+are true:
 
 - the reviewed `observatory_probe.dll` is the only DLL in `plugins\`;
 - the exact settings in
@@ -64,6 +71,12 @@ the following are true:
 
 The verifier reads the selected installation but does not alter it or the game.
 It cannot turn same-process native code into a sandbox.
+
+**Player-managed modded session** permits plugins that the player manages. In
+this mode Observatory validates its own probe and telemetry but does not
+inspect, enable, disable, or certify other plugins. The complete TesmioLoader
+session is not certified as observation-only. Both modes require separate
+acknowledgement before Observatory retains a resource reading.
 
 ## Exact reviewed build gate
 
@@ -115,15 +128,21 @@ Only after reading the in-app **Legal & notices → Read-only research** screen:
 7. Confirm TesmioLoader's log says the probe is armed. An unsupported build must
    instead say it was refused.
 8. Open the Observatory Population workspace. Rust reads only the fixed JSONL
-   file, validates it, and shows aggregate probe status.
+   file, validates it, and shows aggregate person-probe status.
+9. To reconcile resources, explicitly enable one assurance mode in the
+   Materials Resource Catalogue. Observatory may then retain the validated
+   resource registry and its prices in local application data.
 
-Delete the two manually copied plugin files to remove the companion. The
-telemetry file is not imported or retained by Observatory.
+Delete the two manually copied plugin files to remove the companion. Anonymous
+person samples are never retained by Observatory. Opted-in resource readings
+are retained as immutable local snapshots and are labelled **Last verified in
+a game session** after restart. They never become historical save facts.
 
 ## Bounds
 
-The source clamps settings to 1–32 people, 1–365 days, 257–8,192 total records,
-and exactly one fixed output file. The Rust reader independently caps the file
+The source clamps settings to 1–32 people, 1–365 days, 1,025–8,192 total
+records, at most 512 resource entries, and exactly one fixed output file. The
+Rust reader independently caps the file
 at 4 MiB, 8,192 lines, and 16 KiB per line, rejects unknown fields, rejects
 write/network capability claims, and rejects paths that escape the configured
 game directory.

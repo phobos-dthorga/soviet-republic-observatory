@@ -30,6 +30,11 @@ const required = [
   'writes_save_data\\":false',
   'writes_observatory_databases\\":false',
   'network_access\\":false',
+  'record_type\\":\\"resource_registry',
+  'record_type\\":\\"resource_entry',
+  "RVA_RESOURCE_VECTOR 0x9E11C0",
+  "RESOURCE_STRIDE 0x340",
+  "RESOURCE_MAX_RECORDS 512",
   "ReadablePtr",
   "FaultFilter",
 ];
@@ -108,7 +113,7 @@ for (const marker of requiredDownloadBoundary) {
 }
 for (const marker of [
   'pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a"',
-  "pub const RESEARCH_NOTICE_REVISION: u32 = 2",
+  "pub const RESEARCH_NOTICE_REVISION: u32 = 3",
   '"d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49"',
   '"33c9fae4acb1041708c7b1b4675b0eb4740f0af737e7a1968c0acb0c325fff3c"',
   "reviewed_header_hash",

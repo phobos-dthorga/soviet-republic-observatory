@@ -138,6 +138,14 @@
               <h3>{$translation("legal-research-evidence-title")}</h3>
               <p>{$translation("legal-research-evidence-detail")}</p>
             </article>
+            <article data-kind="observed">
+              <h3>{$translation("legal-resource-readings-title")}</h3>
+              <p>{$translation("legal-resource-readings-detail")}</p>
+            </article>
+            <article data-kind="risk">
+              <h3>{$translation("legal-assurance-modes-title")}</h3>
+              <p>{$translation("legal-assurance-modes-detail")}</p>
+            </article>
             <button
               type="button"
               class="research-setup-link"

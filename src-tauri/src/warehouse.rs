@@ -26,11 +26,12 @@ use crate::model::{
 use crate::planning_overlay::{
     OverlayOperationKind, OverlayValue, OverlayValueKind, PlanningOverlayDocument,
 };
+use crate::storage::StoredLiveResources;
 use crate::warehouse_governor::{
     WarehouseGovernor, WarehouseGovernorSnapshot, WarehouseWritePermit,
 };
 
-pub const WAREHOUSE_SCHEMA_VERSION: u32 = 8;
+pub const WAREHOUSE_SCHEMA_VERSION: u32 = 9;
 pub const PROJECTOR_VERSION: &str = "republic-observatory-projector.v3";
 const MAX_PRODUCTION_ROUTE_RELATIONS: usize = 63;
 const MAX_PRODUCTION_PATHWAY_DEPTH: u32 = 6;
@@ -215,6 +216,10 @@ const MIGRATIONS: &[(u32, &str)] = &[
     (
         8,
         include_str!("../warehouse_migrations/0008_broadcast_status.sql"),
+    ),
+    (
+        9,
+        include_str!("../warehouse_migrations/0009_resource_registry.sql"),
     ),
 ];
 
@@ -995,6 +1000,109 @@ impl AnalyticalWarehouse {
         Ok(())
     }
 
+    pub fn project_resource_registry(
+        &self,
+        projection_id: &str,
+        resources: &StoredLiveResources,
+        applied_at_ms: i64,
+    ) -> Result<(), ObservatoryError> {
+        let mut connection = self.lock()?;
+        if receipt_exists(&connection, projection_id)? {
+            self.governor.note_success();
+            return Ok(());
+        }
+        let rows_total = 1_u64.saturating_add(
+            resources
+                .entries
+                .iter()
+                .map(|entry| 1_u64.saturating_add(entry.live_prices.len() as u64))
+                .sum::<u64>(),
+        );
+        let permit = self
+            .governor
+            .begin(WarehouseWriteKind::ResourceRegistryProjection, rows_total)?;
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO resource_registry_snapshots VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+             ON CONFLICT DO NOTHING",
+            params![
+                resources.summary.snapshot_id,
+                resources.summary.assurance.as_str(),
+                resources.summary.game_build_id,
+                resources.summary.probe_version,
+                resources.summary.loader_api_version,
+                resources.summary.captured_year,
+                resources.summary.captured_day,
+                resources.summary.captured_at_ms,
+                resources.summary.resource_count,
+            ],
+        )?;
+        let mut rows_written = 1_u64;
+        for entry in &resources.entries {
+            let class_mask = entry
+                .transport_classes
+                .iter()
+                .filter(|class| **class >= 0 && **class < 18)
+                .fold(0_u32, |mask, class| mask | (1_u32 << *class as u32));
+            transaction.execute(
+                "INSERT INTO resource_registry_entries VALUES(\
+                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10\
+                 ) ON CONFLICT DO NOTHING",
+                params![
+                    resources.summary.snapshot_id,
+                    entry.live_index,
+                    entry.source_token,
+                    entry.display_name,
+                    entry.label_source,
+                    entry.caption_id,
+                    entry.resource_kind,
+                    class_mask,
+                    entry.material_family,
+                    entry.origin.runtime_extension,
+                ],
+            )?;
+            rows_written = rows_written.saturating_add(1);
+            for price in &entry.live_prices {
+                transaction.execute(
+                    "INSERT INTO resource_registry_prices VALUES(\
+                         ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9\
+                     ) ON CONFLICT DO NOTHING",
+                    params![
+                        resources.summary.snapshot_id,
+                        entry.live_index,
+                        price.currency,
+                        price.finished_price,
+                        price.base_price,
+                        price.buy_multiplier,
+                        price.sell_multiplier,
+                        price.buy_quote,
+                        price.sell_quote,
+                    ],
+                )?;
+                rows_written = rows_written.saturating_add(1);
+            }
+            if rows_written == rows_total || rows_written.is_multiple_of(256) {
+                permit.progress(WarehouseWriteStage::Staging, rows_written);
+            }
+        }
+        permit.progress(WarehouseWriteStage::Merging, rows_total);
+        record_receipt(
+            &transaction,
+            projection_id,
+            "resource_registry_snapshot",
+            &resources.summary.snapshot_id,
+            applied_at_ms,
+        )?;
+        transaction.execute(
+            "UPDATE warehouse_metadata SET last_projection_ms = ?1 WHERE singleton_id = 1",
+            [applied_at_ms],
+        )?;
+        permit.progress(WarehouseWriteStage::Committing, rows_total);
+        transaction.commit()?;
+        permit.complete();
+        Ok(())
+    }
+
     pub(crate) fn broadcast_projection_available(
         &self,
         interpretation_id: &str,
@@ -1618,12 +1726,15 @@ impl AnalyticalWarehouse {
         transaction.execute("DELETE FROM broadcast_status_facts", [])?;
         transaction.execute("DELETE FROM broadcast_status_observation_records", [])?;
         transaction.execute("DELETE FROM broadcast_status_records", [])?;
+        transaction.execute("DELETE FROM resource_registry_prices", [])?;
+        transaction.execute("DELETE FROM resource_registry_entries", [])?;
+        transaction.execute("DELETE FROM resource_registry_snapshots", [])?;
         transaction.execute("DELETE FROM branch_observation_memberships", [])?;
         transaction.execute("DELETE FROM branch_membership_generations", [])?;
         transaction.execute(
             "DELETE FROM projection_receipts \
              WHERE projection_kind IN ('observation', 'market_observation', \
-                 'broadcast_observation', 'branch_membership')",
+                 'broadcast_observation', 'resource_registry_snapshot', 'branch_membership')",
             [],
         )?;
         record_receipt(
