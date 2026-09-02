@@ -115,6 +115,7 @@ const workspacePrefixes = {
   Plan: ["plan"],
   Materials: ["catalogue", "production"],
   Population: ["population"],
+  Environment: ["environment"],
   Markets: ["markets"],
   Archive: ["archive"],
 };

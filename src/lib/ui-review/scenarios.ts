@@ -16,6 +16,7 @@ export const UI_REVIEW_SCENARIOS = [
   "materials-warehouse-attention",
   "production-pathway",
   "workspace-population",
+  "workspace-environment",
   "workspace-markets",
   "markets-indexing",
   "markets-paused",

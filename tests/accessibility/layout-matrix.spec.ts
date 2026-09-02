@@ -9,6 +9,7 @@ const workspaces = [
   "Plan",
   "Materials",
   "Population",
+  "Environment",
   "Markets",
   "Archive",
 ];

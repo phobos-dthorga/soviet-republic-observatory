@@ -9,6 +9,7 @@ const reviewScenarios = [
   "workspace-materials",
   "materials-resource-catalogue",
   "workspace-population",
+  "workspace-environment",
   "workspace-markets",
   "archive-latest",
   "dialog-language",

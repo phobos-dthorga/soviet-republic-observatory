@@ -32,12 +32,83 @@ const completeProgress = {
   ],
 };
 
+const idleDownloadProgress = {
+  task_id: "research_source_download",
+  run_id: "not_started",
+  state: "idle",
+  phase: "idle",
+  progress_percent: null,
+  transferred_bytes: 0,
+  expected_bytes: null,
+  started_at_ms: null,
+  updated_at_ms: null,
+  current_item: null,
+  error_code: null,
+};
+
+const runningDownloadProgress = {
+  ...idleDownloadProgress,
+  run_id: "ui-audit-download",
+  state: "running",
+  phase: "downloading",
+  progress_percent: 42,
+  transferred_bytes: 640_000,
+  expected_bytes: 1_450_928,
+  started_at_ms: 10,
+  updated_at_ms: 20,
+  current_item: "reviewed_source_archive",
+};
+
+const completeDownloadProgress = {
+  ...runningDownloadProgress,
+  state: "complete",
+  phase: "complete",
+  progress_percent: 100,
+  transferred_bytes: 1_450_928,
+  updated_at_ms: 30,
+  current_item: "download_complete",
+};
+
+const idleSessionProgress = {
+  task_id: "research_session_preparation",
+  run_id: "not_started",
+  state: "idle",
+  phase: "idle",
+  progress_percent: null,
+  started_at_ms: null,
+  updated_at_ms: null,
+  current_item: null,
+  log_lines: [],
+  error_code: null,
+};
+
+const runningSessionProgress = {
+  ...idleSessionProgress,
+  run_id: "ui-audit-session",
+  state: "running",
+  phase: "installing",
+  progress_percent: 70,
+  started_at_ms: 10,
+  updated_at_ms: 20,
+  current_item: "isolated_game_folder",
+};
+
+const completeSessionProgress = {
+  ...runningSessionProgress,
+  state: "complete",
+  phase: "complete",
+  progress_percent: 100,
+  updated_at_ms: 30,
+  current_item: "ready_for_confirmed_launch",
+};
+
 const readyStatus = {
-  notice_revision: 1,
+  notice_revision: 4,
   notice_accepted: true,
   source_available: true,
   compiler_available: true,
   checkout_state: "reviewed",
+  source_origin: "manual_checkout",
   checkout_name: "Reviewed TesmioLoader checkout",
   reviewed_tesmio_revision: "3baa141f9f08921aea9c95f0a400289cabd9960a",
   probe_built: false,
@@ -47,9 +118,26 @@ const readyStatus = {
   output_display_path: null,
   last_built_at_ms: null,
   can_build: true,
+  can_download: true,
   blockers: [],
   warnings: [],
   progress: idleProgress,
+  download_progress: idleDownloadProgress,
+  session: {
+    state: "prerequisites_required",
+    game_configured: true,
+    reviewed_loader_source_available: true,
+    probe_ready: false,
+    report_snapshot_count: 0,
+    report_collection_stage: null,
+    managed_folder: "W&R/tesmioloader/observatory",
+    can_prepare: false,
+    can_launch: false,
+    writes_game_directory: true,
+    writes_save_data: false,
+    changes_running_game_memory: true,
+    progress: idleSessionProgress,
+  },
 };
 
 const completeStatus = {
@@ -63,6 +151,33 @@ const completeStatus = {
     "research/tesmioloader-probe/build/observatory_probe.dll",
   last_built_at_ms: 2,
   progress: completeProgress,
+  session: {
+    ...readyStatus.session,
+    state: "ready_to_prepare",
+    probe_ready: true,
+    can_prepare: true,
+  },
+};
+
+const preparedStatus = {
+  ...completeStatus,
+  session: {
+    ...completeStatus.session,
+    state: "prepared",
+    can_prepare: true,
+    can_launch: true,
+    progress: completeSessionProgress,
+  },
+};
+
+const waitingForWorldStatus = {
+  ...preparedStatus,
+  session: {
+    ...preparedStatus.session,
+    state: "report_available",
+    report_snapshot_count: 0,
+    report_collection_stage: "waiting_for_loaded_republic",
+  },
 };
 
 async function openResearchSetup(page: Page): Promise<void> {
@@ -77,10 +192,27 @@ async function openResearchSetup(page: Page): Promise<void> {
 
 async function installResearchHostMock(page: Page): Promise<void> {
   await page.evaluate(
-    ({ ready, complete, idle, finished }) => {
+    ({
+      ready,
+      complete,
+      idle,
+      finished,
+      idleDownload,
+      runningDownload,
+      finishedDownload,
+      idleSession,
+      runningSession,
+      finishedSession,
+      prepared,
+      waitingForWorld,
+    }) => {
       let built = false;
+      let downloaded = false;
+      let sessionPrepared = false;
+      let sessionLaunched = false;
       let callbackId = 0;
       const callbacks = new Map<number, (...args: unknown[]) => void>();
+      const listeners = new Map<string, number>();
       Object.assign(globalThis, { isTauri: true });
       Object.assign(window, {
         __TAURI_INTERNALS__: {
@@ -92,16 +224,127 @@ async function installResearchHostMock(page: Page): Promise<void> {
           unregisterCallback(id: number) {
             callbacks.delete(id);
           },
-          async invoke(command: string) {
-            if (command === "plugin:event|listen") return 1;
+          async invoke(command: string, args?: Record<string, unknown>) {
+            if (command === "plugin:event|listen") {
+              if (
+                typeof args?.event === "string" &&
+                typeof args?.handler === "number"
+              ) {
+                listeners.set(args.event, args.handler);
+              }
+              return 1;
+            }
             if (command === "plugin:event|unlisten") return null;
             if (command === "get_research_setup")
-              return structuredClone(built ? complete : ready);
+              return structuredClone(
+                sessionLaunched
+                  ? waitingForWorld
+                  : sessionPrepared
+                    ? prepared
+                    : built
+                      ? complete
+                      : downloaded
+                        ? {
+                            ...ready,
+                            source_origin: "observatory_downloaded",
+                            download_progress: finishedDownload,
+                          }
+                        : ready,
+              );
+            if (command === "get_research_report_status") {
+              return {
+                state: sessionLaunched ? "available" : "missing",
+                read_only: true,
+                optional: true,
+                persisted: false,
+                probe_id: sessionLaunched
+                  ? "org.republic-observatory.tesmio-readonly"
+                  : null,
+                probe_version: sessionLaunched ? "0.2.3" : null,
+                loader_api_version: sessionLaunched ? 4 : null,
+                target_game_version: sessionLaunched ? "1.1.1.9" : null,
+                executable_timestamp: sessionLaunched ? 1782494893 : null,
+                content_hash: null,
+                snapshot_count: 0,
+                sample_count: 0,
+                latest_year: null,
+                latest_day: null,
+                latest_population_count: null,
+                collection_stage: sessionLaunched
+                  ? "waiting_for_loaded_republic"
+                  : null,
+                warnings: [],
+              };
+            }
             if (command === "get_research_build_progress")
               return structuredClone(built ? finished : idle);
+            if (command === "get_research_source_download_progress")
+              return structuredClone(
+                downloaded ? finishedDownload : idleDownload,
+              );
+            if (command === "get_research_session_progress")
+              return structuredClone(
+                sessionPrepared ? finishedSession : idleSession,
+              );
+            if (command === "download_reviewed_tesmio_source") {
+              const handler = listeners.get(
+                "research-source-download-progress",
+              );
+              if (handler != null) {
+                callbacks.get(handler)?.({
+                  event: "research-source-download-progress",
+                  id: 1,
+                  payload: structuredClone(runningDownload),
+                });
+              }
+              await new Promise((resolve) => setTimeout(resolve, 350));
+              downloaded = true;
+              if (handler != null) {
+                callbacks.get(handler)?.({
+                  event: "research-source-download-progress",
+                  id: 1,
+                  payload: structuredClone(finishedDownload),
+                });
+              }
+              return structuredClone({
+                ...ready,
+                source_origin: "observatory_downloaded",
+                download_progress: finishedDownload,
+              });
+            }
             if (command === "build_research_probe") {
               built = true;
               return structuredClone(complete);
+            }
+            if (command === "prepare_observation_only_session") {
+              if (args?.gameDirectoryWriteConfirmed !== true) {
+                throw new Error("Missing explicit game-folder consent");
+              }
+              const handler = listeners.get("research-session-progress");
+              if (handler != null) {
+                callbacks.get(handler)?.({
+                  event: "research-session-progress",
+                  id: 2,
+                  payload: structuredClone(runningSession),
+                });
+              }
+              await new Promise((resolve) => setTimeout(resolve, 350));
+              sessionPrepared = true;
+              if (handler != null) {
+                callbacks.get(handler)?.({
+                  event: "research-session-progress",
+                  id: 2,
+                  payload: structuredClone(finishedSession),
+                });
+              }
+              return structuredClone(prepared);
+            }
+            if (command === "launch_observation_only_session") {
+              if (args?.runningGameMemoryConfirmed !== true) {
+                throw new Error("Missing explicit live-memory consent");
+              }
+              sessionLaunched = true;
+              return structuredClone(waitingForWorld);
             }
             if (command === "attention_cue_status") {
               return {
@@ -123,6 +366,14 @@ async function installResearchHostMock(page: Page): Promise<void> {
       complete: completeStatus,
       idle: idleProgress,
       finished: completeProgress,
+      idleDownload: idleDownloadProgress,
+      runningDownload: runningDownloadProgress,
+      finishedDownload: completeDownloadProgress,
+      idleSession: idleSessionProgress,
+      runningSession: runningSessionProgress,
+      finishedSession: completeSessionProgress,
+      prepared: preparedStatus,
+      waitingForWorld: waitingForWorldStatus,
     },
   );
 }
@@ -206,6 +457,96 @@ test("completed build reveals a whole result region without a clipped step", asy
     caret: "hide",
     maxDiffPixelRatio: 0.01,
   });
+});
+
+test("source confirmation yields to detailed foreground download progress", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await installResearchHostMock(page);
+  await page.getByRole("button", { name: "Legal & notices" }).click();
+  await page.getByRole("tab", { name: "Read-only research" }).click();
+  await page.getByRole("button", { name: "Open research setup" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Experimental Research Setup",
+  });
+
+  await dialog
+    .getByRole("button", { name: "Download reviewed source" })
+    .click();
+  const confirmation = page.getByRole("dialog", {
+    name: "Download reviewed source from GitHub?",
+  });
+  await confirmation.getByRole("button", { name: "Download source" }).click();
+
+  await expect(confirmation).toBeHidden();
+  await expect(
+    dialog.getByRole("heading", {
+      name: "Receiving the reviewed source archive",
+    }),
+  ).toBeVisible();
+  const progress = dialog.locator('[data-task-id="research_source_download"]');
+  await expect(progress.getByText("640,000 B")).toBeVisible();
+  await expect(progress.getByText("1,450,928 B")).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Reviewed source is ready" }),
+  ).toBeVisible();
+});
+
+test("checked-session automation separates game-folder and live-launch consent", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await installResearchHostMock(page);
+  await page.getByRole("button", { name: "Legal & notices" }).click();
+  await page.getByRole("tab", { name: "Read-only research" }).click();
+  await page.getByRole("button", { name: "Open research setup" }).click();
+  const dialog = page.getByRole("dialog", {
+    name: "Experimental Research Setup",
+  });
+
+  await dialog.getByRole("button", { name: "Build research probe" }).click();
+  await dialog
+    .getByRole("button", { name: "Review and prepare session" })
+    .click();
+  const prepareConfirmation = page.getByRole("dialog", {
+    name: "Prepare files inside the W&R folder?",
+  });
+  await expect(
+    prepareConfirmation.getByText("No game executable"),
+  ).toBeVisible();
+  await expect(prepareConfirmation.getByText("save file")).toBeVisible();
+  await prepareConfirmation
+    .getByRole("button", { name: "Prepare checked session" })
+    .click();
+
+  await expect(
+    dialog.getByRole("heading", {
+      name: "Preparing the dedicated game folder",
+    }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("heading", { name: "Checked session is ready" }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Review and launch W&R" }).click();
+  const launchConfirmation = page.getByRole("dialog", {
+    name: "Launch the checked observation session?",
+  });
+  await expect(
+    launchConfirmation.getByText("temporarily run inside the game"),
+  ).toBeVisible();
+  await expect(
+    launchConfirmation.getByText("Normal gameplay can still save"),
+  ).toBeVisible();
+  await launchConfirmation
+    .getByRole("button", { name: "Launch checked session" })
+    .click();
+  await expect(launchConfirmation).toBeHidden();
+  await expect(dialog.getByText("Waiting for a loaded republic")).toHaveCount(
+    2,
+  );
 });
 
 test("theme assay renders readable non-interactive critical-task states", async ({

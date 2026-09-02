@@ -3,6 +3,7 @@ import type {
   BroadcastIndexingProgress,
   BroadcastOutcomeModel,
   BroadcastWorkspaceModel,
+  EnvironmentWorkspaceModel,
   CatalogueRefreshProgress,
   CatalogueStatus,
   MarketIndexingProgress,
@@ -17,6 +18,154 @@ import type {
   ResourceDetails,
   ResourceRegistryStatus,
 } from "../observations/types";
+
+export function reviewEnvironmentWorkspace(): EnvironmentWorkspaceModel {
+  const point = (
+    recordId: number,
+    year: number,
+    day: number,
+    resource: string,
+    value: number,
+  ) => ({
+    record_id: recordId,
+    year,
+    day,
+    game_day: year * 365 + day,
+    resource_token: resource,
+    activity_channel: "production" as const,
+    primary_value: value,
+    secondary_value: 0,
+    source_field: "$Resources_Produced",
+    source_line: recordId + 30,
+    row_ordinal: 0,
+    quantity_is_publishable: true,
+    exact_observation: {
+      interpretation_id: `review-environment-${day}`,
+      branch_id: "main",
+      year,
+      day,
+    },
+  });
+  return {
+    analysis_context: { ...reviewContext },
+    coverage_status: "partial",
+    history_records: 2,
+    row_count: 4,
+    returned_rows: 4,
+    truncated: false,
+    warnings: [],
+    resources: ["chemicals", "waste_mixed"],
+    activity: [
+      point(1, 2015, 60, "chemicals", 120),
+      point(2, 2015, 77, "chemicals", 148),
+      {
+        ...point(2, 2015, 77, "waste_mixed", 92.278),
+        activity_channel: "factory_waste",
+        secondary_value: -2485.883,
+        source_field: "$Waste_ProductionFactories",
+        quantity_is_publishable: false,
+      },
+      {
+        ...point(2, 2015, 77, "chemicals", 9),
+        activity_channel: "factory_use",
+        source_field: "$Resources_SpendFactories",
+      },
+    ],
+    summaries: [
+      {
+        activity_channel: "production",
+        row_count: 1,
+        resource_count: 1,
+        latest_recorded_value: 148,
+        quantity_is_publishable: true,
+      },
+      {
+        activity_channel: "factory_waste",
+        row_count: 1,
+        resource_count: 1,
+        latest_recorded_value: null,
+        quantity_is_publishable: false,
+      },
+      {
+        activity_channel: "factory_use",
+        row_count: 1,
+        resource_count: 1,
+        latest_recorded_value: 9,
+        quantity_is_publishable: true,
+      },
+    ],
+    source_availability: {
+      save_activity: true,
+      live_pollution: false,
+      live_radiation: false,
+      live_water_and_sewage: false,
+      spatial_pollution_map: false,
+      pollution_units: "W&R pollution units",
+      radiation_units: "W&R radioactivity units",
+    },
+    definition_context: {
+      available: true,
+      building_count: 18,
+      pollution_class_facts: 14,
+      sewage_pollution_factors: 8,
+      water_quality_facts: 11,
+      connection_capability_facts: 7,
+    },
+    recording: {
+      enabled: false,
+      interval_game_days: 7,
+      state: "disabled",
+      notice_revision: 0,
+      latest_snapshot_id: null,
+      latest_game_day: null,
+      captured_facilities: 0,
+      detail_code: null,
+    },
+    factor_sets: [
+      {
+        factor_set_id: "carbon-review",
+        revision: 1,
+        name: "Example production study",
+        accounting_boundary: "Recorded production with supplied factors",
+        reason: "Review fixture",
+        created_at_ms: 1_725_000_001_000,
+        content_hash: "e".repeat(64),
+        entries: [
+          {
+            resource_token: "chemicals",
+            activity_channel: "production",
+            grams_co2e_per_unit: 20,
+            source_name: "Player research",
+            source_year: 2025,
+            reason: "Example factor",
+            reference: null,
+          },
+        ],
+        selected: true,
+      },
+    ],
+    carbon_estimate: {
+      available: true,
+      factor_set_id: "carbon-review",
+      factor_set_revision: 1,
+      estimated_grams_co2e: 2960,
+      covered_rows: 1,
+      eligible_rows: 2,
+      coverage_percent: 50,
+      missing_factors: ["factory_use:chemicals"],
+      contributions: [
+        {
+          resource_token: "chemicals",
+          activity_channel: "production",
+          recorded_quantity: 148,
+          grams_co2e_per_unit: 20,
+          estimated_grams_co2e: 2960,
+        },
+      ],
+      limitation: null,
+    },
+  };
+}
 
 export function reviewResourceCatalogue(): ResourceCatalogueView {
   const snapshotId = "c".repeat(64);
@@ -106,8 +255,8 @@ export function reviewResourceRegistryStatus(): ResourceRegistryStatus {
     latest_snapshot: {
       snapshot_id: "c".repeat(64),
       assurance: "player_managed_modded",
-      game_build_id: "1.1.1.9:6a3eb6ad:10308608",
-      probe_version: "0.2.0",
+      game_build_id: "1.1.1.9:6a3eb6ad:11128832",
+      probe_version: "0.2.3",
       loader_api_version: 4,
       captured_year: 2020,
       captured_day: 92,
@@ -115,6 +264,7 @@ export function reviewResourceRegistryStatus(): ResourceRegistryStatus {
       resource_count: 58,
     },
     latest_probe_content_hash: "d".repeat(64),
+    collection_stage: "checked_report_ready",
     warning_code: null,
   };
 }
@@ -1213,6 +1363,7 @@ export function reviewPopulationDataset(): PopulationDataset {
       latest_year: null,
       latest_day: null,
       latest_population_count: null,
+      collection_stage: null,
       warnings: [],
     },
   };

@@ -8,6 +8,7 @@ const workspacesWithSectionNavigation = [
   "Plan",
   "Materials",
   "Population",
+  "Environment",
   "Markets",
 ];
 

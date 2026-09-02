@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 const root = resolve("research/tesmioloader-probe");
 const file = resolve(root, "observatory_probe.cpp");
 const source = readFileSync(file, "utf8");
+const probeConfiguration = readFileSync(
+  resolve(root, "observatory_probe.ini"),
+  "utf8",
+);
 const observationOnlyConfiguration = readFileSync(
   resolve(root, "tesmioloader.observation-only.ini.example"),
   "utf8",
@@ -20,6 +24,11 @@ const setupService = readFileSync(
   resolve("src-tauri/src/research_setup.rs"),
   "utf8",
 );
+const commands = readFileSync(resolve("src-tauri/src/commands.rs"), "utf8");
+const sessionBuild = readFileSync(
+  resolve(root, "build-observation-session.ps1"),
+  "utf8",
+);
 const failures = [];
 
 const required = [
@@ -33,14 +42,30 @@ const required = [
   'record_type\\":\\"resource_registry',
   'record_type\\":\\"resource_entry',
   "RVA_RESOURCE_VECTOR 0x9E11C0",
+  "RVA_GAME_STATE 0x9D4F10",
   "RESOURCE_STRIDE 0x340",
   "RESOURCE_MAX_RECORDS 512",
+  "TESTED_EXE_SIZE 11128832u",
   "ReadablePtr",
   "FaultFilter",
+  'record_type\\\":\\\"probe_status',
+  'probe_version\\\":\\\"0.2.3',
+  "SetFilePointerEx(g_output, beginning, NULL, FILE_BEGIN)",
+  "SetEndOfFile(g_output)",
+  "rolled its bounded report forward",
 ];
 for (const marker of required) {
   if (!source.includes(marker))
     failures.push(`missing required marker ${marker}`);
+}
+for (const setting of [
+  "samples = 16",
+  "every_days = 7",
+  "max_records = 4096",
+]) {
+  if (!probeConfiguration.includes(setting)) {
+    failures.push(`bounded probe defaults are missing ${setting}`);
+  }
 }
 
 const actualPatchCalls = [...source.matchAll(/\bPatchIat\s*\(/g)].length;
@@ -103,6 +128,8 @@ const requiredDownloadBoundary = [
   "const MAX_TRANSFER_BYTES: u64 = 8 * 1024 * 1024",
   '"src/tesmio_plugin.h"',
   '"src/tesmio_api.h"',
+  '"src/tesmioloader.cpp"',
+  '"src/tesmiolauncher.cpp"',
   '"LICENSE"',
   '"observatory-provenance.json"',
 ];
@@ -113,13 +140,46 @@ for (const marker of requiredDownloadBoundary) {
 }
 for (const marker of [
   'pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a"',
-  "pub const RESEARCH_NOTICE_REVISION: u32 = 3",
+  "pub const RESEARCH_NOTICE_REVISION: u32 = 4",
   '"d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49"',
   '"33c9fae4acb1041708c7b1b4675b0eb4740f0af737e7a1968c0acb0c325fff3c"',
   "reviewed_header_hash",
 ]) {
   if (!setupService.includes(marker)) {
     failures.push(`research setup is missing ${marker}`);
+  }
+}
+for (const marker of [
+  'const MANAGED_SESSION_DIRECTORY: &str = "observatory"',
+  "writes_save_data: false",
+  "save_manifest = 0",
+  "menu_patch = 0",
+  "version_check = 1",
+  "managed_session_is_valid",
+  "observation_only_configuration_matches",
+  "observatory_probe.provenance.json",
+  "probe_source_contract_hash",
+]) {
+  if (!setupService.includes(marker)) {
+    failures.push(`checked-session preparation is missing ${marker}`);
+  }
+}
+for (const marker of [
+  "game_directory_write_confirmed: bool",
+  "running_game_memory_confirmed: bool",
+]) {
+  if (!commands.includes(marker)) {
+    failures.push(`native consent boundary is missing ${marker}`);
+  }
+}
+for (const marker of [
+  "tesmioloader.cpp",
+  "tesmiolauncher.cpp",
+  "tesmioloader.dll",
+  "tesmiolauncher.exe",
+]) {
+  if (!sessionBuild.includes(marker)) {
+    failures.push(`fixed checked-session build is missing ${marker}`);
   }
 }
 if (
@@ -139,5 +199,5 @@ if (failures.length) {
 }
 
 console.log(
-  "Tesmio audit passed: the probe has one observation hook and no known game/save/database/network write surface; optional source acquisition is pinned to one reviewed HTTPS revision with no redirects or arbitrary URL.",
+  "Tesmio audit passed: the probe has no known save-write surface; source, game-folder preparation, and live launch remain pinned, checked, and separately consented.",
 );
