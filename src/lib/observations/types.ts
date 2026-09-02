@@ -591,6 +591,9 @@ export type GameVocabularySource = {
   locale_hint?: string;
   format: string;
   readable: boolean;
+  content_hash: string | null;
+  entry_count: number | null;
+  warning_count: number;
 };
 
 export type SetupState = {

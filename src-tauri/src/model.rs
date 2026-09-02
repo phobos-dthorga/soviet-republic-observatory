@@ -1870,6 +1870,9 @@ pub struct GameVocabularySource {
     pub locale_hint: Option<String>,
     pub format: String,
     pub readable: bool,
+    pub content_hash: Option<String>,
+    pub entry_count: Option<u32>,
+    pub warning_count: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]
