@@ -50,6 +50,9 @@ an engineering requirement.
 - [Markets and external economy](markets-and-external-economy.md) — exact-save
   indexing, currency-separated evidence, analytical formulas, player baskets
   and scenarios, warehouse recovery, and limitations
+- [Environment spatial and live-source findings](research/environment-spatial-and-live-findings.md)
+  — the current negative spatial-decoder result and the evidence gate for live
+  pollution, radiation, water, and sewage readings
 - [Local diagnostics and long-running work](operations/diagnostics.md) — shared
   critical-task progress, startup recovery, stall visibility, bounded local
   logging, and privacy
@@ -122,7 +125,11 @@ an engineering requirement.
   — plain default copy, optional technical English, and automated readability
   enforcement
 - [ADR-0028: first-class related-data navigation](architecture/decisions/0028-first-class-related-data-navigation.md)
+- [ADR-0029: consented automation for external changes](architecture/decisions/0029-consented-external-changes.md)
   — allowlisted drill-downs, exact-save history, and accessible reversible paths
+- [ADR-0030: Environment evidence and player carbon accounting](architecture/decisions/0030-environment-evidence-and-player-carbon-accounting.md)
+  — separate save activity, checked live readings, and player-owned carbon
+  assumptions without relabelling game pollution
 
 ## Evidence status vocabulary
 

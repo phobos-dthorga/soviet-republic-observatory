@@ -4,6 +4,31 @@ This document records the presently observed evidence boundary. It is not a
 promise that every field remains stable across game versions. Parser support
 must be fixture-tested and version-aware.
 
+## Environment evidence
+
+The reviewed profile reads resource production and construction, factory, shop,
+and vehicle use from `stats.ini`. It also preserves factory, citizen, and
+demolition waste rows. Each row retains both source numbers because available
+saves contain duplicate-looking waste tokens and do not yet prove the meaning
+of either number. Waste totals and carbon factors for waste are therefore not
+published.
+
+Environment data has its own coverage result. A damaged or absent environmental
+section does not invalidate receiver, Population, Broadcast, or Markets data.
+Still-available saves can be re-read through the normal exact-match, resumable
+indexing flow without moving the selected save.
+
+Pollution, radiation, water, and sewage require a separately checked live
+facility contract. Pollution keeps the label **W&R pollution units** and
+radiation keeps **W&R radioactivity units**. Neither is a physical emissions
+unit. See `research/environment-spatial-and-live-findings.md` for the current
+negative spatial-source finding.
+
+Carbon estimates are player studies. Observatory stores no built-in factors.
+It multiplies a recorded quantity by an exact matching player factor and reports
+coverage and missing factors. It never presents the result as a complete
+republic footprint.
+
 ## Save-container observations
 
 Cloud saves observed on 26–27 August 2026 were ordinary ZIP archives. A save can
@@ -314,9 +339,10 @@ stable identity pass the separate research gate.
 The optional Tesmio companion is a reverse-engineering instrument, not a new
 source of reviewed facts. Rust accepts only the fixed file derived from the
 configured game directory, rejects unknown or capability-expanding records,
-and returns aggregate probe health. Raw records are not projected into SQLite
-or DuckDB. Their vector positions are ephemeral sample locations—not citizen
-identifiers—and cannot be joined into biographies or family histories.
+and returns aggregate probe health. Anonymous person samples are not stored.
+Their vector positions are ephemeral sample locations—not citizen identifiers—
+and cannot be joined into biographies or family histories. A separately
+enabled resource reading may be retained as local session evidence.
 
 The first companion is pinned to one executable timestamp and size. A mismatch
 fails closed and ordinary save observation continues. “Read-only” means the
@@ -327,8 +353,10 @@ not an operating-system sandbox.
 That establishes the probe-record contract, not the safety of an arbitrary
 TesmioLoader installation. A research run must use the documented
 observation-only host settings, contain no other plugin DLL, and pass the
-supplied preflight verifier. TesmioLoader's standard modding defaults and
-gameplay plugins remain outside the Observatory evidence boundary.
+supplied preflight verifier. The guided assistant can prepare that exact folder
+after confirmation. Launch remains a second confirmed action. TesmioLoader's
+standard modding defaults and gameplay plugins remain outside the Observatory
+evidence boundary.
 
 ### Extension data boundary
 

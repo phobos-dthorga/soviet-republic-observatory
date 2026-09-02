@@ -160,10 +160,10 @@ Failure messages use the same player-first order everywhere:
    troubleshooting.
 
 Raw `snake_case` codes never lead an ordinary notification, task panel, dialog,
-or inspector. The shared `TechnicalDetails` component keeps those values
-keyboard-accessible without making them look like controls. Diagnostics uses a
-plain summary for each entry and places its exact code, operation, and original
-message inside the same disclosure.
+or inspector. A notification with technical context makes its plain error text
+an explicit **Open error details** control. The shared disclosure explains what
+happened, suggests a next step for known codes, and retains the exact host
+diagnostic. Diagnostics uses the same plain-summary-first ordering.
 
 Analysis Pack actions and language-pack installation/selection are the first
 consumers. New workspaces should reuse this service when an outcome must remain

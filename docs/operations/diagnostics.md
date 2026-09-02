@@ -100,6 +100,13 @@ and build-output paths are never placed in the public status model or diagnostic
 record; the interface uses only a folder leaf name and repository-relative
 artifact label.
 
+Reviewed-source acquisition uses the same foreground task contract. Its
+confirmation closes before work begins, so connection, transfer, archive
+inspection, local storage, and header verification remain visible in the
+Research dialog. The actual upstream ZIP may contain larger unrelated assets;
+whole-archive limits still apply, while the stricter retained-file limit applies
+only to the two reviewed headers and licence that Observatory keeps.
+
 ## Performance boundary
 
 DuckDB is a bulk analytical engine. Catalogue publication and observation
@@ -127,6 +134,13 @@ Settings controls only the total patience budget for resumable background
 retries. A patience expiry is recorded as a pause, not a failed interpretation.
 The durable job can resume from its first unfinished archive.
 
+Broadcast and Environment indexing use the same recorder-first checkpoints.
+Environment progress reports archives, preserved history records, source rows,
+cache reuse, contention, and resume count. It never reports resource values,
+factor contents, save paths, or live facility positions. Live environmental
+recording status reports only consent state, the checked-contract state,
+snapshot identity, game date, and bounded facility count.
+
 The Settings maintenance assay and controlled diagnostic events report shared
 market records, shared fact rows, interpretation memberships, cache records and
 rows reused, contention duration, retry count, pause/resume state, and the
@@ -140,3 +154,10 @@ as hints; raw `stats.ini` hashing decides identity, and access time is never
 used. **Rebuild analytical warehouse** is reserved for explicit recovery. Its
 diagnostic event records that a rebuild was queued, while SQLite evidence and
 save observation remain available.
+
+Settings also provides a separate last-resort **Erase Observatory databases**
+action. It requires an exact typed phrase and restarts before deleting an exact
+allowlist of app-local SQLite and DuckDB files. It never accepts a path, scans a
+directory, or touches configured game, save, and Workshop folders. The action
+removes settings and recorded Observatory history as well as derived data, so
+it is not a routine rebuild or preference reset.

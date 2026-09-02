@@ -31,6 +31,10 @@ priority, security controls, and destructive maintenance are not settings.
 Themes and language packs retain their existing immutable lifecycle authority,
 and folder paths remain private native configuration.
 
+Settings may host a destructive maintenance command without making it a
+preference. The database reset is a separately confirmed, typed host action. It
+accepts no path and runs at restart against an exact app-local file allowlist.
+
 ## Consequences
 
 Players can tune accessibility and maintenance without learning database error

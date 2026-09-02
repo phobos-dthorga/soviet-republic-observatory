@@ -46,12 +46,15 @@ scrolling regions. The application header never becomes part of page scrolling.
   and limiting-input laboratory.
 - **Population** — demographic flows, welfare trends, city comparison, and
   intervention studies.
+- **Environment** — recorded resource activity and waste, checked live
+  environmental readings when available, and player-defined carbon studies.
 - **Markets** — trade, prices, currencies, tourism, debt, and break-even models.
 - **Archive** — branch-aware save history, annotations, comparisons, and data
   coverage.
 
 The current application enables Briefing, Monitor, Broadcast, Extensions,
-Plan, Materials, Population, Markets, and Archive in primary navigation. The
+Plan, Materials, Population, Environment, Markets, and Archive in primary
+navigation. The
 shell owns global navigation, recorded-save context, and related-data history;
 each enabled destination remains a presentational workspace component.
 
@@ -109,6 +112,11 @@ validation state, mapping coverage, and the app-local override location.
 are separate keyboard-operable actions. Invalid edits preserve the last valid
 profile and show a warning. The application does not embed a JSON editor or
 hide `player_mapped` evidence behind ordinary save-fact styling.
+
+Each of the save, game, and Workshop choosers resolves its own remembered or
+detected starting folder. Canonical extended-length Windows paths are converted
+only for the native dialog, avoiding the operating system's shared last-folder
+fallback. Stored paths remain separate and canonical.
 Configured mod scopes appear as matched, dormant, updated-unreviewed, or exact
 conflicts with package identity, short acknowledged/current hashes, policy,
 mapping count, and remediation guidance. Materials dossiers identify the exact
