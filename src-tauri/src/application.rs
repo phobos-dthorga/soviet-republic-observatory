@@ -560,10 +560,9 @@ impl ObservatoryApplication {
 
     pub fn enable_environment_recording(
         &self,
-        accepted_notice_revision: u32,
+        _accepted_notice_revision: u32,
     ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {
-        self.storage
-            .set_environment_recording(true, accepted_notice_revision)
+        Err(ObservatoryError::EnvironmentLiveReadingUnavailable)
     }
 
     pub fn disable_environment_recording(
@@ -575,11 +574,7 @@ impl ObservatoryApplication {
     pub fn capture_environment_snapshot(
         &self,
     ) -> Result<EnvironmentCaptureResult, ObservatoryError> {
-        let status = self.storage.environment_recording_status()?;
-        Ok(EnvironmentCaptureResult {
-            captured: false,
-            status,
-        })
+        Err(ObservatoryError::EnvironmentLiveReadingUnavailable)
     }
 
     pub fn delete_live_environmental_recordings(&self) -> Result<u32, ObservatoryError> {
@@ -2973,6 +2968,33 @@ mod tests {
         let status = application.catalogue_status().expect("degraded status");
         assert_eq!(status.warehouse.phase, WarehousePhase::Attention);
         assert_eq!(status.error_code.as_deref(), Some("warehouse_unavailable"));
+    }
+
+    #[test]
+    fn unavailable_environment_capture_cannot_look_enabled_or_successful() {
+        let directory = tempdir().expect("temporary directory");
+        let application = ObservatoryApplication::initialise(
+            directory.path().join("operational.sqlite3"),
+            directory.path().join("analytical.duckdb"),
+        )
+        .expect("application");
+
+        let enable_error = application
+            .enable_environment_recording(crate::environment::ENVIRONMENT_RECORDING_NOTICE_REVISION)
+            .expect_err("an unpublished live contract cannot be enabled");
+        assert_eq!(enable_error.code(), "environment_live_reading_unavailable");
+
+        let capture_error = application
+            .capture_environment_snapshot()
+            .expect_err("an unpublished live contract cannot report a successful capture");
+        assert_eq!(capture_error.code(), "environment_live_reading_unavailable");
+        assert!(
+            !application
+                .storage
+                .environment_recording_status()
+                .expect("recording status")
+                .enabled
+        );
     }
 
     #[test]

@@ -46,6 +46,10 @@
       happened: "error-explain-research-session-launch-happened",
       next: "error-explain-research-session-launch-next",
     },
+    environment_live_reading_unavailable: {
+      happened: "error-explain-environment-live-happened",
+      next: "error-explain-environment-live-next",
+    },
     storage_busy: {
       happened: "error-explain-storage-busy-happened",
       next: "error-explain-storage-busy-next",

@@ -17,6 +17,8 @@ export const UI_REVIEW_SCENARIOS = [
   "production-pathway",
   "workspace-population",
   "workspace-environment",
+  "environment-indexing",
+  "environment-details",
   "workspace-markets",
   "markets-indexing",
   "markets-paused",

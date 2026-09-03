@@ -897,7 +897,7 @@
         </form>
 
         <div class="resource-browser">
-          <div class="resource-list" role="list">
+          <div class="resource-list">
             {#each resourceCatalogue?.entries ?? [] as resource}
               <button
                 type="button"
@@ -1510,8 +1510,8 @@
     max-width: 600px;
   }
   .resource-acknowledgement input {
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     flex: 0 0 auto;
   }
   .resource-message {

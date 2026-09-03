@@ -434,7 +434,7 @@
     max-width: 100%;
     margin-top: 0.75rem;
     padding-top: 0.85rem;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--colour-line-faint);
   }
 
   .pathway-laboratory > *,
@@ -461,7 +461,7 @@
 
   .pathway-heading p,
   .route-choices p {
-    color: var(--muted);
+    color: var(--colour-muted);
     margin-top: 0.2rem;
     overflow-wrap: anywhere;
   }
@@ -469,18 +469,18 @@
   .pathway-status,
   .evidence-badge {
     flex: 0 0 auto;
-    border: 1px solid var(--observed);
-    color: var(--observed);
+    border: 1px solid var(--colour-observed);
+    color: var(--colour-observed);
     padding: 0.25rem 0.45rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: var(--font-size-caption);
+    font-size: var(--type-caption);
   }
 
   .pathway-status.attention,
   .pathway-notice.attention {
-    border-color: var(--risk);
-    color: var(--risk);
+    border-color: var(--colour-risk);
+    color: var(--colour-risk);
   }
 
   .pathway-boundary {
@@ -503,7 +503,7 @@
 
   .pathway-controls label > span,
   .choice-grid small {
-    color: var(--muted);
+    color: var(--colour-muted);
   }
 
   .pathway-controls select {
@@ -513,16 +513,16 @@
   .pathway-empty,
   .pathway-notice {
     padding: 0.75rem;
-    border: 1px solid var(--line);
-    background: var(--surface-soft);
-    color: var(--muted);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface-soft);
+    color: var(--colour-muted);
   }
 
   .route-choices,
   .pathway-ledgers > section,
   .pathway-evidence {
-    border: 1px solid var(--line);
-    background: var(--surface);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface);
     padding: 0.75rem;
   }
 
@@ -536,8 +536,8 @@
 
   .choice-grid label,
   .ledger-list article {
-    border: 1px solid var(--line);
-    background: var(--surface-raised);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface-raised);
     padding: 0.65rem;
   }
 
@@ -557,7 +557,7 @@
   code,
   small {
     overflow-wrap: anywhere;
-    color: var(--muted);
+    color: var(--colour-muted);
   }
 
   .pathway-notice {
@@ -585,7 +585,7 @@
     padding: 0.55rem;
     text-align: left;
     vertical-align: top;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--colour-line-faint);
   }
 
   td:last-child {

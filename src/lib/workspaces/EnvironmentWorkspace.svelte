@@ -1,5 +1,6 @@
 <script lang="ts">
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
+  import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
@@ -150,6 +151,40 @@
   const carbonChart = $derived(
     carbonContributorsChart(carbonEstimate, $translation),
   );
+  const checkedArchives = $derived(
+    indexingProgress
+      ? indexingProgress.completed_archives +
+          indexingProgress.missing_archives +
+          indexingProgress.changed_archives +
+          indexingProgress.failed_archives +
+          indexingProgress.duplicate_archives
+      : 0,
+  );
+  const liveReadingSupported = $derived(
+    Boolean(
+      workspace?.source_availability.live_pollution ||
+      workspace?.source_availability.live_radiation ||
+      workspace?.source_availability.live_water_and_sewage,
+    ),
+  );
+
+  function indexingTitleKey(
+    phase: EnvironmentIndexingProgress["phase"],
+  ): TranslationKey {
+    if (phase === "complete") return "environment-index-progress-complete";
+    if (phase === "paused") return "environment-index-progress-paused";
+    if (phase === "failed") return "environment-index-progress-failed";
+    return "environment-index-progress-active";
+  }
+
+  function recordingStateKey(): TranslationKey {
+    if (workspace?.recording.state === "ready")
+      return "environment-recording-state-ready";
+    if (workspace?.recording.enabled)
+      return "environment-recording-state-on-unavailable";
+    if (!liveReadingSupported) return "environment-recording-state-unavailable";
+    return "environment-recording-state-off";
+  }
 
   $effect(() => {
     const requested = location.filters.resourceToken;
@@ -344,21 +379,38 @@
     </header>
 
     {#if indexingProgress && indexingProgress.phase !== "idle"}
-      <section class="progress-card" aria-live="polite">
+      <section
+        class="progress-card"
+        data-phase={indexingProgress.phase}
+        aria-live="polite"
+      >
         <strong
-          >{$translation("environment-index-progress", {
+          >{$translation(indexingTitleKey(indexingProgress.phase), {
             current: indexingProgress.current_archive,
+            checked: checkedArchives,
             total: indexingProgress.total_archives,
           })}</strong
         >
         <progress max="100" value={indexingProgress.progress_percent ?? 0}
         ></progress>
-        <span
-          >{$translation("environment-index-detail", {
-            records: indexingProgress.records_processed,
-            rows: indexingProgress.rows_processed,
-          })}</span
-        >
+        {#if indexingProgress.phase === "complete"}
+          <span
+            >{$translation("environment-index-result", {
+              added: indexingProgress.completed_archives,
+              unchanged: indexingProgress.duplicate_archives,
+              missing: indexingProgress.missing_archives,
+              changed: indexingProgress.changed_archives,
+              failed: indexingProgress.failed_archives,
+            })}</span
+          >
+        {:else}
+          <span
+            >{$translation("environment-index-detail-active", {
+              records: indexingProgress.records_processed,
+              rows: indexingProgress.rows_processed,
+            })}</span
+          >
+        {/if}
       </section>
     {/if}
 
@@ -691,73 +743,85 @@
         <strong>{$translation("environment-carbon-intensity-title")}</strong>
         <span>{$translation("environment-carbon-intensity-unavailable")}</span>
       </GuidanceSurface>
-      <div class="factor-editor">
-        <label
-          >{$translation("environment-factor-name")}<input
-            bind:value={factorName}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-boundary")}<input
-            bind:value={factorBoundary}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-reason")}<input
-            bind:value={factorReason}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-resource")}<select
-            bind:value={factorResource}
-            ><option value=""
-              >{$translation("environment-factor-choose-resource")}</option
-            >{#each workspace?.resources ?? [] as resource}<option
-                value={resource}>{resource}</option
-              >{/each}</select
-          ></label
-        >
-        <label
-          >{$translation("environment-factor-channel")}<select
-            bind:value={factorChannel}
-            >{#each carbonChannels as channel}<option value={channel}
-                >{environmentChannelLabel(channel, $translation)}</option
-              >{/each}</select
-          ></label
-        >
-        <label
-          >{$translation("environment-factor-value")}<input
-            type="number"
-            min="0"
-            step="any"
-            bind:value={factorValue}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-source")}<input
-            bind:value={factorSource}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-year")}<input
-            type="number"
-            min="1900"
-            max="9999"
-            bind:value={factorYear}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-entry-reason")}<input
-            bind:value={factorEntryReason}
-          /></label
-        >
-        <label
-          >{$translation("environment-factor-reference")}<input
-            bind:value={factorReference}
-          /></label
-        >
+      <div class="factor-workbench">
+        <fieldset class="factor-group study-details">
+          <legend>{$translation("environment-factor-study-heading")}</legend>
+          <p>{$translation("environment-factor-study-description")}</p>
+          <div class="factor-fields study-fields">
+            <label
+              >{$translation("environment-factor-name")}<input
+                bind:value={factorName}
+              /></label
+            >
+            <label
+              >{$translation("environment-factor-boundary")}<input
+                bind:value={factorBoundary}
+              /></label
+            >
+            <label
+              >{$translation("environment-factor-reason")}<input
+                bind:value={factorReason}
+              /></label
+            >
+          </div>
+        </fieldset>
+        <fieldset class="factor-group factor-details">
+          <legend>{$translation("environment-factor-entry-heading")}</legend>
+          <p>{$translation("environment-factor-entry-description")}</p>
+          <div class="factor-fields entry-fields">
+            <label
+              >{$translation("environment-factor-resource")}<select
+                bind:value={factorResource}
+                ><option value=""
+                  >{$translation("environment-factor-choose-resource")}</option
+                >{#each workspace?.resources ?? [] as resource}<option
+                    value={resource}>{resource}</option
+                  >{/each}</select
+              ></label
+            >
+            <label
+              >{$translation("environment-factor-channel")}<select
+                bind:value={factorChannel}
+                >{#each carbonChannels as channel}<option value={channel}
+                    >{environmentChannelLabel(channel, $translation)}</option
+                  >{/each}</select
+              ></label
+            >
+            <label
+              >{$translation("environment-factor-value")}<input
+                type="number"
+                min="0"
+                step="any"
+                bind:value={factorValue}
+              /></label
+            >
+            <label
+              >{$translation("environment-factor-source")}<input
+                bind:value={factorSource}
+              /></label
+            >
+            <label
+              >{$translation("environment-factor-year")}<input
+                type="number"
+                min="1900"
+                max="9999"
+                bind:value={factorYear}
+              /></label
+            >
+            <label class="wide-field"
+              >{$translation("environment-factor-entry-reason")}<input
+                bind:value={factorEntryReason}
+              /></label
+            >
+            <label class="wide-field"
+              >{$translation("environment-factor-reference")}<input
+                bind:value={factorReference}
+              /></label
+            >
+          </div>
+        </fieldset>
       </div>
-      <div class="actions">
+      <div class="actions factor-actions">
         <button type="button" onclick={addFactor}
           >{$translation("environment-factor-add")}</button
         ><button
@@ -840,43 +904,71 @@
           <p>{$translation("environment-recording-description")}</p>
         </div>
       </header>
-      <GuidanceSurface kind="instruction" layout="block"
-        ><strong
-          >{$translation("environment-recording-status", {
-            state: workspace?.recording.state ?? "disabled",
-          })}</strong
-        ><span>{$translation("environment-recording-contract-waiting")}</span
-        ></GuidanceSurface
-      >
-      {#if workspace?.recording.enabled}<button
-          type="button"
-          onclick={async () => onupdate(await disableEnvironmentRecording())}
-          >{$translation("environment-recording-disable")}</button
-        >{:else}<label class="consent"
-          ><input type="checkbox" bind:checked={consent} />{$translation(
-            "environment-recording-consent",
-          )}</label
-        ><button
-          type="button"
-          disabled={!consent}
-          onclick={async () => onupdate(await enableEnvironmentRecording(true))}
-          >{$translation("environment-recording-enable")}</button
-        >{/if}
-      <div class="danger-zone">
-        <h4>{$translation("environment-delete-title")}</h4>
-        <p>{$translation("environment-delete-description")}</p>
-        <input
-          aria-label={$translation("environment-delete-confirmation-label")}
-          bind:value={deleteConfirmation}
-          placeholder="DELETE LIVE ENVIRONMENT RECORDINGS"
-        /><button
-          type="button"
-          disabled={deleteConfirmation !== "DELETE LIVE ENVIRONMENT RECORDINGS"}
-          onclick={async () => {
-            onupdate(await deleteLiveEnvironmentRecordings(deleteConfirmation));
-            deleteConfirmation = "";
-          }}>{$translation("environment-delete-action")}</button
-        >
+      <div class="recording-layout">
+        <section class="recording-card">
+          <GuidanceSurface kind="instruction" layout="block">
+            <strong>{$translation(recordingStateKey())}</strong>
+            <span
+              >{$translation(
+                liveReadingSupported
+                  ? "environment-recording-ready-detail"
+                  : "environment-recording-contract-waiting",
+              )}</span
+            >
+          </GuidanceSurface>
+          {#if workspace?.recording.enabled}
+            <div class="actions">
+              <button
+                type="button"
+                onclick={async () =>
+                  onupdate(await disableEnvironmentRecording())}
+                >{$translation("environment-recording-disable")}</button
+              >
+              <button type="button" onclick={onopenresearch}
+                >{$translation("environment-open-checked-session")}</button
+              >
+            </div>
+          {:else if liveReadingSupported}
+            <label class="consent"
+              ><input type="checkbox" bind:checked={consent} />{$translation(
+                "environment-recording-consent",
+              )}</label
+            >
+            <button
+              type="button"
+              disabled={!consent}
+              onclick={async () =>
+                onupdate(await enableEnvironmentRecording(true))}
+              >{$translation("environment-recording-enable")}</button
+            >
+          {:else}
+            <button type="button" onclick={onopenresearch}
+              >{$translation("environment-recording-view-research")}</button
+            >
+          {/if}
+        </section>
+        <div class="danger-zone">
+          <h4>{$translation("environment-delete-title")}</h4>
+          <p>{$translation("environment-delete-description")}</p>
+          <div class="danger-actions">
+            <input
+              aria-label={$translation("environment-delete-confirmation-label")}
+              bind:value={deleteConfirmation}
+              placeholder="DELETE LIVE ENVIRONMENT RECORDINGS"
+            />
+            <button
+              type="button"
+              disabled={deleteConfirmation !==
+                "DELETE LIVE ENVIRONMENT RECORDINGS"}
+              onclick={async () => {
+                onupdate(
+                  await deleteLiveEnvironmentRecordings(deleteConfirmation),
+                );
+                deleteConfirmation = "";
+              }}>{$translation("environment-delete-action")}</button
+            >
+          </div>
+        </div>
       </div>
     </section>
   </section>
@@ -887,30 +979,33 @@
     display: grid;
     grid-template-columns: 236px minmax(580px, 1fr);
     min-height: 0;
+    --environment-space-1: 8px;
+    --environment-space-2: 12px;
+    --environment-space-3: 18px;
   }
   .canvas {
     min-width: 0;
   }
   .panel {
-    margin-bottom: var(--space-3);
-    padding: var(--space-3);
-    border: 1px solid var(--border);
-    background: var(--surface-1);
-    scroll-margin-top: var(--space-2);
+    margin-bottom: var(--environment-space-3);
+    padding: var(--environment-space-3);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface);
+    scroll-margin-top: var(--environment-space-2);
   }
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-    gap: var(--space-2);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--environment-space-2);
   }
   .summary-card,
   .carbon-result,
   .revision-list article {
     display: grid;
     gap: 0.35rem;
-    padding: var(--space-2);
-    border: 1px solid var(--border);
-    background: var(--surface-2);
+    padding: var(--environment-space-2);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface-raised);
   }
   .summary-card strong,
   .carbon-result strong {
@@ -921,38 +1016,89 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-1);
+    gap: var(--environment-space-1);
   }
-  .filters,
-  .factor-editor {
+  .summary-card small {
+    color: var(--colour-muted);
+    line-height: 1.45;
+  }
+  .filters {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-    gap: var(--space-2);
-    margin: var(--space-2) 0;
+    gap: var(--environment-space-2);
+    margin: var(--environment-space-2) 0;
   }
   .definition-context {
     display: grid;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
+    gap: var(--environment-space-2);
+    margin-top: var(--environment-space-3);
   }
   .definition-context h4,
   .definition-context p {
     margin: 0;
   }
+  .definition-context .summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  }
   label {
     display: grid;
     gap: 0.35rem;
   }
+  label > :is(input, select) {
+    width: 100%;
+    min-width: 0;
+  }
+  .factor-workbench {
+    display: grid;
+    grid-template-columns: minmax(18rem, 0.8fr) minmax(30rem, 1.7fr);
+    gap: var(--environment-space-2);
+    margin-top: var(--environment-space-2);
+  }
+  .factor-group,
+  .recording-card {
+    min-width: 0;
+    margin: 0;
+    border: 1px solid var(--colour-line-faint);
+    padding: var(--environment-space-2);
+    background: var(--colour-surface-raised);
+  }
+  .factor-group legend {
+    padding-inline: 0.35rem;
+    color: var(--colour-gold);
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+  }
+  .factor-group > p {
+    margin: 0 0 var(--environment-space-2);
+    color: var(--colour-muted);
+    line-height: 1.45;
+  }
+  .factor-fields {
+    display: grid;
+    gap: var(--environment-space-2);
+  }
+  .study-fields {
+    grid-template-columns: 1fr;
+  }
+  .entry-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .entry-fields .wide-field {
+    grid-column: span 2;
+  }
+  .factor-actions {
+    justify-content: flex-end;
+  }
   .actions {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-1);
-    margin-top: var(--space-1);
+    gap: var(--environment-space-1);
+    margin-top: var(--environment-space-1);
   }
   .revision-list {
     display: grid;
-    gap: var(--space-1);
-    margin-top: var(--space-2);
+    gap: var(--environment-space-1);
+    margin-top: var(--environment-space-2);
   }
   .table-scroll {
     overflow: auto;
@@ -965,43 +1111,86 @@
   th,
   td {
     padding: 0.55rem;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--colour-line-faint);
     text-align: left;
   }
   .data-link {
     padding: 0;
     border: 0;
-    color: var(--accent-cyan);
+    color: var(--colour-observed);
     background: transparent;
     text-decoration: underline;
   }
   .progress-card {
     display: grid;
     gap: 0.5rem;
-    padding: var(--space-2);
-    border: 1px solid var(--accent-gold);
+    padding: var(--environment-space-2);
+    border: 1px solid var(--colour-gold);
+  }
+  .progress-card[data-phase="complete"] {
+    border-color: var(--colour-observed);
   }
   progress {
     width: 100%;
   }
   .danger-zone {
-    margin-top: var(--space-3);
-    padding: var(--space-2);
-    border: 1px solid var(--status-error);
+    margin: 0;
+    padding: var(--environment-space-2);
+    border: 1px solid var(--colour-risk);
+    background: color-mix(
+      in srgb,
+      var(--colour-risk) 5%,
+      var(--colour-surface-raised)
+    );
+  }
+  .danger-zone h4,
+  .danger-zone p {
+    margin-top: 0;
+  }
+  .danger-actions {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) auto;
+    gap: var(--environment-space-1);
+  }
+  .recording-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.8fr);
+    gap: var(--environment-space-2);
+    align-items: start;
   }
   .consent {
     grid-template-columns: auto 1fr;
     align-items: start;
-    margin: var(--space-2) 0;
+    margin: var(--environment-space-2) 0;
   }
   @media (max-width: 1180px) {
     .environment-workspace {
       grid-template-columns: 210px minmax(540px, 1fr);
     }
+    .summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .factor-workbench,
+    .recording-layout {
+      grid-template-columns: 1fr;
+    }
+    .entry-fields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
   @media (max-width: 860px) {
     .environment-workspace {
       grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 620px) {
+    .summary-grid,
+    .entry-fields,
+    .danger-actions {
+      grid-template-columns: 1fr;
+    }
+    .entry-fields .wide-field {
+      grid-column: auto;
     }
   }
 </style>

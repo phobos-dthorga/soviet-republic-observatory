@@ -668,13 +668,13 @@
 
   p {
     margin-top: 0.22rem;
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.8rem;
     line-height: 1.5;
   }
 
   .eyebrow {
-    color: var(--gold);
+    color: var(--colour-gold);
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.12em;
@@ -686,7 +686,7 @@
     flex: 0 0 auto;
     border: 1px solid rgba(123, 198, 216, 0.36);
     padding: 0.24rem 0.42rem;
-    color: var(--cyan);
+    color: var(--colour-observed);
     font-size: 0.75rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -695,7 +695,7 @@
   .route-status.attention,
   .route-notice.attention {
     border-color: rgba(216, 184, 106, 0.55);
-    color: var(--gold);
+    color: var(--colour-gold);
   }
 
   .route-search,
@@ -715,7 +715,7 @@
     grid-template-columns:
       minmax(14rem, 1.6fr) minmax(10rem, 1fr) minmax(8rem, 0.55fr)
       auto;
-    border: 1px solid var(--line);
+    border: 1px solid var(--colour-line-faint);
     background: rgba(13, 29, 39, 0.72);
     padding: 0.65rem;
     width: min(100%, 96rem);
@@ -728,7 +728,7 @@
   }
 
   .route-coverage article {
-    border: 1px solid var(--line);
+    border: 1px solid var(--colour-line-faint);
     background: rgba(18, 41, 55, 0.72);
     padding: 0.55rem 0.65rem;
   }
@@ -739,13 +739,13 @@
   }
 
   .route-coverage span {
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.75rem;
   }
 
   .route-coverage strong {
     margin-top: 0.18rem;
-    color: var(--cyan);
+    color: var(--colour-observed);
     font-family: var(--font-display);
     font-size: 1.05rem;
     font-weight: 500;
@@ -758,7 +758,7 @@
   }
 
   label span {
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.75rem;
     font-weight: 650;
     letter-spacing: 0.04em;
@@ -768,10 +768,10 @@
   select,
   button {
     min-height: 2.15rem;
-    border: 1px solid var(--line-strong);
+    border: 1px solid var(--colour-line);
     border-radius: 0;
-    background: var(--panel-raised);
-    color: var(--text);
+    background: var(--colour-surface-raised);
+    color: var(--colour-text);
     font: inherit;
     font-size: 0.8rem;
   }
@@ -784,7 +784,7 @@
 
   button {
     padding: 0.38rem 0.72rem;
-    color: var(--gold);
+    color: var(--colour-gold);
     cursor: pointer;
   }
 
@@ -797,10 +797,10 @@
   .route-empty,
   .route-boundary,
   .route-snapshot {
-    border: 1px solid var(--line);
+    border: 1px solid var(--colour-line-faint);
     background: rgba(18, 41, 55, 0.72);
     padding: 0.6rem 0.7rem;
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.8rem;
     line-height: 1.45;
   }
@@ -835,8 +835,8 @@
 
   .route-evidence,
   .auxiliary-requirements {
-    border: 1px solid var(--line);
-    background: var(--panel);
+    border: 1px solid var(--colour-line-faint);
+    background: var(--colour-surface);
     padding: 0.7rem;
   }
 
@@ -858,8 +858,8 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.2rem 0.8rem;
-    border-inline-start: 2px solid var(--gold);
-    background: var(--panel-raised);
+    border-inline-start: 2px solid var(--colour-gold);
+    background: var(--colour-surface-raised);
     padding: 0.55rem 0.65rem;
   }
 
@@ -874,7 +874,7 @@
   tbody th code,
   .auxiliary-grid small {
     margin-top: 0.12rem;
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.75rem;
     overflow-wrap: anywhere;
   }
@@ -897,7 +897,7 @@
 
   th,
   td {
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--colour-line-faint);
     padding: 0.48rem;
     text-align: left;
     vertical-align: top;
@@ -905,14 +905,14 @@
 
   thead th {
     border-top: 0;
-    color: var(--muted);
+    color: var(--colour-muted);
     font-size: 0.75rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 
   tbody th {
-    color: var(--text);
+    color: var(--colour-text);
     font-weight: 600;
   }
 
@@ -928,7 +928,7 @@
 
   td span {
     margin-top: 0.16rem;
-    color: var(--muted);
+    color: var(--colour-muted);
     overflow-wrap: anywhere;
   }
 

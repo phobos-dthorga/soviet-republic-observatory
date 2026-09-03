@@ -73,6 +73,7 @@
     reviewBroadcastIndexingProgress,
     reviewBroadcastOutcome,
     reviewBroadcastWorkspace,
+    reviewEnvironmentIndexingProgress,
     reviewEnvironmentWorkspace,
     reviewCatalogueProgress,
     reviewMarketIndexingProgress,
@@ -852,8 +853,15 @@
         populationDataset = reviewPopulationDataset();
         break;
       case "workspace-environment":
+      case "environment-details":
         openWorkspace("environment");
         environmentWorkspace = reviewEnvironmentWorkspace();
+        break;
+      case "environment-indexing":
+        openWorkspace("environment");
+        environmentWorkspace = reviewEnvironmentWorkspace();
+        environmentIndexingProgress =
+          reviewEnvironmentIndexingProgress("complete");
         break;
       case "workspace-markets":
         openWorkspace("markets");

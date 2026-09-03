@@ -3,6 +3,7 @@ import type {
   BroadcastIndexingProgress,
   BroadcastOutcomeModel,
   BroadcastWorkspaceModel,
+  EnvironmentIndexingProgress,
   EnvironmentWorkspaceModel,
   CatalogueRefreshProgress,
   CatalogueStatus,
@@ -164,6 +165,45 @@ export function reviewEnvironmentWorkspace(): EnvironmentWorkspaceModel {
       ],
       limitation: null,
     },
+  };
+}
+
+export function reviewEnvironmentIndexingProgress(
+  state: "running" | "complete" | "paused" | "failed" = "running",
+): EnvironmentIndexingProgress {
+  const finished = state === "complete";
+  return {
+    job_id: "review-environment-index",
+    storage_contract_version: 1,
+    phase: finished
+      ? "complete"
+      : state === "running"
+        ? "parsing_records"
+        : state,
+    progress_percent: finished ? 100 : state === "running" ? 58 : 67,
+    started_at_ms: 1,
+    updated_at_ms: 2,
+    current_file: finished ? null : "Recorded-save-008.zip",
+    current_archive: finished ? 0 : 8,
+    total_archives: 12,
+    records_processed: finished ? 0 : 1_892,
+    rows_processed: finished ? 0 : 64_210,
+    completed_archives: finished ? 4 : 3,
+    missing_archives: 1,
+    changed_archives: 1,
+    failed_archives: state === "failed" ? 1 : 0,
+    duplicate_archives: finished ? 6 : 2,
+    cache_records_reused: 1_120,
+    cache_rows_avoided: 35_000,
+    contention_retries: state === "paused" ? 4 : 1,
+    contention_wait_ms: state === "paused" ? 60_000 : 300,
+    resume_count: state === "paused" ? 1 : 0,
+    error_code:
+      state === "paused"
+        ? "storage_occupied"
+        : state === "failed"
+          ? "invalid_archive"
+          : null,
   };
 }
 

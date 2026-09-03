@@ -202,6 +202,10 @@ async function prepareInteractiveScenario(
     const pathway = await client.$(".pathway-laboratory");
     await pathway.waitForDisplayed();
     await scrollWithinInterface(client, ".pathway-laboratory");
+  } else if (scenario === "environment-details") {
+    const factors = await client.$(".factor-workbench");
+    await factors.waitForDisplayed();
+    await scrollWithinInterface(client, ".factor-workbench");
   }
 }
 

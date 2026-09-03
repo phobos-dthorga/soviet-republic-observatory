@@ -1,4 +1,6 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { auditInterfaceDom } from "./dom-audit";
 
 const reviewScenarios = [
   "workspace-briefing",
@@ -10,6 +12,8 @@ const reviewScenarios = [
   "materials-resource-catalogue",
   "workspace-population",
   "workspace-environment",
+  "environment-indexing",
+  "environment-details",
   "workspace-markets",
   "archive-latest",
   "dialog-language",
@@ -39,6 +43,21 @@ const discouragedPhrases = [
   "provenance",
   "ledger",
   "bounded",
+  "parsed save fact",
+  "game-definition fact",
+  "player definition",
+  "player override",
+];
+const environmentSpecialistPhrases = [
+  "save-backed",
+  "checked-session",
+  "facility contract",
+  "accounting boundary",
+  "source rows",
+  "factor set",
+  "factor-set",
+  "game-file catalogue",
+  "analysis database",
 ];
 
 test("player-friendly review scenarios keep specialist wording out of ordinary surfaces", async ({
@@ -53,9 +72,12 @@ test("player-friendly review scenarios keep specialist wording out of ordinary s
     const text = (await page.locator("body").innerText()).toLocaleLowerCase(
       "en-AU",
     );
-    const failures = discouragedPhrases.filter((phrase) =>
-      text.includes(phrase),
-    );
+    const phrases =
+      scenario === "workspace-environment" ||
+      scenario.startsWith("environment-")
+        ? [...discouragedPhrases, ...environmentSpecialistPhrases]
+        : discouragedPhrases;
+    const failures = phrases.filter((phrase) => text.includes(phrase));
     expect(failures, `${scenario}: specialist wording`).toEqual([]);
     expect(
       text.match(
@@ -91,6 +113,31 @@ test("native review can exercise both English wording modes without changing the
   );
 });
 
+test("Environment keeps technical research language behind Technical wording", async ({
+  page,
+}) => {
+  await openReview(page);
+  await selectScenario(page, "workspace-environment");
+
+  await setWordingMode(page, "player_friendly");
+  await expect(page.getByText("From your recorded saves")).toBeVisible();
+  await expect(page.getByText("From your save", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Save-backed environmental evidence"),
+  ).toHaveCount(0);
+
+  await setWordingMode(page, "technical");
+  await expect(
+    page.getByText("Save-backed environmental evidence"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("No validated facility snapshot is available"),
+  ).toHaveCount(2);
+  await expect(
+    page.getByText("Parsed save fact", { exact: true }),
+  ).toBeVisible();
+});
+
 test("resource catalogue review uses dynamic origins and retained live evidence", async ({
   page,
 }) => {
@@ -103,6 +150,28 @@ test("resource catalogue review uses dynamic origins and retained live evidence"
   await expect(page.getByText("Last verified in a game session")).toBeVisible();
   await expect(page.getByText("ecomponents")).toBeVisible();
   await expect(page.getByText("player_polymer")).toBeVisible();
+
+  const axe = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+    .analyze();
+  expect(axe.violations).toEqual([]);
+  expect(await page.evaluate(auditInterfaceDom)).toEqual([]);
+});
+
+test("contextual help remains fully inside a narrow viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 820 });
+  await openReview(page);
+  await selectScenario(page, "tooltip-contextual");
+
+  const trigger = page.locator(
+    "[data-help-topic='metric-context-source-stats-citizens-adults'] button",
+  );
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  expect(await page.evaluate(auditInterfaceDom)).toEqual([]);
 });
 
 async function openReview(page: Page): Promise<void> {

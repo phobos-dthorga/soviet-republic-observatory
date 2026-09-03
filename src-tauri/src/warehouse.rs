@@ -259,22 +259,22 @@ impl AnalyticalWarehouse {
         let connection = self.lock()?;
         connection
             .query_row(
-                "SELECT COUNT(DISTINCT revisions.revision_hash),\
-                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.pollution_class'),\
-                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.sewage_pollution_factor'),\
-                        COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.water_required_quality'),\
-                        COUNT(*) FILTER (WHERE properties.field_id IN (\
-                            'building.environment.water_industry_substation_disabled',\
-                            'building.environment.production_sewage_disabled',\
-                            'building.environment.sewage_disabled'))\
-                 FROM catalogue_generation_entities membership\
-                 JOIN warehouse_metadata metadata\
-                   ON membership.generation_id = metadata.current_catalogue_generation_id\
-                 JOIN definition_entity_revisions revisions USING(revision_hash)\
-                 JOIN definition_properties properties USING(revision_hash)\
-                 WHERE metadata.singleton_id = 1\
-                   AND revisions.entity_kind = 'building'\
-                   AND properties.field_id LIKE 'building.environment.%'",
+                r#"SELECT COUNT(DISTINCT revisions.revision_hash),
+                          COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.pollution_class'),
+                          COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.sewage_pollution_factor'),
+                          COUNT(*) FILTER (WHERE properties.field_id = 'building.environment.water_required_quality'),
+                          COUNT(*) FILTER (WHERE properties.field_id IN (
+                              'building.environment.water_industry_substation_disabled',
+                              'building.environment.production_sewage_disabled',
+                              'building.environment.sewage_disabled'))
+                   FROM catalogue_generation_entities membership
+                   JOIN warehouse_metadata metadata
+                     ON membership.generation_id = metadata.current_catalogue_generation_id
+                   JOIN definition_entity_revisions revisions USING(revision_hash)
+                   JOIN definition_properties properties USING(revision_hash)
+                   WHERE metadata.singleton_id = 1
+                     AND revisions.entity_kind = 'building'
+                     AND properties.field_id LIKE 'building.environment.%'"#,
                 [],
                 |row| {
                     let building_count = row.get::<_, u32>(0)?;
@@ -3786,6 +3786,61 @@ mod tests {
         );
         drop(warehouse);
         AnalyticalWarehouse::initialise(path).expect("reopen warehouse");
+    }
+
+    #[test]
+    fn environment_definition_context_reads_the_current_catalogue() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse =
+            AnalyticalWarehouse::initialise(directory.path().join("environment-context.duckdb"))
+                .expect("warehouse");
+        {
+            let connection = warehouse.lock().expect("connection");
+            connection
+                .execute_batch(
+                    r#"
+                    INSERT INTO catalogue_generations(
+                        generation_id, game_build_id, parser_version, created_at_ms,
+                        source_count, file_count, entity_count, property_count,
+                        relation_count, warning_count)
+                    VALUES('environment-generation', NULL, 'environment-test', 1, 1, 1, 4, 0, 0, 0);
+                    INSERT INTO definition_entity_revisions
+                    VALUES('environment-revision', 'building', 'base', 'building-1',
+                           'Water treatment plant', 'complete');
+                    INSERT INTO catalogue_generation_entities
+                    VALUES('environment-generation', 'base::building::building-1',
+                           'environment-revision');
+                    INSERT INTO definition_properties(
+                        revision_hash, field_id, occurrence, value_kind,
+                        value_number, value_text, unit, source_directive,
+                        source_line, raw_arguments, evidence_kind, resolution)
+                    VALUES
+                      ('environment-revision', 'building.environment.pollution_class', 0,
+                       'number', 1, NULL, NULL, '$POLLUTION', 1, '1', 'from_game_files', 'base'),
+                      ('environment-revision', 'building.environment.sewage_pollution_factor', 0,
+                       'number', 0.5, NULL, NULL, '$SEWAGE', 2, '0.5', 'from_game_files', 'base'),
+                      ('environment-revision', 'building.environment.water_required_quality', 0,
+                       'number', 0.9, NULL, NULL, '$WATER', 3, '0.9', 'from_game_files', 'base'),
+                      ('environment-revision', 'building.environment.sewage_disabled', 0,
+                       'boolean', NULL, NULL, NULL, '$SEWAGE_DISABLED', 4, 'false',
+                       'from_game_files', 'base');
+                    UPDATE warehouse_metadata
+                    SET current_catalogue_generation_id = 'environment-generation'
+                    WHERE singleton_id = 1;
+                    "#,
+                )
+                .expect("environment catalogue fixture");
+        }
+
+        let context = warehouse
+            .environment_definition_context()
+            .expect("environment definition context");
+        assert!(context.available);
+        assert_eq!(context.building_count, 1);
+        assert_eq!(context.pollution_class_facts, 1);
+        assert_eq!(context.sewage_pollution_factors, 1);
+        assert_eq!(context.water_quality_facts, 1);
+        assert_eq!(context.connection_capability_facts, 1);
     }
 
     #[test]

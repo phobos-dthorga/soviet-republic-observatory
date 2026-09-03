@@ -22,7 +22,8 @@ Pollution, radiation, water, and sewage require a separately checked live
 facility contract. Pollution keeps the label **W&R pollution units** and
 radiation keeps **W&R radioactivity units**. Neither is a physical emissions
 unit. See `research/environment-spatial-and-live-findings.md` for the current
-negative spatial-source finding.
+negative spatial-source finding. The current checked companion does not publish
+these readings, so Environment does not offer to enable their capture yet.
 
 Carbon estimates are player studies. Observatory stores no built-in factors.
 It multiplies a recorded quantity by an exact matching player factor and reports

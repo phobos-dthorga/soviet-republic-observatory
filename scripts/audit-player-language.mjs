@@ -99,6 +99,24 @@ for (const [key, pattern] of Object.entries(source.messages)) {
   }
 }
 
+for (const [prefix, phrases] of Object.entries(
+  policy.workspace_discouraged_phrases ?? {},
+)) {
+  for (const [key, pattern] of Object.entries(source.messages)) {
+    if (!key.startsWith(`${prefix}-`) || technicalKeys.has(key)) continue;
+    const lower = visibleText(pattern).toLocaleLowerCase("en-AU");
+    for (const phrase of phrases) {
+      if (lower.includes(phrase.toLocaleLowerCase("en-AU"))) {
+        failUnlessExcepted(
+          key,
+          `workspace_phrase:${phrase}`,
+          `contains workspace-specific specialist wording “${phrase}”`,
+        );
+      }
+    }
+  }
+}
+
 const workspacePrefixes = {
   Briefing: ["briefing"],
   Monitor: ["monitor", "scanner", "recorder"],

@@ -33,9 +33,16 @@
   --colour-risk-soft: rgba(216, 132, 116, 0.11);
   --colour-violet: #b6a8ce;
   --colour-overlay: rgba(8, 14, 21, 0.94);
+  --colour-cyan: var(--colour-observed);
+  --colour-line-strong: var(--colour-line);
+  --colour-text-muted: var(--colour-muted);
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --type-caption: 0.75rem;
   --type-body: 0.8125rem;
+  --type-body-small: var(--type-caption);
   --type-control: 0.75rem;
+  --type-display: 600 1.25rem/1.2 var(--font-display);
 }
 
 * {
@@ -735,18 +742,33 @@ h3 {
 }
 
 .guidance-surface[data-guidance-layout="block"] {
+  display: grid;
+  align-content: center;
+  gap: 5px;
   min-block-size: 44px;
   padding: var(--guidance-padding, 12px 14px);
 }
 
 .guidance-surface[data-guidance-layout="compact"] {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 3px 6px;
   min-block-size: 38px;
   padding: var(--guidance-padding, 10px 12px);
 }
 
 .guidance-surface[data-guidance-layout="inline"] {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 8px;
   min-block-size: 38px;
   padding: var(--guidance-padding, 9px 12px);
+}
+
+.guidance-surface > button {
+  justify-self: start;
 }
 
 .guidance-surface > :is(p, span) {
@@ -2691,7 +2713,7 @@ h3 {
 
 .compatibility-scopes h4 {
   margin-top: 3px;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 14px;
 }
 

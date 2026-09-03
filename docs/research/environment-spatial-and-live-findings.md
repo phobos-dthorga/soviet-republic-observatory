@@ -29,5 +29,8 @@ A future live facility contract must also prove:
 - no game, save, or simulation writes.
 
 Until then, Environment explains why the corresponding sections are unavailable
-and links to checked-session setup. No nearest-date reconciliation with save
+and links to this research status. It does not offer a recording switch that
+cannot produce readings, and the native capture command fails explicitly rather
+than reporting an empty success. A previously remembered consent can be turned
+off, but it cannot create evidence. No nearest-date reconciliation with save
 history is allowed.

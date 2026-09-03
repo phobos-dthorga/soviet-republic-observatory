@@ -573,6 +573,7 @@ impl ObservatoryStorage {
         load_recording_status(&connection)
     }
 
+    #[cfg(test)]
     pub fn environment_recording_status(
         &self,
     ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {

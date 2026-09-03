@@ -18,7 +18,11 @@
     "coefficient": "recipe amount",
     "provenance": "source details",
     "ledger": "history, records, or source details",
-    "bounded": "limited, safe, or omitted when the limit is not useful to the player"
+    "bounded": "limited, safe, or omitted when the limit is not useful to the player",
+    "parsed save fact": "from your save",
+    "game-definition fact": "from game files",
+    "player definition": "your setting",
+    "player override": "your setting"
   },
   "implementation_terms": [
     "SQLite",
@@ -34,6 +38,19 @@
     "Sankey": "May appear only when introduced as a production-flow diagram"
   },
   "formal_terms_reserved_for_details": ["HHI", "Laspeyres"],
+  "workspace_discouraged_phrases": {
+    "environment": [
+      "save-backed",
+      "checked-session",
+      "facility contract",
+      "accounting boundary",
+      "source rows",
+      "factor set",
+      "factor-set",
+      "game-file catalogue",
+      "analysis database"
+    ]
+  },
   "technical_detail_keys": [
     "markets-action-failed",
     "monitor-error-code",
