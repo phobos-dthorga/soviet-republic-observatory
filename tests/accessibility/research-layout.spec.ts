@@ -125,11 +125,17 @@ const readyStatus = {
   download_progress: idleDownloadProgress,
   session: {
     state: "prerequisites_required",
+    launch_state: "idle",
     game_configured: true,
     reviewed_loader_source_available: true,
     probe_ready: false,
     report_snapshot_count: 0,
     report_collection_stage: null,
+    people_readings_ready: false,
+    resource_readings_ready: false,
+    environment_readings_ready: false,
+    facility_contract_version: null,
+    last_report_at_ms: null,
     managed_folder: "W&R/tesmioloader/observatory",
     can_prepare: false,
     can_launch: false,
@@ -273,6 +279,11 @@ async function installResearchHostMock(page: Page): Promise<void> {
                 collection_stage: sessionLaunched
                   ? "waiting_for_loaded_republic"
                   : null,
+                people_readings_ready: false,
+                resource_readings_ready: false,
+                environment_readings_ready: false,
+                facility_contract_version: null,
+                last_report_at_ms: null,
                 warnings: [],
               };
             }

@@ -1537,6 +1537,11 @@ pub struct TesmioProbeStatus {
     pub latest_day: Option<u16>,
     pub latest_population_count: Option<u32>,
     pub collection_stage: Option<String>,
+    pub people_readings_ready: bool,
+    pub resource_readings_ready: bool,
+    pub environment_readings_ready: bool,
+    pub facility_contract_version: Option<u32>,
+    pub last_report_at_ms: Option<i64>,
     pub warnings: Vec<String>,
 }
 
@@ -1559,6 +1564,11 @@ impl TesmioProbeStatus {
             latest_day: None,
             latest_population_count: None,
             collection_stage: None,
+            people_readings_ready: false,
+            resource_readings_ready: false,
+            environment_readings_ready: false,
+            facility_contract_version: None,
+            last_report_at_ms: None,
             warnings: Vec::new(),
         }
     }

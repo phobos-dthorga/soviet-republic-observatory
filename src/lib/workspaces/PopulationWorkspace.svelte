@@ -199,6 +199,11 @@
         latest_day: null,
         latest_population_count: null,
         collection_stage: null,
+        people_readings_ready: false,
+        resource_readings_ready: false,
+        environment_readings_ready: false,
+        facility_contract_version: null,
+        last_report_at_ms: null,
         warnings: [],
       },
     };

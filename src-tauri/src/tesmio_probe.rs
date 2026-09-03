@@ -11,6 +11,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
+use std::time::UNIX_EPOCH;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -211,11 +212,14 @@ pub(crate) fn inspect_resource_registry(
 fn read_parsed_probe(media_directory: &Path) -> Result<Option<ParsedProbe>, &'static str> {
     let mut last_error = "probe_unreadable";
     for attempt in 0..REPORT_READ_ATTEMPTS {
-        let Some((text, bytes)) = read_probe(media_directory)? else {
+        let Some((text, bytes, modified_at_ms)) = read_probe(media_directory)? else {
             return Ok(None);
         };
         match parse_records_full(&text, &bytes) {
-            Ok(parsed) => return Ok(Some(parsed)),
+            Ok(mut parsed) => {
+                parsed.status.last_report_at_ms = modified_at_ms;
+                return Ok(Some(parsed));
+            }
             Err(error) => last_error = error,
         }
         // The probe flushes bounded records while W&R is rendering and briefly
@@ -228,7 +232,9 @@ fn read_parsed_probe(media_directory: &Path) -> Result<Option<ParsedProbe>, &'st
     Err(last_error)
 }
 
-fn read_probe(media_directory: &Path) -> Result<Option<(String, Vec<u8>)>, &'static str> {
+fn read_probe(
+    media_directory: &Path,
+) -> Result<Option<(String, Vec<u8>, Option<i64>)>, &'static str> {
     let canonical_media = media_directory
         .canonicalize()
         .map_err(|_| "game_directory_unavailable")?;
@@ -263,7 +269,12 @@ fn read_probe(media_directory: &Path) -> Result<Option<(String, Vec<u8>)>, &'sta
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| "probe_not_utf8")?
         .to_owned();
-    Ok(Some((text, bytes)))
+    let modified_at_ms = link_metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .and_then(|duration| i64::try_from(duration.as_millis()).ok());
+    Ok(Some((text, bytes, modified_at_ms)))
 }
 
 fn probe_path(game_root: &Path) -> PathBuf {
@@ -676,6 +687,11 @@ fn parse_records_full(text: &str, bytes: &[u8]) -> Result<ParsedProbe, &'static 
         latest_day: latest.map(|record| record.day),
         latest_population_count: latest.map(|record| record.population_count),
         collection_stage,
+        people_readings_ready: !snapshots.is_empty(),
+        resource_readings_ready: !registries.is_empty(),
+        environment_readings_ready: false,
+        facility_contract_version: None,
+        last_report_at_ms: None,
         warnings,
     };
     let resource_registry = registries.iter().next_back().map(|(sequence, registry)| {

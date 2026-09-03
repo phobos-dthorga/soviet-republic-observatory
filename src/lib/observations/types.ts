@@ -548,6 +548,11 @@ export type TesmioProbeStatus = {
   latest_day: number | null;
   latest_population_count: number | null;
   collection_stage: string | null;
+  people_readings_ready: boolean;
+  resource_readings_ready: boolean;
+  environment_readings_ready: boolean;
+  facility_contract_version: number | null;
+  last_report_at_ms: number | null;
   warnings: string[];
 };
 

@@ -8,10 +8,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::sync::Mutex;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -198,7 +197,25 @@ pub enum ResearchSessionPhase {
     BuildingHost,
     Installing,
     Verifying,
+    CheckingSetup,
+    StartingGame,
+    LoadingTesmio,
+    GameResumed,
+    WaitingForReport,
     Complete,
+    Failed,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResearchSessionLaunchState {
+    Idle,
+    CheckingSetup,
+    StartingGame,
+    LoadingTesmio,
+    GameResumed,
+    WaitingForReport,
+    ReportReady,
     Failed,
 }
 
@@ -236,11 +253,17 @@ impl Default for ResearchSessionProgress {
 #[derive(Clone, Debug, Serialize)]
 pub struct ResearchSessionStatus {
     pub state: ResearchSessionState,
+    pub launch_state: ResearchSessionLaunchState,
     pub game_configured: bool,
     pub reviewed_loader_source_available: bool,
     pub probe_ready: bool,
     pub report_snapshot_count: u32,
     pub report_collection_stage: Option<String>,
+    pub people_readings_ready: bool,
+    pub resource_readings_ready: bool,
+    pub environment_readings_ready: bool,
+    pub facility_contract_version: Option<u32>,
+    pub last_report_at_ms: Option<i64>,
     pub managed_folder: String,
     pub can_prepare: bool,
     pub can_launch: bool,
@@ -335,6 +358,7 @@ pub struct ResearchSetupService {
     building: AtomicBool,
     downloading: AtomicBool,
     preparing_session: AtomicBool,
+    launching_session: AtomicBool,
 }
 
 impl ResearchSetupService {
@@ -350,6 +374,7 @@ impl ResearchSetupService {
             building: AtomicBool::new(false),
             downloading: AtomicBool::new(false),
             preparing_session: AtomicBool::new(false),
+            launching_session: AtomicBool::new(false),
         }
     }
 
@@ -524,6 +549,11 @@ impl ResearchSetupService {
             && game_configured;
         let mut report_snapshot_count = 0;
         let mut report_collection_stage = None;
+        let mut people_readings_ready = false;
+        let mut resource_readings_ready = false;
+        let mut environment_readings_ready = false;
+        let mut facility_contract_version = None;
+        let mut last_report_at_ms = None;
         let (state, installed) = match paths.as_ref() {
             None => (ResearchSessionState::GameNotConfigured, false),
             Some(paths)
@@ -545,6 +575,11 @@ impl ResearchSetupService {
                 if report_available {
                     report_snapshot_count = report.snapshot_count;
                     report_collection_stage = report.collection_stage;
+                    people_readings_ready = report.people_readings_ready;
+                    resource_readings_ready = report.resource_readings_ready;
+                    environment_readings_ready = report.environment_readings_ready;
+                    facility_contract_version = report.facility_contract_version;
+                    last_report_at_ms = report.last_report_at_ms;
                 }
                 (
                     if report_available {
@@ -559,20 +594,51 @@ impl ResearchSetupService {
             Some(_) if prerequisites_ready => (ResearchSessionState::ReadyToPrepare, false),
             Some(_) => (ResearchSessionState::PrerequisitesRequired, false),
         };
+        let progress = self.session_progress();
+        let report_is_current_launch = progress.task_id != "research_session_launch"
+            || progress.started_at_ms.is_some_and(|started| {
+                last_report_at_ms.is_some_and(|reported| reported >= started)
+            });
+        let launch_state = if report_snapshot_count > 0 && report_is_current_launch {
+            ResearchSessionLaunchState::ReportReady
+        } else {
+            match progress.phase {
+                ResearchSessionPhase::CheckingSetup => ResearchSessionLaunchState::CheckingSetup,
+                ResearchSessionPhase::StartingGame => ResearchSessionLaunchState::StartingGame,
+                ResearchSessionPhase::LoadingTesmio => ResearchSessionLaunchState::LoadingTesmio,
+                ResearchSessionPhase::GameResumed => ResearchSessionLaunchState::GameResumed,
+                ResearchSessionPhase::WaitingForReport => {
+                    ResearchSessionLaunchState::WaitingForReport
+                }
+                ResearchSessionPhase::Failed if progress.task_id == "research_session_launch" => {
+                    ResearchSessionLaunchState::Failed
+                }
+                _ => ResearchSessionLaunchState::Idle,
+            }
+        };
         ResearchSessionStatus {
             state,
+            launch_state,
             game_configured,
             reviewed_loader_source_available,
             probe_ready,
             report_snapshot_count,
             report_collection_stage,
+            people_readings_ready,
+            resource_readings_ready,
+            environment_readings_ready,
+            facility_contract_version,
+            last_report_at_ms,
             managed_folder: "W&R/tesmioloader/observatory".to_owned(),
             can_prepare: prerequisites_ready && !preparing,
-            can_launch: installed && notice_accepted && !preparing,
+            can_launch: installed
+                && notice_accepted
+                && !preparing
+                && !self.launching_session.load(Ordering::Acquire),
             writes_game_directory: true,
             writes_save_data: false,
             changes_running_game_memory: true,
-            progress: self.session_progress(),
+            progress,
         }
     }
 
@@ -755,48 +821,150 @@ impl ResearchSetupService {
     }
 
     pub fn launch_observation_session(
-        &self,
+        self: &Arc<Self>,
+        app: &AppHandle,
         stored: &StoredResearchSetup,
         game_media_directory: Option<&Path>,
         running_game_memory_confirmed: bool,
     ) -> Result<(), ObservatoryError> {
+        let started = now_ms();
+        self.update_session_progress(
+            app,
+            ResearchSessionProgress {
+                task_id: "research_session_launch".to_owned(),
+                run_id: format!("research-launch-{started}"),
+                state: ResearchSessionTaskState::Running,
+                phase: ResearchSessionPhase::CheckingSetup,
+                progress_percent: Some(10),
+                started_at_ms: Some(started),
+                updated_at_ms: Some(started),
+                current_item: Some("checking_checked_setup".to_owned()),
+                log_lines: Vec::new(),
+                error_code: None,
+            },
+        );
         if !running_game_memory_confirmed {
-            return Err(ObservatoryError::ResearchSessionConsentRequired);
+            return self.fail_session(app, ObservatoryError::ResearchSessionConsentRequired);
         }
         if stored.accepted_notice_revision != RESEARCH_NOTICE_REVISION {
-            return Err(ObservatoryError::ResearchNoticeRequired);
+            return self.fail_session(app, ObservatoryError::ResearchNoticeRequired);
         }
         let Some(paths) = game_media_directory.and_then(managed_session_paths) else {
-            return Err(ObservatoryError::InvalidGameDirectory);
+            return self.fail_session(app, ObservatoryError::InvalidGameDirectory);
         };
         if !managed_session_is_valid(
             &paths.session_root,
             &paths.game_executable,
             stored.last_probe_hash.as_deref(),
         ) {
-            return Err(ObservatoryError::ResearchSessionNotReady);
+            return self.fail_session(app, ObservatoryError::ResearchSessionNotReady);
         }
-        let mut child = Command::new(paths.session_root.join("tesmiolauncher.exe"))
+        if self
+            .launching_session
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return Err(ObservatoryError::CriticalTaskBusy);
+        }
+        self.advance_session(app, ResearchSessionPhase::StartingGame, 30, "starting_wr");
+        let mut command = Command::new(paths.session_root.join("tesmiolauncher.exe"));
+        command
             .arg("--game")
             .arg(&paths.game_executable)
             .arg("--nogui")
             .current_dir(&paths.session_root)
-            .spawn()
-            .map_err(|_| ObservatoryError::ResearchSessionLaunchFailed)?;
-        for _ in 0..100 {
-            match child.try_wait() {
-                Ok(Some(status)) if status.success() => break,
-                Ok(Some(_)) | Err(_) => {
-                    return Err(ObservatoryError::ResearchSessionLaunchFailed);
-                }
-                Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-            }
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
         }
+        let child = match command.spawn() {
+            Ok(child) => child,
+            Err(_) => {
+                self.launching_session.store(false, Ordering::Release);
+                return self.fail_session(app, ObservatoryError::ResearchSessionLaunchFailed);
+            }
+        };
+        self.advance_session(
+            app,
+            ResearchSessionPhase::LoadingTesmio,
+            55,
+            "loading_tesmio",
+        );
+        let service = Arc::clone(self);
+        let app = app.clone();
+        let session_root = paths.session_root.clone();
+        let game_root = paths
+            .game_executable
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        std::thread::Builder::new()
+            .name("observatory-tesmio-launch".to_owned())
+            .spawn(move || match child.wait_with_output() {
+                Ok(output) if output.status.success() => {
+                    service.launching_session.store(false, Ordering::Release);
+                    let logs = sanitise_build_output(
+                        &output.stdout,
+                        &output.stderr,
+                        &session_root,
+                        &game_root,
+                    );
+                    service.set_session_logs(&app, logs);
+                    service.advance_session(
+                        &app,
+                        ResearchSessionPhase::GameResumed,
+                        80,
+                        "game_resumed",
+                    );
+                    service.advance_session(
+                        &app,
+                        ResearchSessionPhase::WaitingForReport,
+                        90,
+                        "waiting_for_checked_report",
+                    );
+                    diagnostics::record(
+                        "info",
+                        "research_session.launcher_complete",
+                        "launch_observation_only_session",
+                        "The checked launcher resumed W&R and exited normally. Observatory is waiting for a report.",
+                    );
+                }
+                Ok(output) => {
+                    service.launching_session.store(false, Ordering::Release);
+                    let logs = sanitise_build_output(
+                        &output.stdout,
+                        &output.stderr,
+                        &session_root,
+                        &game_root,
+                    );
+                    service.set_session_logs(&app, logs);
+                    let _ = service.fail_session::<()>(
+                        &app,
+                        ObservatoryError::ResearchSessionLaunchFailed,
+                    );
+                }
+                Err(_) => {
+                    service.launching_session.store(false, Ordering::Release);
+                    let _ = service.fail_session::<()>(
+                        &app,
+                        ObservatoryError::ResearchSessionLaunchFailed,
+                    );
+                }
+            })
+            .map_err(|_| {
+                self.launching_session.store(false, Ordering::Release);
+                ObservatoryError::ResearchSessionLaunchFailed
+            })?;
         diagnostics::record(
             "info",
             "research_session.launch_requested",
             "launch_observation_only_session",
-            "The player explicitly launched the checked observation-only session. The launcher may temporarily modify the running game's memory; no save write was requested.",
+            "The player explicitly launched the checked observation-only session. Launch progress is continuing in the background; no save write was requested.",
         );
         Ok(())
     }
@@ -839,6 +1007,11 @@ impl ResearchSetupService {
         error: ObservatoryError,
     ) -> Result<T, ObservatoryError> {
         let mut progress = self.session_progress();
+        let operation = if progress.task_id == "research_session_launch" {
+            "launch_observation_only_session"
+        } else {
+            "prepare_observation_only_session"
+        };
         progress.state = ResearchSessionTaskState::Failed;
         progress.phase = ResearchSessionPhase::Failed;
         progress.updated_at_ms = Some(now_ms());
@@ -847,7 +1020,7 @@ impl ResearchSetupService {
         diagnostics::record(
             "error",
             error.code(),
-            "prepare_observation_only_session",
+            operation,
             "The checked-session preparation stopped safely. No save file was changed.",
         );
         Err(error)

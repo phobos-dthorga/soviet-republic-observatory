@@ -124,6 +124,11 @@
       const report = await getResearchReportStatus();
       const reportAvailable =
         report.state === "available" || report.state === "warning";
+      const reportBelongsToLaunch =
+        sessionProgress?.task_id !== "research_session_launch" ||
+        (report.last_report_at_ms !== null &&
+          sessionProgress.started_at_ms !== null &&
+          report.last_report_at_ms >= sessionProgress.started_at_ms);
       status = {
         ...status,
         session: {
@@ -137,6 +142,15 @@
           report_collection_stage: reportAvailable
             ? report.collection_stage
             : null,
+          people_readings_ready: report.people_readings_ready,
+          resource_readings_ready: report.resource_readings_ready,
+          environment_readings_ready: report.environment_readings_ready,
+          facility_contract_version: report.facility_contract_version,
+          last_report_at_ms: report.last_report_at_ms,
+          launch_state:
+            reportAvailable && reportBelongsToLaunch
+              ? "report_ready"
+              : status.session.launch_state,
         },
       };
     } catch {
@@ -599,7 +613,7 @@
             headingId="research-download-progress-title"
           />
         {/if}
-        {#if sessionProgressView && sessionProgress?.state !== "idle"}
+        {#if sessionProgressView && sessionProgress?.state !== "idle" && status?.session.launch_state !== "report_ready"}
           <TaskProgressPanel
             view={sessionProgressView}
             headingId="research-session-progress-title"
@@ -820,6 +834,51 @@
                 onclick={confirmLaunch}
                 >{$translation("research-session-launch-action")}</button
               >
+              {#if status?.session.state === "report_available"}
+                <dl
+                  class="capability-grid"
+                  aria-label={$translation(
+                    "research-session-capabilities-title",
+                  )}
+                >
+                  <div data-ready={status.session.people_readings_ready}>
+                    <dt>
+                      {$translation("research-session-capability-people")}
+                    </dt>
+                    <dd>
+                      {status.session.people_readings_ready
+                        ? $translation("research-session-capability-ready")
+                        : $translation(
+                            "research-session-capability-unavailable",
+                          )}
+                    </dd>
+                  </div>
+                  <div data-ready={status.session.resource_readings_ready}>
+                    <dt>
+                      {$translation("research-session-capability-resources")}
+                    </dt>
+                    <dd>
+                      {status.session.resource_readings_ready
+                        ? $translation("research-session-capability-ready")
+                        : $translation(
+                            "research-session-capability-unavailable",
+                          )}
+                    </dd>
+                  </div>
+                  <div data-ready={status.session.environment_readings_ready}>
+                    <dt>
+                      {$translation("research-session-capability-environment")}
+                    </dt>
+                    <dd>
+                      {status.session.environment_readings_ready
+                        ? $translation("research-session-capability-ready")
+                        : $translation(
+                            "research-session-capability-needs-study",
+                          )}
+                    </dd>
+                  </div>
+                </dl>
+              {/if}
             </div>
             <strong
               >{status?.session.state === "report_available"
@@ -1095,6 +1154,15 @@
     padding: 8px;
     background: var(--colour-surface);
   }
+  .capability-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .capability-grid > div[data-ready="true"] {
+    border-inline-start: 3px solid var(--colour-success);
+  }
+  .capability-grid > div[data-ready="false"] {
+    border-inline-start: 3px solid var(--colour-gold);
+  }
   dt,
   dd {
     font-size: var(--type-caption);
@@ -1183,6 +1251,7 @@
       grid-column: 2;
     }
     dl,
+    .capability-grid,
     .artifact dl {
       grid-template-columns: 1fr;
     }

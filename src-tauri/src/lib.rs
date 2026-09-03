@@ -226,6 +226,21 @@ pub fn run() {
             commands::export_theme,
             commands::remove_theme,
         ])
+        .on_window_event(|_window, event| match event {
+            tauri::WindowEvent::CloseRequested { .. } => diagnostics::record(
+                "info",
+                "application.close_requested",
+                "application_shutdown",
+                "Republic Observatory received a normal window close request.",
+            ),
+            tauri::WindowEvent::Destroyed => diagnostics::record(
+                "info",
+                "application.window_destroyed",
+                "application_shutdown",
+                "Republic Observatory's window was destroyed after shutdown began.",
+            ),
+            _ => {}
+        })
         .run(tauri::generate_context!())
         .expect("Republic Observatory desktop host failed");
 }

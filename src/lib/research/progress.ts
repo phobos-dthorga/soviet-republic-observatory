@@ -91,7 +91,12 @@ const sessionPhaseIndex: Record<ResearchSessionPhase, number> = {
   building_host: 1,
   installing: 2,
   verifying: 3,
-  complete: 4,
+  checking_setup: 0,
+  starting_game: 1,
+  loading_tesmio: 2,
+  game_resumed: 3,
+  waiting_for_report: 4,
+  complete: 5,
   failed: -1,
 };
 
@@ -101,6 +106,11 @@ const sessionPhaseMessage: Record<ResearchSessionPhase, TranslationKey> = {
   building_host: "research-session-progress-building",
   installing: "research-session-progress-installing",
   verifying: "research-session-progress-verifying",
+  checking_setup: "research-session-progress-checking-setup",
+  starting_game: "research-session-progress-starting-game",
+  loading_tesmio: "research-session-progress-loading-tesmio",
+  game_resumed: "research-session-progress-game-resumed",
+  waiting_for_report: "research-session-progress-waiting-report",
   complete: "research-session-progress-complete",
   failed: "research-session-progress-failed",
 };
@@ -112,6 +122,11 @@ const sessionItems: Record<string, TranslationKey> = {
   read_only_contract: "research-session-item-contract",
   existing_checked_setup: "research-session-item-existing",
   ready_for_confirmed_launch: "research-session-item-ready",
+  checking_checked_setup: "research-session-item-checking-setup",
+  starting_wr: "research-session-item-starting-game",
+  loading_tesmio: "research-session-item-loading-tesmio",
+  game_resumed: "research-session-item-game-resumed",
+  waiting_for_checked_report: "research-session-item-waiting-report",
 };
 
 export function researchBuildProgressView(
@@ -262,15 +277,24 @@ function sessionStages(
   progress: ResearchSessionProgress,
   translate: Translator,
 ): TaskProgressStage[] {
-  const definitions: Array<[string, TranslationKey]> = [
-    ["preflight", "research-session-stage-preflight"],
-    ["build", "research-session-stage-build"],
-    ["install", "research-session-stage-install"],
-    ["verify", "research-session-stage-verify"],
-  ];
+  const definitions: Array<[string, TranslationKey]> =
+    progress.task_id === "research_session_launch"
+      ? [
+          ["check", "research-session-stage-check-setup"],
+          ["start", "research-session-stage-start-game"],
+          ["load", "research-session-stage-load-tesmio"],
+          ["resume", "research-session-stage-game-resumed"],
+          ["report", "research-session-stage-wait-report"],
+        ]
+      : [
+          ["preflight", "research-session-stage-preflight"],
+          ["build", "research-session-stage-build"],
+          ["install", "research-session-stage-install"],
+          ["verify", "research-session-stage-verify"],
+        ];
   const active =
     progress.phase === "failed"
-      ? failedSessionStage(progress.progress_percent)
+      ? failedSessionStage(progress.progress_percent, definitions.length)
       : sessionPhaseIndex[progress.phase];
   return definitions.map(([id, key], index) => {
     const state = sessionStageState(progress, index, active);
@@ -283,7 +307,16 @@ function sessionStages(
   });
 }
 
-function failedSessionStage(percent: number | null): number {
+function failedSessionStage(
+  percent: number | null,
+  stageCount: number,
+): number {
+  if (stageCount === 5) {
+    if ((percent ?? 0) >= 80) return 3;
+    if ((percent ?? 0) >= 50) return 2;
+    if ((percent ?? 0) >= 25) return 1;
+    return 0;
+  }
   if ((percent ?? 0) >= 90) return 3;
   if ((percent ?? 0) >= 65) return 2;
   if ((percent ?? 0) >= 25) return 1;

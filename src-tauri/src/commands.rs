@@ -335,6 +335,7 @@ pub async fn prepare_observation_only_session(
 #[tauri::command]
 pub async fn launch_observation_only_session(
     running_game_memory_confirmed: bool,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<ResearchSetupStatus, CommandError> {
     let application = Arc::clone(&state.application);
@@ -343,6 +344,7 @@ pub async fn launch_observation_only_session(
         let media = application.catalogue_configuration()?;
         let stored = application.research_setup()?;
         service.launch_observation_session(
+            &app,
             &stored,
             media.as_deref(),
             running_game_memory_confirmed,

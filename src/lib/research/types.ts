@@ -70,7 +70,22 @@ export type ResearchSessionPhase =
   | "building_host"
   | "installing"
   | "verifying"
+  | "checking_setup"
+  | "starting_game"
+  | "loading_tesmio"
+  | "game_resumed"
+  | "waiting_for_report"
   | "complete"
+  | "failed";
+
+export type ResearchSessionLaunchState =
+  | "idle"
+  | "checking_setup"
+  | "starting_game"
+  | "loading_tesmio"
+  | "game_resumed"
+  | "waiting_for_report"
+  | "report_ready"
   | "failed";
 
 export type ResearchSessionProgress = {
@@ -88,11 +103,17 @@ export type ResearchSessionProgress = {
 
 export type ResearchSessionStatus = {
   state: ResearchSessionState;
+  launch_state: ResearchSessionLaunchState;
   game_configured: boolean;
   reviewed_loader_source_available: boolean;
   probe_ready: boolean;
   report_snapshot_count: number;
   report_collection_stage: string | null;
+  people_readings_ready: boolean;
+  resource_readings_ready: boolean;
+  environment_readings_ready: boolean;
+  facility_contract_version: number | null;
+  last_report_at_ms: number | null;
   managed_folder: string;
   can_prepare: boolean;
   can_launch: boolean;
