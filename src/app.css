@@ -680,6 +680,12 @@ h3 {
   background: var(--colour-surface-soft);
 }
 
+.section-list a[aria-current="location"] {
+  border-color: var(--colour-observed);
+  color: var(--colour-text);
+  background: var(--colour-observed-soft);
+}
+
 .section-list a span {
   color: var(--colour-gold);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

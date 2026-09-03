@@ -36,6 +36,8 @@ const scenarios = [
   "workspace-environment",
   "environment-indexing",
   "environment-details",
+  "environment-carbon-task",
+  "environment-recording-management",
   "workspace-markets",
   "markets-indexing",
   "markets-paused",

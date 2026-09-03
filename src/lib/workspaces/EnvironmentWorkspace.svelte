@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import ObservatoryChart from "../charts/ObservatoryChart.svelte";
   import type { TranslationKey } from "../i18n/catalog";
   import { activeLocale, translation } from "../i18n/runtime";
   import { formatNumber } from "../i18n/format";
   import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import { exactObservationChartBindings } from "../navigation/chartBindings";
+  import { registerNavigationGuard } from "../navigation/navigationGuards";
   import {
     destinationsForSubject,
     type RelatedDataDestination,
@@ -43,6 +45,11 @@
   } from "../presentation/environment";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import ContextHelp from "../ui/ContextHelp.svelte";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import ScopedFilterBar from "./ScopedFilterBar.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
+  import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
   let {
     workspace = null,
@@ -54,6 +61,9 @@
     onlocationchange,
     onrelatednavigate,
     onopenresearch,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   }: {
     workspace?: EnvironmentWorkspaceModel | null;
     indexingProgress?: EnvironmentIndexingProgress | null;
@@ -67,6 +77,9 @@
       origin: HTMLElement | null,
     ) => void;
     onopenresearch: () => void;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute) => void;
+    onclosetask: () => void;
   } = $props();
 
   const channels: EnvironmentActivityChannel[] = [
@@ -100,6 +113,23 @@
   let importCsv = $state("");
   let importPreview = $state<CarbonFactorImportPreview | null>(null);
   let deleteConfirmation = $state("");
+  let canvas = $state<HTMLElement | null>(null);
+  let activeSection = $state<string>("environment-overview");
+
+  const carbonDraftDirty = $derived(
+    Boolean(
+      factorName ||
+      factorBoundary ||
+      factorReason ||
+      factorResource ||
+      factorSource ||
+      factorEntryReason ||
+      factorReference ||
+      factorEntries.length ||
+      importCsv,
+    ),
+  );
+  const managementDraftDirty = $derived(Boolean(deleteConfirmation));
 
   const activityResources = $derived(
     Array.from(
@@ -187,6 +217,7 @@
   }
 
   $effect(() => {
+    activeSection = location.section;
     const requested = location.filters.resourceToken;
     if (requested && workspace?.resources.includes(requested)) {
       selectedResource = requested;
@@ -262,7 +293,7 @@
     busy = true;
     try {
       onupdate(await saveCarbonFactorSet(draft));
-      factorEntries = [];
+      clearCarbonDraft();
     } finally {
       busy = false;
     }
@@ -285,6 +316,51 @@
     importCsv = await file.text();
     importPreview = await previewCarbonFactorImport(importCsv);
   }
+
+  function clearCarbonDraft(): void {
+    factorName = "";
+    factorBoundary = "";
+    factorReason = "";
+    factorResource = "";
+    factorChannel = "production";
+    factorValue = 0;
+    factorSource = "";
+    factorEntryReason = "";
+    factorReference = "";
+    factorEntries = [];
+    importCsv = "";
+    importPreview = null;
+  }
+
+  onMount(() =>
+    registerNavigationGuard(
+      "environment-task-drafts",
+      () => carbonDraftDirty || managementDraftDirty,
+    ),
+  );
+
+  onMount(() => {
+    if (!canvas || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (left, right) => right.intersectionRatio - left.intersectionRatio,
+          )[0];
+        if (visible?.target.id) activeSection = visible.target.id;
+      },
+      {
+        root: canvas,
+        rootMargin: "-8% 0px -68% 0px",
+        threshold: [0, 0.1, 0.4],
+      },
+    );
+    for (const section of canvas.querySelectorAll<HTMLElement>(".panel[id]")) {
+      observer.observe(section);
+    }
+    return () => observer.disconnect();
+  });
 </script>
 
 <section class="workspace environment-workspace">
@@ -323,22 +399,52 @@
       </div>
     </div>
     <div class="section-list">
-      <a href="#environment-overview" use:containedSectionNavigation
+      <a
+        href="#environment-overview"
+        aria-current={activeSection === "environment-overview"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>01</span>{$translation("environment-section-overview")}</a
       >
-      <a href="#environment-pollution" use:containedSectionNavigation
+      <a
+        href="#environment-pollution"
+        aria-current={activeSection === "environment-pollution"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>02</span>{$translation("environment-section-pollution")}</a
       >
-      <a href="#environment-waste" use:containedSectionNavigation
+      <a
+        href="#environment-waste"
+        aria-current={activeSection === "environment-waste"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>03</span>{$translation("environment-section-waste")}</a
       >
-      <a href="#environment-water" use:containedSectionNavigation
+      <a
+        href="#environment-water"
+        aria-current={activeSection === "environment-water"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>04</span>{$translation("environment-section-water")}</a
       >
-      <a href="#environment-carbon" use:containedSectionNavigation
+      <a
+        href="#environment-carbon"
+        aria-current={activeSection === "environment-carbon"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>05</span>{$translation("environment-section-carbon")}</a
       >
-      <a href="#environment-recording" use:containedSectionNavigation
+      <a
+        href="#environment-recording"
+        aria-current={activeSection === "environment-recording"
+          ? "location"
+          : undefined}
+        use:containedSectionNavigation
         ><span>06</span>{$translation("environment-section-recording")}</a
       >
     </div>
@@ -348,7 +454,7 @@
     >
   </aside>
 
-  <section class="canvas">
+  <section class="canvas" bind:this={canvas}>
     <GuidanceSurface
       kind="instruction"
       layout="inline"
@@ -358,25 +464,27 @@
       <strong>{$translation("environment-evidence-banner")}</strong>
       <span>{$translation("environment-evidence-banner-detail")}</span>
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow"
-          >{$translation("environment-heading-eyebrow")}</span
-        >
-        <h2>{$translation("environment-heading-title")}</h2>
-        <p>{$translation("environment-heading-description")}</p>
-      </div>
-      <button
-        type="button"
-        disabled={!desktopAvailable || busy}
-        onclick={() => runIndexing(indexingProgress?.phase === "paused")}
-        >{$translation(
-          indexingProgress?.phase === "paused"
-            ? "environment-action-resume"
-            : "environment-action-index",
-        )}</button
-      >
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("environment-heading-eyebrow")}
+      title={$translation("environment-heading-title")}
+      description={$translation("environment-heading-description")}
+    >
+      {#snippet actions()}
+        <WorkspaceToolbar label={$translation("environment-heading-title")}>
+          <button
+            type="button"
+            disabled={!desktopAvailable || busy}
+            onclick={() => runIndexing(indexingProgress?.phase === "paused")}
+            >{$translation(
+              indexingProgress?.phase === "paused"
+                ? "environment-action-resume"
+                : "environment-action-index",
+            )}</button
+          >
+        </WorkspaceToolbar>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if indexingProgress && indexingProgress.phase !== "idle"}
       <section
@@ -415,15 +523,11 @@
     {/if}
 
     <section id="environment-overview" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow"
-            >{$translation("environment-overview-eyebrow")}</span
-          >
-          <h3>{$translation("environment-overview-title")}</h3>
-          <p>{$translation("environment-overview-description")}</p>
-        </div>
-      </header>
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-overview-eyebrow")}
+        title={$translation("environment-overview-title")}
+        description={$translation("environment-overview-description")}
+      />
       <div class="summary-grid">
         {#each workspace?.summaries ?? [] as summary}
           <article class="summary-card">
@@ -532,7 +636,7 @@
           </GuidanceSurface>
         {/if}
       </section>
-      <div class="filters">
+      <ScopedFilterBar label={$translation("environment-recorded-history")}>
         <label
           >{$translation("environment-filter-channel")}<select
             value={selectedChannel}
@@ -551,7 +655,7 @@
               >{/each}</select
           ></label
         >
-      </div>
+      </ScopedFilterBar>
       <ObservatoryChart
         spec={chart}
         eyebrow={$translation("environment-recorded-history")}
@@ -567,13 +671,10 @@
     </section>
 
     <section id="environment-pollution" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow">{$translation("environment-live-eyebrow")}</span
-          >
-          <h3>{$translation("environment-pollution-title")}</h3>
-        </div>
-      </header>
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-live-eyebrow")}
+        title={$translation("environment-pollution-title")}
+      />
       <GuidanceSurface kind="instruction" layout="block"
         ><strong>{$translation("environment-live-unavailable-title")}</strong
         ><span>{$translation("environment-pollution-unavailable")}</span><button
@@ -585,15 +686,11 @@
     </section>
 
     <section id="environment-waste" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow"
-            >{$translation("environment-save-waste-eyebrow")}</span
-          >
-          <h3>{$translation("environment-waste-title")}</h3>
-          <p>{$translation("environment-waste-description")}</p>
-        </div>
-      </header>
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-save-waste-eyebrow")}
+        title={$translation("environment-waste-title")}
+        description={$translation("environment-waste-description")}
+      />
       <GuidanceSurface kind="boundary" layout="compact"
         ><strong>{$translation("environment-waste-boundary-title")}</strong
         ><span>{$translation("environment-waste-boundary")}</span
@@ -639,13 +736,10 @@
     </section>
 
     <section id="environment-water" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow">{$translation("environment-live-eyebrow")}</span
-          >
-          <h3>{$translation("environment-water-title")}</h3>
-        </div>
-      </header>
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-live-eyebrow")}
+        title={$translation("environment-water-title")}
+      />
       <GuidanceSurface kind="instruction" layout="block"
         ><strong>{$translation("environment-live-unavailable-title")}</strong
         ><span>{$translation("environment-water-unavailable")}</span><button
@@ -657,15 +751,21 @@
     </section>
 
     <section id="environment-carbon" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow"
-            >{$translation("environment-carbon-eyebrow")}</span
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-carbon-eyebrow")}
+        title={$translation("environment-carbon-title")}
+        description={$translation("environment-carbon-description")}
+      >
+        {#snippet actions()}
+          <button
+            type="button"
+            class="primary"
+            onclick={() => onopentask("environment-carbon-study")}
           >
-          <h3>{$translation("environment-carbon-title")}</h3>
-          <p>{$translation("environment-carbon-description")}</p>
-        </div>
-      </header>
+            {$translation("environment-carbon-open-task")}
+          </button>
+        {/snippet}
+      </WorkspaceSectionHeader>
       <GuidanceSurface kind="boundary" layout="compact"
         ><strong>{$translation("environment-carbon-boundary-title")}</strong
         ><span>{$translation("environment-carbon-boundary")}</span
@@ -743,84 +843,154 @@
         <strong>{$translation("environment-carbon-intensity-title")}</strong>
         <span>{$translation("environment-carbon-intensity-unavailable")}</span>
       </GuidanceSurface>
-      <div class="factor-workbench">
-        <fieldset class="factor-group study-details">
-          <legend>{$translation("environment-factor-study-heading")}</legend>
-          <p>{$translation("environment-factor-study-description")}</p>
-          <div class="factor-fields study-fields">
-            <label
-              >{$translation("environment-factor-name")}<input
-                bind:value={factorName}
-              /></label
+    </section>
+
+    <section id="environment-recording" class="panel" tabindex="-1">
+      <WorkspaceSectionHeader
+        eyebrow={$translation("environment-recording-eyebrow")}
+        title={$translation("environment-recording-title")}
+        description={$translation("environment-recording-description")}
+      >
+        {#snippet actions()}
+          <button
+            type="button"
+            onclick={() => onopentask("environment-recording-management")}
+          >
+            {$translation("environment-recording-manage")}
+          </button>
+        {/snippet}
+      </WorkspaceSectionHeader>
+      <section class="recording-card readable-card">
+        <GuidanceSurface kind="instruction" layout="block">
+          <strong>{$translation(recordingStateKey())}</strong>
+          <span
+            >{$translation(
+              liveReadingSupported
+                ? "environment-recording-ready-detail"
+                : "environment-recording-contract-waiting",
+            )}</span
+          >
+        </GuidanceSurface>
+        {#if workspace?.recording.enabled}
+          <div class="actions">
+            <button
+              type="button"
+              onclick={async () =>
+                onupdate(await disableEnvironmentRecording())}
+              >{$translation("environment-recording-disable")}</button
             >
-            <label
-              >{$translation("environment-factor-boundary")}<input
-                bind:value={factorBoundary}
-              /></label
-            >
-            <label
-              >{$translation("environment-factor-reason")}<input
-                bind:value={factorReason}
-              /></label
-            >
-          </div>
-        </fieldset>
-        <fieldset class="factor-group factor-details">
-          <legend>{$translation("environment-factor-entry-heading")}</legend>
-          <p>{$translation("environment-factor-entry-description")}</p>
-          <div class="factor-fields entry-fields">
-            <label
-              >{$translation("environment-factor-resource")}<select
-                bind:value={factorResource}
-                ><option value=""
-                  >{$translation("environment-factor-choose-resource")}</option
-                >{#each workspace?.resources ?? [] as resource}<option
-                    value={resource}>{resource}</option
-                  >{/each}</select
-              ></label
-            >
-            <label
-              >{$translation("environment-factor-channel")}<select
-                bind:value={factorChannel}
-                >{#each carbonChannels as channel}<option value={channel}
-                    >{environmentChannelLabel(channel, $translation)}</option
-                  >{/each}</select
-              ></label
-            >
-            <label
-              >{$translation("environment-factor-value")}<input
-                type="number"
-                min="0"
-                step="any"
-                bind:value={factorValue}
-              /></label
-            >
-            <label
-              >{$translation("environment-factor-source")}<input
-                bind:value={factorSource}
-              /></label
-            >
-            <label
-              >{$translation("environment-factor-year")}<input
-                type="number"
-                min="1900"
-                max="9999"
-                bind:value={factorYear}
-              /></label
-            >
-            <label class="wide-field"
-              >{$translation("environment-factor-entry-reason")}<input
-                bind:value={factorEntryReason}
-              /></label
-            >
-            <label class="wide-field"
-              >{$translation("environment-factor-reference")}<input
-                bind:value={factorReference}
-              /></label
+            <button type="button" onclick={onopenresearch}
+              >{$translation("environment-open-checked-session")}</button
             >
           </div>
-        </fieldset>
-      </div>
+        {:else if liveReadingSupported}
+          <label class="consent"
+            ><input type="checkbox" bind:checked={consent} />{$translation(
+              "environment-recording-consent",
+            )}</label
+          >
+          <button
+            type="button"
+            disabled={!consent}
+            onclick={async () =>
+              onupdate(await enableEnvironmentRecording(true))}
+            >{$translation("environment-recording-enable")}</button
+          >
+        {:else}
+          <button type="button" onclick={onopenresearch}
+            >{$translation("environment-recording-view-research")}</button
+          >
+        {/if}
+      </section>
+    </section>
+  </section>
+
+  <WorkspaceTaskDrawer
+    open={activeTask === "environment-carbon-study"}
+    route="environment-carbon-study"
+    eyebrow={$translation("environment-carbon-eyebrow")}
+    title={$translation("environment-carbon-task-title")}
+    description={$translation("environment-carbon-task-description")}
+    closeLabel={$translation("action-close")}
+    onclose={onclosetask}
+  >
+    <div class="task-form">
+      <fieldset class="factor-group study-details">
+        <legend>{$translation("environment-factor-study-heading")}</legend>
+        <p>{$translation("environment-factor-study-description")}</p>
+        <div class="factor-fields study-fields">
+          <label
+            >{$translation("environment-factor-name")}<input
+              bind:value={factorName}
+            /></label
+          >
+          <label
+            >{$translation("environment-factor-boundary")}<input
+              bind:value={factorBoundary}
+            /></label
+          >
+          <label
+            >{$translation("environment-factor-reason")}<input
+              bind:value={factorReason}
+            /></label
+          >
+        </div>
+      </fieldset>
+      <fieldset class="factor-group factor-details">
+        <legend>{$translation("environment-factor-entry-heading")}</legend>
+        <p>{$translation("environment-factor-entry-description")}</p>
+        <div class="factor-fields entry-fields">
+          <label
+            >{$translation("environment-factor-resource")}<select
+              bind:value={factorResource}
+              ><option value=""
+                >{$translation("environment-factor-choose-resource")}</option
+              >{#each workspace?.resources ?? [] as resource}<option
+                  value={resource}>{resource}</option
+                >{/each}</select
+            ></label
+          >
+          <label
+            >{$translation("environment-factor-channel")}<select
+              bind:value={factorChannel}
+              >{#each carbonChannels as channel}<option value={channel}
+                  >{environmentChannelLabel(channel, $translation)}</option
+                >{/each}</select
+            ></label
+          >
+          <label
+            >{$translation("environment-factor-value")}<input
+              type="number"
+              min="0"
+              step="any"
+              bind:value={factorValue}
+            /></label
+          >
+          <label
+            >{$translation("environment-factor-source")}<input
+              bind:value={factorSource}
+            /></label
+          >
+          <label
+            >{$translation("environment-factor-year")}<input
+              type="number"
+              min="1900"
+              max="9999"
+              bind:value={factorYear}
+            /></label
+          >
+          <label class="wide-field"
+            >{$translation("environment-factor-entry-reason")}<input
+              bind:value={factorEntryReason}
+            /></label
+          >
+          <label class="wide-field"
+            >{$translation("environment-factor-reference")}<input
+              bind:value={factorReference}
+            /></label
+          >
+        </div>
+      </fieldset>
       <div class="actions factor-actions">
         <button type="button" onclick={addFactor}
           >{$translation("environment-factor-add")}</button
@@ -892,86 +1062,41 @@
             >{$translation("environment-factor-import-apply")}</button
           >{/if}
       </div>
-    </section>
+    </div>
+  </WorkspaceTaskDrawer>
 
-    <section id="environment-recording" class="panel" tabindex="-1">
-      <header class="panel-heading">
-        <div>
-          <span class="eyebrow"
-            >{$translation("environment-recording-eyebrow")}</span
-          >
-          <h3>{$translation("environment-recording-title")}</h3>
-          <p>{$translation("environment-recording-description")}</p>
-        </div>
-      </header>
-      <div class="recording-layout">
-        <section class="recording-card">
-          <GuidanceSurface kind="instruction" layout="block">
-            <strong>{$translation(recordingStateKey())}</strong>
-            <span
-              >{$translation(
-                liveReadingSupported
-                  ? "environment-recording-ready-detail"
-                  : "environment-recording-contract-waiting",
-              )}</span
-            >
-          </GuidanceSurface>
-          {#if workspace?.recording.enabled}
-            <div class="actions">
-              <button
-                type="button"
-                onclick={async () =>
-                  onupdate(await disableEnvironmentRecording())}
-                >{$translation("environment-recording-disable")}</button
-              >
-              <button type="button" onclick={onopenresearch}
-                >{$translation("environment-open-checked-session")}</button
-              >
-            </div>
-          {:else if liveReadingSupported}
-            <label class="consent"
-              ><input type="checkbox" bind:checked={consent} />{$translation(
-                "environment-recording-consent",
-              )}</label
-            >
-            <button
-              type="button"
-              disabled={!consent}
-              onclick={async () =>
-                onupdate(await enableEnvironmentRecording(true))}
-              >{$translation("environment-recording-enable")}</button
-            >
-          {:else}
-            <button type="button" onclick={onopenresearch}
-              >{$translation("environment-recording-view-research")}</button
-            >
-          {/if}
-        </section>
-        <div class="danger-zone">
-          <h4>{$translation("environment-delete-title")}</h4>
-          <p>{$translation("environment-delete-description")}</p>
-          <div class="danger-actions">
-            <input
-              aria-label={$translation("environment-delete-confirmation-label")}
-              bind:value={deleteConfirmation}
-              placeholder="DELETE LIVE ENVIRONMENT RECORDINGS"
-            />
-            <button
-              type="button"
-              disabled={deleteConfirmation !==
-                "DELETE LIVE ENVIRONMENT RECORDINGS"}
-              onclick={async () => {
-                onupdate(
-                  await deleteLiveEnvironmentRecordings(deleteConfirmation),
-                );
-                deleteConfirmation = "";
-              }}>{$translation("environment-delete-action")}</button
-            >
-          </div>
-        </div>
+  <WorkspaceTaskDrawer
+    open={activeTask === "environment-recording-management"}
+    route="environment-recording-management"
+    eyebrow={$translation("environment-delete-eyebrow")}
+    title={$translation("environment-delete-title")}
+    description={$translation("environment-delete-description")}
+    closeLabel={$translation("action-close")}
+    onclose={onclosetask}
+  >
+    <div class="danger-zone">
+      <GuidanceSurface kind="boundary" layout="block">
+        <strong>{$translation("environment-delete-title")}</strong>
+        <span>{$translation("environment-delete-description")}</span>
+      </GuidanceSurface>
+      <div class="danger-actions">
+        <input
+          aria-label={$translation("environment-delete-confirmation-label")}
+          bind:value={deleteConfirmation}
+          placeholder="DELETE LIVE ENVIRONMENT RECORDINGS"
+        />
+        <button
+          type="button"
+          disabled={deleteConfirmation !== "DELETE LIVE ENVIRONMENT RECORDINGS"}
+          onclick={async () => {
+            onupdate(await deleteLiveEnvironmentRecordings(deleteConfirmation));
+            deleteConfirmation = "";
+            onclosetask();
+          }}>{$translation("environment-delete-action")}</button
+        >
       </div>
-    </section>
-  </section>
+    </div>
+  </WorkspaceTaskDrawer>
 </section>
 
 <style>
@@ -995,8 +1120,9 @@
   }
   .summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 18rem));
     gap: var(--environment-space-2);
+    justify-content: start;
   }
   .summary-card,
   .carbon-result,
@@ -1022,12 +1148,6 @@
     color: var(--colour-muted);
     line-height: 1.45;
   }
-  .filters {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-    gap: var(--environment-space-2);
-    margin: var(--environment-space-2) 0;
-  }
   .definition-context {
     display: grid;
     gap: var(--environment-space-2);
@@ -1047,12 +1167,6 @@
   label > :is(input, select) {
     width: 100%;
     min-width: 0;
-  }
-  .factor-workbench {
-    display: grid;
-    grid-template-columns: minmax(18rem, 0.8fr) minmax(30rem, 1.7fr);
-    gap: var(--environment-space-2);
-    margin-top: var(--environment-space-2);
   }
   .factor-group,
   .recording-card {
@@ -1081,7 +1195,7 @@
     grid-template-columns: 1fr;
   }
   .entry-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .entry-fields .wide-field {
     grid-column: span 2;
@@ -1098,6 +1212,15 @@
   .revision-list {
     display: grid;
     gap: var(--environment-space-1);
+    margin-top: var(--environment-space-2);
+  }
+  .task-form {
+    width: min(100%, 66rem);
+    display: grid;
+    gap: var(--environment-space-2);
+  }
+  .readable-card {
+    width: min(100%, 72ch);
     margin-top: var(--environment-space-2);
   }
   .table-scroll {
@@ -1143,20 +1266,10 @@
       var(--colour-surface-raised)
     );
   }
-  .danger-zone h4,
-  .danger-zone p {
-    margin-top: 0;
-  }
   .danger-actions {
     display: grid;
     grid-template-columns: minmax(12rem, 1fr) auto;
     gap: var(--environment-space-1);
-  }
-  .recording-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.4fr) minmax(18rem, 0.8fr);
-    gap: var(--environment-space-2);
-    align-items: start;
   }
   .consent {
     grid-template-columns: auto 1fr;
@@ -1166,13 +1279,6 @@
   @media (max-width: 1180px) {
     .environment-workspace {
       grid-template-columns: 210px minmax(540px, 1fr);
-    }
-    .summary-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .factor-workbench,
-    .recording-layout {
-      grid-template-columns: 1fr;
     }
     .entry-fields {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1184,7 +1290,6 @@
     }
   }
   @media (max-width: 620px) {
-    .summary-grid,
     .entry-fields,
     .danger-actions {
       grid-template-columns: 1fr;

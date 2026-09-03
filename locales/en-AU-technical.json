@@ -2,7 +2,7 @@
   "schema_version": 1,
   "source_locale": "en-AU",
   "source_catalog_version": 1,
-  "source_catalog_revision": 60,
+  "source_catalog_revision": 61,
   "messages": {
     "error-explain-environment-live-happened": "No build-specific live facility contract has passed the publication gate.",
     "error-explain-environment-live-next": "Save-backed environmental activity remains available. Review the spatial and live-source findings before adding a supported capture contract.",

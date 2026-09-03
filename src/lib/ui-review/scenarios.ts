@@ -19,6 +19,8 @@ export const UI_REVIEW_SCENARIOS = [
   "workspace-environment",
   "environment-indexing",
   "environment-details",
+  "environment-carbon-task",
+  "environment-recording-management",
   "workspace-markets",
   "markets-indexing",
   "markets-paused",

@@ -24,6 +24,13 @@
   import LegalDialog from "./lib/legal/LegalDialog.svelte";
   import ResearchSetupDialog from "./lib/research/ResearchSetupDialog.svelte";
   import TaskProgressIndicator from "./lib/tasks/TaskProgressIndicator.svelte";
+  import {
+    popWorkspaceTaskRoute,
+    pushWorkspaceTaskRoute,
+    taskBelongsToWorkspace,
+    topWorkspaceTaskRoute,
+    type WorkspaceTaskRoute,
+  } from "./lib/tasks/workspaceTaskRoutes";
   import NotificationCenter from "./lib/notifications/NotificationCenter.svelte";
   import {
     clearNotifications,
@@ -192,6 +199,10 @@
   let navigationOriginSequence = 0;
   let dialogStack = $state<DialogRoute[]>([]);
   const activeDialog = $derived(topDialogRoute(dialogStack));
+  let workspaceTaskTrail = $state<WorkspaceTaskRoute[]>([]);
+  const activeWorkspaceTask = $derived(
+    topWorkspaceTaskRoute(workspaceTaskTrail),
+  );
   let diagnosticsBusy = $state(false);
   let diagnosticsError = $state("");
   let diagnosticLog = $state<DiagnosticLogView | null>(null);
@@ -234,6 +245,16 @@
     dialogStack = pushDialogRoute(dialogStack, route);
   }
 
+  function openWorkspaceTask(route: WorkspaceTaskRoute): void {
+    if (!taskBelongsToWorkspace(route, activeWorkspace)) return;
+    workspaceTaskTrail = pushWorkspaceTaskRoute(workspaceTaskTrail, route);
+  }
+
+  function closeWorkspaceTask(): void {
+    if (!activeWorkspaceTask || !canLeaveCurrentWorkspace()) return;
+    workspaceTaskTrail = popWorkspaceTaskRoute(workspaceTaskTrail);
+  }
+
   function currentAnalysisContext(): AnalysisContextReference | null {
     const context = archiveOverview?.analysis_context;
     if (!context) return null;
@@ -253,6 +274,7 @@
 
   function openWorkspace(workspace: WorkspaceName): void {
     if (workspace !== activeWorkspace && !canLeaveCurrentWorkspace()) return;
+    if (workspace !== activeWorkspace) workspaceTaskTrail = [];
     navigationTrail = [];
     relatedChoices = [];
     activeLocation = defaultWorkspaceLocation(workspace);
@@ -350,6 +372,7 @@
         );
       }
       activeLocation = cloneLocation(destination.location);
+      workspaceTaskTrail = [];
       navigationTrail = pushNavigationTrail(navigationTrail, previous);
       relatedChoices = [];
       relatedChoiceOrigin = null;
@@ -386,6 +409,7 @@
     try {
       await restoreAnalysisContext(target.context);
       activeLocation = cloneLocation(target.location);
+      workspaceTaskTrail = [];
       navigationTrail = navigationTrail.slice(0, targetIndex);
       await focusRelatedLocation(activeLocation);
     } catch {
@@ -444,7 +468,7 @@
       !event.ctrlKey &&
       !event.metaKey &&
       event.key === "ArrowLeft" &&
-      (activeDialog || navigationTrail.length > 0)
+      (activeDialog || activeWorkspaceTask || navigationTrail.length > 0)
     ) {
       event.preventDefault();
       if (activeDialog) {
@@ -453,6 +477,8 @@
           ?.dispatchEvent(
             new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
           );
+      } else if (activeWorkspaceTask) {
+        closeWorkspaceTask();
       } else {
         void returnThroughRelatedTrail();
       }
@@ -747,6 +773,7 @@
   ): Promise<void> {
     clearNotifications();
     dialogStack = [];
+    workspaceTaskTrail = [];
     catalogueProgress = null;
     warehouseStatus = null;
     reinterpretationProgress = null;
@@ -856,6 +883,16 @@
       case "environment-details":
         openWorkspace("environment");
         environmentWorkspace = reviewEnvironmentWorkspace();
+        break;
+      case "environment-carbon-task":
+        openWorkspace("environment");
+        environmentWorkspace = reviewEnvironmentWorkspace();
+        workspaceTaskTrail = ["environment-carbon-study"];
+        break;
+      case "environment-recording-management":
+        openWorkspace("environment");
+        environmentWorkspace = reviewEnvironmentWorkspace();
+        workspaceTaskTrail = ["environment-recording-management"];
         break;
       case "environment-indexing":
         openWorkspace("environment");
@@ -1555,6 +1592,9 @@
       }}
       onrelatednavigate={requestRelatedNavigation}
       onopenresearch={() => openDialog("research")}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {:else if activeWorkspace === "markets"}
     <MarketsWorkspace

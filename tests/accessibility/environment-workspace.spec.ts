@@ -39,7 +39,10 @@ test("Environment keeps save facts, unavailable readings, and player assumptions
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Save carbon estimate setup" }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Create or manage an estimate" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Turn on automatic live readings" }),
   ).toHaveCount(0);
@@ -57,7 +60,7 @@ test("Environment keeps carbon inputs grouped at an ultrawide viewport", async (
   page,
 }) => {
   await page.setViewportSize({ width: 3440, height: 1439 });
-  await openEnvironmentReview(page);
+  await openEnvironmentReview(page, "environment-carbon-task");
 
   const groups = page.locator(".factor-group");
   await expect(groups).toHaveCount(2);
@@ -67,8 +70,39 @@ test("Environment keeps carbon inputs grouped at an ultrawide viewport", async (
       return { top: box.top, left: box.left, right: box.right };
     }),
   );
-  expect(Math.abs(study.top - entry.top)).toBeLessThanOrEqual(2);
-  expect(study.right).toBeLessThan(entry.left);
+  expect(Math.abs(study.left - entry.left)).toBeLessThanOrEqual(2);
+  expect(Math.abs(study.right - entry.right)).toBeLessThanOrEqual(2);
+  expect(await page.evaluate(auditInterfaceDom)).toEqual([]);
+});
+
+test("Environment task drawers close one layer with Escape", async ({
+  page,
+}) => {
+  await openEnvironmentReview(page, "environment-carbon-task");
+  await expect(
+    page.getByRole("dialog", { name: "Carbon estimate setup" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("dialog", { name: "Carbon estimate setup" }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .locator(".canvas")
+      .getByRole("heading", { name: "Environment", exact: true }),
+  ).toBeVisible();
+});
+
+test("destructive Environment work has a separate task drawer", async ({
+  page,
+}) => {
+  await openEnvironmentReview(page, "environment-recording-management");
+  await expect(
+    page.getByRole("dialog", { name: "Delete live environmental recordings" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Delete live environmental recordings" }),
+  ).toBeDisabled();
   expect(await page.evaluate(auditInterfaceDom)).toEqual([]);
 });
 
