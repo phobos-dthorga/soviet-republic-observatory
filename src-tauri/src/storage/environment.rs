@@ -31,8 +31,8 @@ pub(crate) fn persist_environment_data(
     for (ordinal, record) in data.records.iter().enumerate() {
         let record_hash = environment_record_hash(record, data);
         let inserted = transaction.execute(
-            "INSERT OR IGNORE INTO environment_records(\
-                 record_hash, record_id, year, day, game_day\
+            "INSERT OR IGNORE INTO environment_records( \
+                 record_hash, record_id, year, day, game_day \
              ) VALUES(?1, ?2, ?3, ?4, ?5)",
             params![
                 record_hash,
@@ -53,10 +53,10 @@ pub(crate) fn persist_environment_data(
                     .get(usize::from(row.source_field_index))
                     .ok_or(ObservatoryError::StorageContractViolation)?;
                 transaction.execute(
-                    "INSERT INTO environment_activity_facts(\
-                         record_hash, source_field, source_line, row_ordinal, resource_token,\
-                         activity_channel, primary_value, secondary_value,\
-                         quantity_is_publishable, mapping_id\
+                    "INSERT INTO environment_activity_facts( \
+                         record_hash, source_field, source_line, row_ordinal, resource_token, \
+                         activity_channel, primary_value, secondary_value, \
+                         quantity_is_publishable, mapping_id \
                      ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     params![
                         record_hash,
@@ -74,7 +74,7 @@ pub(crate) fn persist_environment_data(
             }
         }
         transaction.execute(
-            "INSERT INTO environment_observation_records(payload_hash, ordinal, record_hash)\
+            "INSERT INTO environment_observation_records(payload_hash, ordinal, record_hash) \
              VALUES(?1, ?2, ?3)",
             params![storage_key, ordinal as u32, record_hash],
         )?;
@@ -82,9 +82,9 @@ pub(crate) fn persist_environment_data(
     let warnings_json =
         serde_json::to_string(&data.warnings).map_err(|_| ObservatoryError::StorageUnavailable)?;
     transaction.execute(
-        "INSERT INTO environment_observation_coverage(\
-             payload_hash, storage_contract_version, coverage_status, history_records,\
-             stored_records, row_count, warnings_json\
+        "INSERT INTO environment_observation_coverage( \
+             payload_hash, storage_contract_version, coverage_status, history_records, \
+             stored_records, row_count, warnings_json \
          ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             storage_key,
@@ -97,9 +97,9 @@ pub(crate) fn persist_environment_data(
         ],
     )?;
     transaction.execute(
-        "INSERT OR IGNORE INTO environment_interpretation_variants(\
-             raw_payload_hash, interpretation_id, profile_id, profile_version,\
-             resolved_profile_hash, indexed_at_ms\
+        "INSERT OR IGNORE INTO environment_interpretation_variants( \
+             raw_payload_hash, interpretation_id, profile_id, profile_version, \
+             resolved_profile_hash, indexed_at_ms \
          ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             inspection.payload_hash,
@@ -121,13 +121,13 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         let source = connection
             .query_row(
-                "SELECT source.payload_hash, source.raw_payload_hash, source.branch_id,\
-                        source.profile_id, source.profile_semantic_version,\
-                        source.resolved_profile_hash, source.mapping_classification,\
-                        coverage.storage_contract_version, coverage.stored_records, coverage.row_count\
-                 FROM observation_sources source\
-                 LEFT JOIN environment_observation_coverage coverage\
-                   ON coverage.payload_hash = source.payload_hash\
+                "SELECT source.payload_hash, source.raw_payload_hash, source.branch_id, \
+                        source.profile_id, source.profile_semantic_version, \
+                        source.resolved_profile_hash, source.mapping_classification, \
+                        coverage.storage_contract_version, coverage.stored_records, coverage.row_count \
+                 FROM observation_sources source \
+                 LEFT JOIN environment_observation_coverage coverage \
+                   ON coverage.payload_hash = source.payload_hash \
                  WHERE source.interpretation_id = ?1",
                 [interpretation_id],
                 |row| {
@@ -155,11 +155,11 @@ impl ObservatoryStorage {
         }
 
         let mut record_statement = connection.prepare(
-            "SELECT membership.ordinal, record.record_hash, record.record_id, record.year,\
-                    record.day, record.game_day\
-             FROM environment_observation_records membership\
-             JOIN environment_records record USING(record_hash)\
-             WHERE membership.payload_hash = ?1\
+            "SELECT membership.ordinal, record.record_hash, record.record_id, record.year, \
+                    record.day, record.game_day \
+             FROM environment_observation_records membership \
+             JOIN environment_records record USING(record_hash) \
+             WHERE membership.payload_hash = ?1 \
              ORDER BY membership.ordinal",
         )?;
         let records = record_statement
@@ -176,12 +176,12 @@ impl ObservatoryStorage {
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut fact_statement = connection.prepare(
-            "SELECT fact.record_hash, fact.source_field, fact.source_line, fact.row_ordinal,\
-                    fact.resource_token, fact.activity_channel, fact.primary_value,\
-                    fact.secondary_value, fact.quantity_is_publishable, fact.mapping_id\
-             FROM environment_observation_records membership\
-             JOIN environment_activity_facts fact USING(record_hash)\
-             WHERE membership.payload_hash = ?1\
+            "SELECT fact.record_hash, fact.source_field, fact.source_line, fact.row_ordinal, \
+                    fact.resource_token, fact.activity_channel, fact.primary_value, \
+                    fact.secondary_value, fact.quantity_is_publishable, fact.mapping_id \
+             FROM environment_observation_records membership \
+             JOIN environment_activity_facts fact USING(record_hash) \
+             WHERE membership.payload_hash = ?1 \
              ORDER BY membership.ordinal, fact.source_field, fact.source_line, fact.row_ordinal",
         )?;
         let facts = fact_statement
@@ -224,7 +224,7 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         let recording = load_recording_status(&connection)?;
         let mut statement = connection.prepare(
-            "SELECT snapshot_id, session_id, game_day, facility_count, captured_at_ms\
+            "SELECT snapshot_id, session_id, game_day, facility_count, captured_at_ms \
              FROM environment_live_snapshots ORDER BY captured_at_ms DESC LIMIT 101",
         )?;
         let mut snapshots = statement
@@ -258,7 +258,7 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         let Some(mut snapshot) = connection
             .query_row(
-                "SELECT snapshot_id, session_id, game_day, facility_count, captured_at_ms\
+                "SELECT snapshot_id, session_id, game_day, facility_count, captured_at_ms \
                  FROM environment_live_snapshots WHERE snapshot_id = ?1",
                 [snapshot_id],
                 |row| {
@@ -277,10 +277,10 @@ impl ObservatoryStorage {
             return Ok(None);
         };
         let mut statement = connection.prepare(
-            "SELECT facility_index, position_x, position_z, definition_identity,\
-                    pollution_value, radiation_value, water_amount, water_capacity, water_quality,\
-                    sewage_amount, sewage_capacity, sewage_quality\
-             FROM environment_facility_readings WHERE snapshot_id = ?1\
+            "SELECT facility_index, position_x, position_z, definition_identity, \
+                    pollution_value, radiation_value, water_amount, water_capacity, water_quality, \
+                    sewage_amount, sewage_capacity, sewage_quality \
+             FROM environment_facility_readings WHERE snapshot_id = ?1 \
              ORDER BY facility_index LIMIT 25000",
         )?;
         snapshot.readings = statement
@@ -310,8 +310,8 @@ impl ObservatoryStorage {
     ) -> Result<bool, ObservatoryError> {
         self.connect()?
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM observation_sources source\
-                 JOIN environment_observation_coverage coverage ON coverage.payload_hash = source.payload_hash\
+                "SELECT EXISTS(SELECT 1 FROM observation_sources source \
+                 JOIN environment_observation_coverage coverage ON coverage.payload_hash = source.payload_hash \
                  WHERE source.interpretation_id = ?1 AND coverage.storage_contract_version = ?2)",
                 params![interpretation_id, ENVIRONMENT_STORAGE_CONTRACT_VERSION],
                 |row| row.get(0),
@@ -326,9 +326,9 @@ impl ObservatoryStorage {
     ) -> Result<Option<(u32, u32)>, ObservatoryError> {
         self.connect()?
             .query_row(
-                "SELECT coverage.stored_records, coverage.row_count FROM observation_sources source\
-                 JOIN environment_observation_coverage coverage ON coverage.payload_hash = source.payload_hash\
-                 WHERE source.raw_payload_hash = ?1 AND source.resolved_profile_hash = ?2\
+                "SELECT coverage.stored_records, coverage.row_count FROM observation_sources source \
+                 JOIN environment_observation_coverage coverage ON coverage.payload_hash = source.payload_hash \
+                 WHERE source.raw_payload_hash = ?1 AND source.resolved_profile_hash = ?2 \
                    AND coverage.storage_contract_version = ?3 LIMIT 1",
                 params![raw_payload_hash, resolved_profile_hash, ENVIRONMENT_STORAGE_CONTRACT_VERSION],
                 |row| Ok((row.get(0)?, row.get(1)?)),
@@ -350,12 +350,12 @@ impl ObservatoryStorage {
         };
         let source = connection
             .query_row(
-                "SELECT source.payload_hash, coverage.storage_contract_version,\
-                        coverage.coverage_status, coverage.history_records, coverage.row_count,\
-                        coverage.warnings_json\
-                 FROM observation_sources source\
-                 LEFT JOIN environment_observation_coverage coverage\
-                   ON coverage.payload_hash = source.payload_hash\
+                "SELECT source.payload_hash, coverage.storage_contract_version, \
+                        coverage.coverage_status, coverage.history_records, coverage.row_count, \
+                        coverage.warnings_json \
+                 FROM observation_sources source \
+                 LEFT JOIN environment_observation_coverage coverage \
+                   ON coverage.payload_hash = source.payload_hash \
                  WHERE source.interpretation_id = ?1",
                 [interpretation_id],
                 |row| {
@@ -430,7 +430,7 @@ impl ObservatoryStorage {
         let content_hash = factor_content_hash(draft);
         if let Some(existing) = transaction
             .query_row(
-                "SELECT factor_set_id, revision FROM carbon_factor_revisions\
+                "SELECT factor_set_id, revision FROM carbon_factor_revisions \
                  WHERE content_hash = ?1 AND removed_at_ms IS NULL",
                 [&content_hash],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?)),
@@ -446,7 +446,7 @@ impl ObservatoryStorage {
             .clone()
             .unwrap_or_else(|| generated_factor_set_id(&draft.name, created_at));
         let revision = transaction.query_row(
-            "SELECT COALESCE(MAX(revision), 0) + 1 FROM carbon_factor_revisions\
+            "SELECT COALESCE(MAX(revision), 0) + 1 FROM carbon_factor_revisions \
              WHERE factor_set_id = ?1",
             [&factor_set_id],
             |row| row.get::<_, u32>(0),
@@ -454,9 +454,9 @@ impl ObservatoryStorage {
         let entries_json = serde_json::to_string(&draft.entries)
             .map_err(|_| ObservatoryError::StorageUnavailable)?;
         transaction.execute(
-            "INSERT INTO carbon_factor_revisions(\
-                 factor_set_id, revision, display_name, accounting_boundary, reason, entries_json,\
-                 content_hash, created_at_ms, removed_at_ms\
+            "INSERT INTO carbon_factor_revisions( \
+                 factor_set_id, revision, display_name, accounting_boundary, reason, entries_json, \
+                 content_hash, created_at_ms, removed_at_ms \
              ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)",
             params![
                 factor_set_id,
@@ -482,7 +482,7 @@ impl ObservatoryStorage {
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
         let exists = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM carbon_factor_revisions\
+            "SELECT EXISTS(SELECT 1 FROM carbon_factor_revisions \
              WHERE factor_set_id = ?1 AND revision = ?2 AND removed_at_ms IS NULL)",
             params![factor_set_id, revision],
             |row| row.get::<_, bool>(0),
@@ -499,7 +499,7 @@ impl ObservatoryStorage {
         let connection = self.connect()?;
         let current = connection
             .query_row(
-                "SELECT revision FROM carbon_factor_selection WHERE singleton_id = 1\
+                "SELECT revision FROM carbon_factor_selection WHERE singleton_id = 1 \
              AND factor_set_id = ?1",
                 [factor_set_id],
                 |row| row.get::<_, u32>(0),
@@ -508,14 +508,14 @@ impl ObservatoryStorage {
             .ok_or(ObservatoryError::UnknownCarbonFactorSet)?;
         let previous = connection
             .query_row(
-                "SELECT MAX(revision) FROM carbon_factor_revisions WHERE factor_set_id = ?1\
+                "SELECT MAX(revision) FROM carbon_factor_revisions WHERE factor_set_id = ?1 \
              AND revision < ?2 AND removed_at_ms IS NULL",
                 params![factor_set_id, current],
                 |row| row.get::<_, Option<u32>>(0),
             )?
             .ok_or(ObservatoryError::UnknownCarbonFactorSet)?;
         connection.execute(
-            "UPDATE carbon_factor_selection SET revision = ?1, selected_at_ms = ?2\
+            "UPDATE carbon_factor_selection SET revision = ?1, selected_at_ms = ?2 \
              WHERE singleton_id = 1",
             params![previous, now_ms()],
         )?;
@@ -535,7 +535,7 @@ impl ObservatoryStorage {
             return Err(ObservatoryError::InvalidCarbonFactorSet("active_remove"));
         }
         let changed = connection.execute(
-            "UPDATE carbon_factor_revisions SET removed_at_ms = ?1\
+            "UPDATE carbon_factor_revisions SET removed_at_ms = ?1 \
              WHERE factor_set_id = ?2 AND removed_at_ms IS NULL",
             params![now_ms(), factor_set_id],
         )?;
@@ -566,7 +566,7 @@ impl ObservatoryStorage {
         }
         let connection = self.connect()?;
         connection.execute(
-            "UPDATE environment_recording_state SET enabled = ?1, accepted_notice_revision = ?2,\
+            "UPDATE environment_recording_state SET enabled = ?1, accepted_notice_revision = ?2, \
              updated_at_ms = ?3 WHERE singleton_id = 1",
             params![i64::from(enabled), accepted_notice_revision, now_ms()],
         )?;
@@ -601,7 +601,7 @@ fn select_factor(
     revision: u32,
 ) -> Result<(), ObservatoryError> {
     transaction.execute(
-        "UPDATE carbon_factor_selection SET factor_set_id = ?1, revision = ?2, selected_at_ms = ?3\
+        "UPDATE carbon_factor_selection SET factor_set_id = ?1, revision = ?2, selected_at_ms = ?3 \
          WHERE singleton_id = 1",
         params![factor_set_id, revision, now_ms()],
     )?;
@@ -622,8 +622,8 @@ fn load_factor_revisions(
         },
     )?;
     let mut statement = connection.prepare(
-        "SELECT factor_set_id, revision, display_name, accounting_boundary, reason, created_at_ms,\
-                content_hash, entries_json FROM carbon_factor_revisions\
+        "SELECT factor_set_id, revision, display_name, accounting_boundary, reason, created_at_ms, \
+                content_hash, entries_json FROM carbon_factor_revisions \
          WHERE removed_at_ms IS NULL ORDER BY display_name, revision DESC",
     )?;
     statement
@@ -659,7 +659,7 @@ fn load_recording_status(
     connection: &Connection,
 ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {
     let (enabled, interval, accepted) = connection.query_row(
-        "SELECT enabled, interval_game_days, accepted_notice_revision\
+        "SELECT enabled, interval_game_days, accepted_notice_revision \
          FROM environment_recording_state WHERE singleton_id = 1",
         [],
         |row| {
@@ -672,7 +672,7 @@ fn load_recording_status(
     )?;
     let latest = connection
         .query_row(
-            "SELECT snapshot_id, game_day, facility_count FROM environment_live_snapshots\
+            "SELECT snapshot_id, game_day, facility_count FROM environment_live_snapshots \
          ORDER BY captured_at_ms DESC LIMIT 1",
             [],
             |row| {
@@ -708,18 +708,18 @@ fn load_activity(
     exact: &BTreeMap<(u32, i64), ExactObservationReference>,
 ) -> Result<Vec<EnvironmentActivityPoint>, ObservatoryError> {
     let mut statement = connection.prepare(
-        "SELECT record.record_id, record.year, record.day, record.game_day, recent.resource_token,\
-                recent.activity_channel, recent.primary_value, recent.secondary_value,\
-                recent.source_field, recent.source_line, recent.row_ordinal, recent.quantity_is_publishable\
-         FROM (SELECT membership.ordinal, membership.record_hash, fact.resource_token, fact.activity_channel,\
-                      fact.primary_value, fact.secondary_value, fact.source_field, fact.source_line,\
-                      fact.row_ordinal, fact.quantity_is_publishable\
-               FROM environment_observation_records membership\
-               JOIN environment_activity_facts fact USING(record_hash)\
-               WHERE membership.payload_hash = ?1\
-               ORDER BY membership.ordinal DESC, fact.source_line DESC\
-               LIMIT ?2) recent\
-         JOIN environment_records record ON record.record_hash = recent.record_hash\
+        "SELECT record.record_id, record.year, record.day, record.game_day, recent.resource_token, \
+                recent.activity_channel, recent.primary_value, recent.secondary_value, \
+                recent.source_field, recent.source_line, recent.row_ordinal, recent.quantity_is_publishable \
+         FROM (SELECT membership.ordinal, membership.record_hash, fact.resource_token, fact.activity_channel, \
+                      fact.primary_value, fact.secondary_value, fact.source_field, fact.source_line, \
+                      fact.row_ordinal, fact.quantity_is_publishable \
+               FROM environment_observation_records membership \
+               JOIN environment_activity_facts fact USING(record_hash) \
+               WHERE membership.payload_hash = ?1 \
+               ORDER BY membership.ordinal DESC, fact.source_line DESC \
+               LIMIT ?2) recent \
+         JOIN environment_records record ON record.record_hash = recent.record_hash \
          ORDER BY record.game_day, recent.source_line, recent.row_ordinal",
     )?;
     statement
@@ -753,15 +753,15 @@ fn load_summaries(
     payload_hash: &str,
 ) -> Result<Vec<EnvironmentActivitySummary>, ObservatoryError> {
     let mut statement = connection.prepare(
-        "SELECT fact.activity_channel, COUNT(*), COUNT(DISTINCT fact.resource_token),\
-                CASE WHEN fact.quantity_is_publishable = 1\
-                           AND COUNT(DISTINCT fact.resource_token) = 1\
-                     THEN SUM(fact.primary_value) END,\
-                fact.quantity_is_publishable\
-         FROM environment_observation_records membership\
-         JOIN environment_activity_facts fact USING(record_hash)\
-         WHERE membership.payload_hash = ?1 AND membership.ordinal = (\
-             SELECT MAX(ordinal) FROM environment_observation_records WHERE payload_hash = ?1)\
+        "SELECT fact.activity_channel, COUNT(*), COUNT(DISTINCT fact.resource_token), \
+                CASE WHEN fact.quantity_is_publishable = 1 \
+                           AND COUNT(DISTINCT fact.resource_token) = 1 \
+                     THEN SUM(fact.primary_value) END, \
+                fact.quantity_is_publishable \
+         FROM environment_observation_records membership \
+         JOIN environment_activity_facts fact USING(record_hash) \
+         WHERE membership.payload_hash = ?1 AND membership.ordinal = ( \
+             SELECT MAX(ordinal) FROM environment_observation_records WHERE payload_hash = ?1) \
          GROUP BY fact.activity_channel, fact.quantity_is_publishable ORDER BY fact.activity_channel",
     )?;
     statement
@@ -785,8 +785,8 @@ fn load_resources(
     payload_hash: &str,
 ) -> Result<Vec<String>, ObservatoryError> {
     let mut statement = connection.prepare(
-        "SELECT DISTINCT fact.resource_token FROM environment_observation_records membership\
-         JOIN environment_activity_facts fact USING(record_hash) WHERE membership.payload_hash = ?1\
+        "SELECT DISTINCT fact.resource_token FROM environment_observation_records membership \
+         JOIN environment_activity_facts fact USING(record_hash) WHERE membership.payload_hash = ?1 \
          ORDER BY fact.resource_token LIMIT 4096",
     )?;
     statement
@@ -800,12 +800,12 @@ fn load_latest_quantities(
     payload_hash: &str,
 ) -> Result<Vec<(String, EnvironmentActivityChannel, f64, u32)>, ObservatoryError> {
     let mut statement = connection.prepare(
-        "SELECT fact.resource_token, fact.activity_channel, SUM(fact.primary_value), COUNT(*)\
-         FROM environment_observation_records membership\
-         JOIN environment_activity_facts fact USING(record_hash)\
-         WHERE membership.payload_hash = ?1 AND fact.quantity_is_publishable = 1\
-           AND fact.primary_value >= 0 AND membership.ordinal = (\
-             SELECT MAX(ordinal) FROM environment_observation_records WHERE payload_hash = ?1)\
+        "SELECT fact.resource_token, fact.activity_channel, SUM(fact.primary_value), COUNT(*) \
+         FROM environment_observation_records membership \
+         JOIN environment_activity_facts fact USING(record_hash) \
+         WHERE membership.payload_hash = ?1 AND fact.quantity_is_publishable = 1 \
+           AND fact.primary_value >= 0 AND membership.ordinal = ( \
+             SELECT MAX(ordinal) FROM environment_observation_records WHERE payload_hash = ?1) \
          GROUP BY fact.resource_token, fact.activity_channel",
     )?;
     statement

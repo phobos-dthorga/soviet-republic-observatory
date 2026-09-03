@@ -12,6 +12,13 @@ use crate::model::{
     REPUBLIC_SCOPE, ReceiverDataset, ReceiverHistoryPoint, SaveInspection,
 };
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IndexedEvidenceDomain {
+    Markets,
+    Broadcast,
+    Environment,
+}
+
 impl ObservatoryStorage {
     pub fn save_inspection(&self, inspection: &SaveInspection) -> Result<bool, ObservatoryError> {
         self.save_inspection_internal(inspection, true)
@@ -26,11 +33,12 @@ impl ObservatoryStorage {
             .map(|outcome| outcome.inserted)
     }
 
-    pub(crate) fn save_reinterpretation_with_market_stats(
+    pub(crate) fn save_indexed_reinterpretation(
         &self,
         inspection: &SaveInspection,
+        domain: IndexedEvidenceDomain,
     ) -> Result<(bool, MarketPersistenceStats), ObservatoryError> {
-        self.save_inspection_internal(inspection, false)
+        self.save_inspection_internal_for_domain(inspection, false, Some(domain))
             .map(|outcome| (outcome.inserted, outcome.market))
     }
 
@@ -39,6 +47,20 @@ impl ObservatoryStorage {
         inspection: &SaveInspection,
         record_file_observation: bool,
     ) -> Result<SavePersistenceOutcome, ObservatoryError> {
+        self.save_inspection_internal_for_domain(inspection, record_file_observation, None)
+    }
+
+    fn save_inspection_internal_for_domain(
+        &self,
+        inspection: &SaveInspection,
+        record_file_observation: bool,
+        domain: Option<IndexedEvidenceDomain>,
+    ) -> Result<SavePersistenceOutcome, ObservatoryError> {
+        let includes_markets = domain.is_none_or(|value| value == IndexedEvidenceDomain::Markets);
+        let includes_broadcast =
+            domain.is_none_or(|value| value == IndexedEvidenceDomain::Broadcast);
+        let includes_environment =
+            domain.is_none_or(|value| value == IndexedEvidenceDomain::Environment);
         let mut connection = self.connect()?;
         let transaction = connection.transaction()?;
         let existing_storage_key = transaction
@@ -114,9 +136,20 @@ impl ObservatoryStorage {
                 &inspection.snapshots,
                 &inspection.records,
             )?;
-            persist_citizen_status_data(&transaction, &storage_key, inspection)?;
-            super::environment::persist_environment_data(&transaction, &storage_key, inspection)?;
-            market = super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
+            if includes_broadcast {
+                persist_citizen_status_data(&transaction, &storage_key, inspection)?;
+            }
+            if includes_environment {
+                super::environment::persist_environment_data(
+                    &transaction,
+                    &storage_key,
+                    inspection,
+                )?;
+            }
+            if includes_markets {
+                market =
+                    super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
+            }
             for fact in &inspection.binary_facts {
                 transaction.execute(
                     "INSERT INTO binary_mapped_facts(\
@@ -152,27 +185,33 @@ impl ObservatoryStorage {
                 &inspection.interpretation_id,
                 now_ms(),
             )?;
-            super::warehouse_jobs::enqueue_projection_job(
-                &transaction,
-                &format!("market:{}", inspection.interpretation_id),
-                "market_observation",
-                &inspection.interpretation_id,
-                now_ms(),
-            )?;
-            super::warehouse_jobs::enqueue_projection_job(
-                &transaction,
-                &format!("broadcast:{}", inspection.interpretation_id),
-                "broadcast_observation",
-                &inspection.interpretation_id,
-                now_ms(),
-            )?;
-            super::warehouse_jobs::enqueue_projection_job(
-                &transaction,
-                &format!("environment:{}", inspection.interpretation_id),
-                "environment_observation",
-                &inspection.interpretation_id,
-                now_ms(),
-            )?;
+            if includes_markets {
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("market:{}", inspection.interpretation_id),
+                    "market_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
+                )?;
+            }
+            if includes_broadcast {
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("broadcast:{}", inspection.interpretation_id),
+                    "broadcast_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
+                )?;
+            }
+            if includes_environment {
+                super::warehouse_jobs::enqueue_projection_job(
+                    &transaction,
+                    &format!("environment:{}", inspection.interpretation_id),
+                    "environment_observation",
+                    &inspection.interpretation_id,
+                    now_ms(),
+                )?;
+            }
         } else {
             let snapshots_exist = transaction.query_row(
                 "SELECT EXISTS(SELECT 1 FROM snapshot_scopes WHERE payload_hash = ?1)",
@@ -187,15 +226,16 @@ impl ObservatoryStorage {
                     &inspection.records,
                 )?;
             }
-            let markets_exist = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM market_observation_coverage \
+            let markets_exist = !includes_markets
+                || transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM market_observation_coverage \
                  WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
-                params![
-                    &storage_key,
-                    super::markets::MARKET_STORAGE_CONTRACT_VERSION
-                ],
-                |row| row.get::<_, bool>(0),
-            )?;
+                    params![
+                        &storage_key,
+                        super::markets::MARKET_STORAGE_CONTRACT_VERSION
+                    ],
+                    |row| row.get::<_, bool>(0),
+                )?;
             if !markets_exist {
                 market =
                     super::markets::persist_market_data(&transaction, &storage_key, inspection)?;
@@ -207,15 +247,16 @@ impl ObservatoryStorage {
                     now_ms(),
                 )?;
             }
-            let citizen_status_exists = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM broadcast_status_observation_coverage \
+            let citizen_status_exists = !includes_broadcast
+                || transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM broadcast_status_observation_coverage \
                  WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
-                params![
-                    &storage_key,
-                    super::broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION,
-                ],
-                |row| row.get::<_, bool>(0),
-            )?;
+                    params![
+                        &storage_key,
+                        super::broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION,
+                    ],
+                    |row| row.get::<_, bool>(0),
+                )?;
             if !citizen_status_exists {
                 persist_citizen_status_data(&transaction, &storage_key, inspection)?;
                 super::warehouse_jobs::enqueue_projection_job(
@@ -226,12 +267,13 @@ impl ObservatoryStorage {
                     now_ms(),
                 )?;
             }
-            let environment_exists = transaction.query_row(
-                "SELECT EXISTS(SELECT 1 FROM environment_observation_coverage \
+            let environment_exists = !includes_environment
+                || transaction.query_row(
+                    "SELECT EXISTS(SELECT 1 FROM environment_observation_coverage \
                  WHERE payload_hash = ?1 AND storage_contract_version = ?2)",
-                params![&storage_key, super::ENVIRONMENT_STORAGE_CONTRACT_VERSION,],
-                |row| row.get::<_, bool>(0),
-            )?;
+                    params![&storage_key, super::ENVIRONMENT_STORAGE_CONTRACT_VERSION,],
+                    |row| row.get::<_, bool>(0),
+                )?;
             if !environment_exists {
                 super::environment::persist_environment_data(
                     &transaction,

@@ -124,6 +124,11 @@ const MIGRATIONS: &[(i64, &str, &str)] = &[
         "environmental observation warehouse projection jobs",
         include_str!("../../migrations/0024_environment_projection_jobs.sql"),
     ),
+    (
+        25,
+        "recover revision-specific warehouse jobs after environment rollout",
+        include_str!("../../migrations/0025_recover_revision_specific_warehouse_jobs.sql"),
+    ),
 ];
 
 pub(crate) fn apply(connection: &mut Connection) -> Result<(), ObservatoryError> {

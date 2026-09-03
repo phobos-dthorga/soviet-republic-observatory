@@ -12,7 +12,7 @@ use crate::compatibility_profile::ResolvedCompatibilityProfile;
 use crate::error::ObservatoryError;
 use crate::fixed_binary::decode_layout;
 use crate::model::SaveInspection;
-use crate::stats_parser::parse_stats;
+use crate::stats_parser::{StatsParseScope, parse_stats, parse_stats_for_scope};
 
 const MAX_ARCHIVE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const MAX_STATS_BYTES: u64 = 128 * 1024 * 1024;
@@ -21,6 +21,14 @@ const MAX_COMPRESSED_STATS_BYTES: u64 = 64 * 1024 * 1024;
 pub fn inspect_save_archive(
     path: &Path,
     profile: &ResolvedCompatibilityProfile,
+) -> Result<SaveInspection, ObservatoryError> {
+    inspect_save_archive_for_scope(path, profile, StatsParseScope::Complete)
+}
+
+pub fn inspect_save_archive_for_scope(
+    path: &Path,
+    profile: &ResolvedCompatibilityProfile,
+    scope: StatsParseScope,
 ) -> Result<SaveInspection, ObservatoryError> {
     let before = fs::metadata(path).map_err(|_| ObservatoryError::InvalidSaveCandidate)?;
     if !before.is_file()
@@ -86,7 +94,10 @@ pub fn inspect_save_archive(
         let entry = archive
             .by_index(stats_index)
             .map_err(|_| ObservatoryError::InvalidArchive)?;
-        parse_stats(BufReader::new(entry), profile)?
+        match scope {
+            StatsParseScope::Complete => parse_stats(BufReader::new(entry), profile)?,
+            _ => parse_stats_for_scope(BufReader::new(entry), profile, scope)?,
+        }
     };
     let mut binary_facts = Vec::new();
     for layout in profile.binary_layouts() {

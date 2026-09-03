@@ -492,12 +492,13 @@ impl ObservatoryStorage {
         Ok(())
     }
 
-    pub(crate) fn branch_membership_projection(
+    pub(crate) fn branch_membership_projection_at(
         &self,
         branch_id: &str,
+        revision: u32,
     ) -> Result<(u32, Vec<BranchMembershipProjection>), ObservatoryError> {
         let connection = self.connect()?;
-        let revision = connection
+        let current_revision = connection
             .query_row(
                 "SELECT membership_revision FROM timeline_branch_metadata WHERE branch_id = ?1",
                 [branch_id],
@@ -505,14 +506,17 @@ impl ObservatoryStorage {
             )
             .optional()?
             .ok_or(ObservatoryError::UnknownBranch)?;
+        if revision == 0 || revision > current_revision {
+            return Err(ObservatoryError::StorageContractViolation);
+        }
         let mut statement = connection.prepare(
             "SELECT interpretation_id, payload_hash, parent_interpretation_id, relationship, \
                     shared_record_count \
-             FROM timeline_branch_memberships WHERE branch_id = ?1 \
+             FROM timeline_branch_memberships WHERE branch_id = ?1 AND membership_revision <= ?2 \
              ORDER BY membership_revision, interpretation_id",
         )?;
         let memberships = statement
-            .query_map([branch_id], |row| {
+            .query_map(params![branch_id, revision], |row| {
                 Ok(BranchMembershipProjection {
                     branch_id: branch_id.to_owned(),
                     membership_revision: revision,

@@ -1796,45 +1796,84 @@ impl AnalyticalWarehouse {
         applied_at_ms: i64,
     ) -> Result<(), ObservatoryError> {
         let mut connection = self.lock()?;
-        if receipt_exists(&connection, projection_id)? {
-            self.governor.note_success();
-            return Ok(());
-        }
+        let receipt_already_exists = receipt_exists(&connection, projection_id)?;
         let rows_total = u64::try_from(memberships.len()).unwrap_or(u64::MAX);
         let permit = self
             .governor
             .begin(WarehouseWriteKind::BranchMembershipProjection, rows_total)?;
         let transaction = connection.transaction()?;
-        transaction.execute(
-            "INSERT INTO branch_membership_generations VALUES(?1, ?2, ?3)",
-            params![branch_id, membership_revision, applied_at_ms],
+        let generation_exists = transaction.query_row(
+            "SELECT EXISTS(SELECT 1 FROM branch_membership_generations \
+             WHERE branch_id = ?1 AND membership_revision = ?2)",
+            params![branch_id, membership_revision],
+            |row| row.get::<_, bool>(0),
         )?;
-        {
-            let mut appender = transaction.appender("branch_observation_memberships")?;
-            for (index, membership) in memberships.iter().enumerate() {
-                appender.append_row(params![
-                    membership.branch_id,
-                    membership.membership_revision,
-                    membership.interpretation_id,
-                    membership.payload_hash,
-                    membership.parent_interpretation_id,
-                    membership.relationship,
-                    membership.shared_record_count,
-                ])?;
-                let written = u64::try_from(index + 1).unwrap_or(rows_total);
-                if written == rows_total || written.is_multiple_of(512) {
-                    permit.progress(WarehouseWriteStage::Staging, written);
+        if generation_exists {
+            let mut statement = transaction.prepare(
+                "SELECT branch_id, membership_revision, interpretation_id, payload_hash, \
+                        parent_interpretation_id, relationship, shared_record_count \
+                 FROM branch_observation_memberships \
+                 WHERE branch_id = ?1 AND membership_revision = ?2 \
+                 ORDER BY interpretation_id",
+            )?;
+            let stored = statement
+                .query_map(params![branch_id, membership_revision], |row| {
+                    Ok(BranchMembershipProjection {
+                        branch_id: row.get(0)?,
+                        membership_revision: row.get(1)?,
+                        interpretation_id: row.get(2)?,
+                        payload_hash: row.get(3)?,
+                        parent_interpretation_id: row.get(4)?,
+                        relationship: row.get(5)?,
+                        shared_record_count: row.get(6)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut expected = memberships.to_vec();
+            expected.sort_by(|left, right| left.interpretation_id.cmp(&right.interpretation_id));
+            if stored != expected {
+                return Err(ObservatoryError::StorageContractViolation);
+            }
+        } else {
+            if memberships.iter().any(|membership| {
+                membership.branch_id != branch_id
+                    || membership.membership_revision != membership_revision
+            }) {
+                return Err(ObservatoryError::StorageContractViolation);
+            }
+            transaction.execute(
+                "INSERT INTO branch_membership_generations VALUES(?1, ?2, ?3)",
+                params![branch_id, membership_revision, applied_at_ms],
+            )?;
+            {
+                let mut appender = transaction.appender("branch_observation_memberships")?;
+                for (index, membership) in memberships.iter().enumerate() {
+                    appender.append_row(params![
+                        membership.branch_id,
+                        membership.membership_revision,
+                        membership.interpretation_id,
+                        membership.payload_hash,
+                        membership.parent_interpretation_id,
+                        membership.relationship,
+                        membership.shared_record_count,
+                    ])?;
+                    let written = u64::try_from(index + 1).unwrap_or(rows_total);
+                    if written == rows_total || written.is_multiple_of(512) {
+                        permit.progress(WarehouseWriteStage::Staging, written);
+                    }
                 }
             }
         }
         permit.progress(WarehouseWriteStage::Merging, rows_total);
-        record_receipt(
-            &transaction,
-            projection_id,
-            "branch_membership",
-            branch_id,
-            applied_at_ms,
-        )?;
+        if !receipt_already_exists {
+            record_receipt(
+                &transaction,
+                projection_id,
+                "branch_membership",
+                branch_id,
+                applied_at_ms,
+            )?;
+        }
         transaction.execute(
             "UPDATE warehouse_metadata SET last_projection_ms = ?1 WHERE singleton_id = 1",
             [applied_at_ms],
@@ -4189,6 +4228,118 @@ mod tests {
                 )
                 .expect("empty current generation"),
             0
+        );
+    }
+
+    #[test]
+    fn branch_membership_retry_recovers_an_existing_generation_without_a_receipt() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("repair.duckdb"))
+            .expect("warehouse");
+        let membership = BranchMembershipProjection {
+            branch_id: "main".to_owned(),
+            membership_revision: 7,
+            interpretation_id: "interpretation-seven".to_owned(),
+            payload_hash: "payload-seven".to_owned(),
+            parent_interpretation_id: None,
+            relationship: "root".to_owned(),
+            shared_record_count: 0,
+        };
+        {
+            let connection = warehouse.lock().expect("connection");
+            connection
+                .execute(
+                    "INSERT INTO branch_membership_generations VALUES('main', 7, 10)",
+                    [],
+                )
+                .expect("orphaned generation");
+            connection
+                .execute(
+                    "INSERT INTO branch_observation_memberships VALUES(
+                         'main', 7, 'interpretation-seven', 'payload-seven', NULL, 'root', 0
+                     )",
+                    [],
+                )
+                .expect("orphaned membership");
+        }
+
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:main:7",
+                std::slice::from_ref(&membership),
+                "main",
+                7,
+                11,
+            )
+            .expect("repair delivery");
+
+        assert_eq!(
+            warehouse
+                .lock()
+                .expect("connection")
+                .query_row(
+                    "SELECT COUNT(*) FROM projection_receipts \
+                     WHERE projection_id = 'branch_membership:main:7'",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("repair receipt"),
+            1
+        );
+    }
+
+    #[test]
+    fn branch_membership_retry_repairs_a_receipt_written_for_the_wrong_revision() {
+        let directory = tempdir().expect("temporary directory");
+        let warehouse = AnalyticalWarehouse::initialise(directory.path().join("revision.duckdb"))
+            .expect("warehouse");
+        let latest = BranchMembershipProjection {
+            branch_id: "main".to_owned(),
+            membership_revision: 7,
+            interpretation_id: "latest".to_owned(),
+            payload_hash: "latest-payload".to_owned(),
+            parent_interpretation_id: None,
+            relationship: "root".to_owned(),
+            shared_record_count: 0,
+        };
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:main:1",
+                std::slice::from_ref(&latest),
+                "main",
+                7,
+                10,
+            )
+            .expect("simulate old projector defect");
+
+        let first = BranchMembershipProjection {
+            membership_revision: 1,
+            interpretation_id: "first".to_owned(),
+            payload_hash: "first-payload".to_owned(),
+            ..latest
+        };
+        warehouse
+            .project_branch_memberships(
+                "branch_membership:main:1",
+                std::slice::from_ref(&first),
+                "main",
+                1,
+                11,
+            )
+            .expect("revision-specific retry");
+
+        assert_eq!(
+            warehouse
+                .lock()
+                .expect("connection")
+                .query_row(
+                    "SELECT COUNT(*) FROM branch_membership_generations \
+                     WHERE branch_id = 'main' AND membership_revision IN (1, 7)",
+                    [],
+                    |row| row.get::<_, u32>(0),
+                )
+                .expect("both exact generations"),
+            2
         );
     }
 

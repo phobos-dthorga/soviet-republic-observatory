@@ -1092,12 +1092,19 @@
     );
     void listenForWarehouseUpdates((status) => {
       if (!disposed) {
+        const previousProjection =
+          warehouseStatus?.warehouse.last_projected_at_ms ?? null;
+        const completedProjection =
+          status.warehouse.last_projected_at_ms !== null &&
+          status.warehouse.last_projected_at_ms !== previousProjection;
         warehouseStatus = status;
-        void refreshRepublicBrief();
-        void refreshRepublicPlan();
-        void refreshMarketWorkspace();
-        void refreshBroadcastWorkspace();
-        void refreshEnvironmentWorkspace();
+        if (completedProjection) {
+          void refreshRepublicBrief();
+          void refreshRepublicPlan();
+          void refreshMarketWorkspace();
+          void refreshBroadcastWorkspace();
+          void refreshEnvironmentWorkspace();
+        }
       }
     }).then((unlisten) => {
       if (disposed) unlisten();

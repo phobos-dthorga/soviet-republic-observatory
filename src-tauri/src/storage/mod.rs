@@ -27,6 +27,7 @@ mod warehouse_jobs;
 pub(crate) use crate::environment::ENVIRONMENT_STORAGE_CONTRACT_VERSION;
 pub(crate) use broadcast::BROADCAST_STATUS_STORAGE_CONTRACT_VERSION;
 pub(crate) use markets::MARKET_STORAGE_CONTRACT_VERSION;
+pub(crate) use observations::IndexedEvidenceDomain;
 pub(crate) use research_setup::StoredResearchSetup;
 pub(crate) use resource_registry::StoredLiveResources;
 

@@ -8,11 +8,12 @@ use crate::automatic_observer::AutomaticObserver;
 use crate::model::{
     AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
     BackgroundWorkPriority, CitizenStatusRecord, CoverageReport, CoverageStatus,
+    EnvironmentActivityChannel, EnvironmentActivityRow, EnvironmentHistoryRecord,
     GameVocabularySource, MarketCurrency, MarketFactRows, MarketHistoryRecord, MarketPriceRow,
-    MarketPriceSide, MotionPreference, ParsedCitizenStatusData, ParsedMarketData, ReceiverRecord,
-    RecorderCandidateStatus, RecorderDiscoverySource, ResourceRegistryAssurance, SNAPSHOT_FACTS,
-    SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
-    StoragePatiencePreset, WordingMode,
+    MarketPriceSide, MotionPreference, ParsedCitizenStatusData, ParsedEnvironmentData,
+    ParsedMarketData, ReceiverRecord, RecorderCandidateStatus, RecorderDiscoverySource,
+    ResourceRegistryAssurance, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
+    SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset, WordingMode,
 };
 use crate::tesmio_probe::{ValidatedResourceEntry, ValidatedResourceRegistry};
 
@@ -154,6 +155,36 @@ fn application_preferences_are_bounded_atomic_and_restart_safe() {
             .expect("unchanged preferences"),
         saved
     );
+}
+
+#[test]
+fn environment_queries_work_immediately_after_schema_initialisation() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("environment.sqlite3"))
+        .expect("storage");
+
+    let recording = storage
+        .environment_recording_status()
+        .expect("recording status");
+    assert!(!recording.enabled);
+    assert_eq!(recording.interval_game_days, 7);
+    assert!(
+        storage
+            .environment_history()
+            .expect("environment history")
+            .snapshots
+            .is_empty()
+    );
+
+    let connection = storage.connect().expect("analysis context");
+    let context = super::analysis_context::load_analysis_context_from(&connection)
+        .expect("empty analysis context");
+    drop(connection);
+    let workspace = storage
+        .environment_workspace(context)
+        .expect("empty environment workspace");
+    assert_eq!(workspace.row_count, 0);
+    assert!(workspace.factor_sets.is_empty());
 }
 
 #[test]
@@ -573,7 +604,7 @@ fn market_record_cache_reuses_shared_prefix_rows_across_interpretations() {
     alternate.compatibility.resolved_profile_hash = "e".repeat(64);
     alternate.compatibility.profile_source = "local_override".to_owned();
     let (inserted, cache) = storage
-        .save_reinterpretation_with_market_stats(&alternate)
+        .save_indexed_reinterpretation(&alternate, super::IndexedEvidenceDomain::Markets)
         .expect("alternate market interpretation");
     assert!(inserted);
     assert_eq!(cache.records_reused, 1);
@@ -586,6 +617,72 @@ fn market_record_cache_reuses_shared_prefix_rows_across_interpretations() {
         })
         .expect("price count");
     assert_eq!(price_rows, 1);
+}
+
+#[test]
+fn focused_environment_reinterpretation_does_not_persist_other_domains() {
+    let directory = tempdir().expect("temporary directory");
+    let storage =
+        ObservatoryStorage::initialise(directory.path().join("focused.sqlite3")).expect("storage");
+    let mut focused = inspection("focused-raw-save", "environment.zip", &[1]);
+    focused.environment = ParsedEnvironmentData {
+        resources: vec!["steel".to_owned()],
+        source_fields: vec!["$Resources_Produced".to_owned()],
+        records: vec![EnvironmentHistoryRecord {
+            record_id: 0,
+            year: 2000,
+            day: 0,
+            game_day: 0,
+            rows: vec![EnvironmentActivityRow {
+                resource_index: 0,
+                source_field_index: 0,
+                source_line: 6,
+                row_ordinal: 0,
+                channel: EnvironmentActivityChannel::Production,
+                primary_value: 12.5,
+                secondary_value: 1.0,
+            }],
+        }],
+        history_records: 1,
+        row_count: 1,
+        warnings: Vec::new(),
+    };
+
+    storage
+        .save_indexed_reinterpretation(&focused, super::IndexedEvidenceDomain::Environment)
+        .expect("focused environment persistence");
+
+    let connection = storage.connect().expect("connection");
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM environment_observation_coverage WHERE payload_hash = ?1",
+                [&focused.interpretation_id],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("environment coverage"),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM market_observation_coverage WHERE payload_hash = ?1",
+                [&focused.interpretation_id],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("market coverage"),
+        0
+    );
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM broadcast_status_observation_coverage WHERE payload_hash = ?1",
+                [&focused.interpretation_id],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("Broadcast coverage"),
+        0
+    );
 }
 
 #[test]
@@ -836,6 +933,52 @@ fn interrupted_warehouse_jobs_return_to_pending_without_losing_the_observation()
             .expect("recovered status")
             .as_deref(),
         Some("pending")
+    );
+    assert_eq!(reopened.distinct_state_count().expect("state count"), 1);
+}
+
+#[test]
+fn migration_requeues_affected_warehouse_jobs_without_touching_observations() {
+    let directory = tempdir().expect("temporary directory");
+    let path = directory.path().join("warehouse-repair.sqlite3");
+    {
+        let storage = ObservatoryStorage::initialise(path.clone()).expect("storage");
+        storage
+            .save_inspection(&inspection("repair-state", "repair.zip", &[1, 2]))
+            .expect("observation");
+        let connection = storage.connect().expect("connection");
+        connection
+            .execute(
+                "UPDATE warehouse_projection_jobs SET status = 'applied', applied_at_ms = 10 \
+                 WHERE projection_kind = 'branch_membership'",
+                [],
+            )
+            .expect("simulate incorrectly applied branch job");
+        connection
+            .execute(
+                "UPDATE warehouse_projection_jobs SET status = 'failed', error_code = 'warehouse_unavailable' \
+                 WHERE projection_kind = 'environment_observation'",
+                [],
+            )
+            .expect("simulate failed Environment job");
+        connection
+            .execute("DELETE FROM schema_migrations WHERE version = 25", [])
+            .expect("replay recovery migration");
+    }
+
+    let reopened = ObservatoryStorage::initialise(path).expect("repaired storage");
+    let connection = reopened.connect().expect("connection");
+    assert_eq!(
+        connection
+            .query_row(
+                "SELECT COUNT(*) FROM warehouse_projection_jobs \
+                 WHERE projection_kind IN ('branch_membership', 'environment_observation') \
+                   AND status = 'pending'",
+                [],
+                |row| row.get::<_, u32>(0),
+            )
+            .expect("requeued jobs"),
+        2
     );
     assert_eq!(reopened.distinct_state_count().expect("state count"), 1);
 }
@@ -1175,6 +1318,41 @@ fn selecting_a_branch_changes_the_latest_dataset_without_rewriting_history() {
 }
 
 #[test]
+fn delayed_branch_jobs_load_the_membership_revision_they_name() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("branch-jobs.sqlite3"))
+        .expect("storage");
+    storage
+        .save_inspection(&inspection("branch-one", "one.zip", &[1, 2]))
+        .expect("first save");
+    storage
+        .save_inspection(&inspection("branch-two", "two.zip", &[1, 2, 3]))
+        .expect("second save");
+
+    let (first_revision, first) = storage
+        .branch_membership_projection_at("main", 1)
+        .expect("first revision");
+    let (second_revision, second) = storage
+        .branch_membership_projection_at("main", 2)
+        .expect("second revision");
+
+    assert_eq!(first_revision, 1);
+    assert_eq!(first.len(), 1);
+    assert!(
+        first
+            .iter()
+            .all(|membership| membership.membership_revision == 1)
+    );
+    assert_eq!(second_revision, 2);
+    assert_eq!(second.len(), 2);
+    assert!(
+        second
+            .iter()
+            .all(|membership| membership.membership_revision == 2)
+    );
+}
+
+#[test]
 fn unknown_branch_selection_is_rejected() {
     let directory = tempdir().expect("temporary directory");
     let storage =
@@ -1298,7 +1476,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        24
+        25
     );
     assert_eq!(
         migrated
@@ -1418,7 +1596,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        24
+        25
     );
     assert_eq!(
         connection

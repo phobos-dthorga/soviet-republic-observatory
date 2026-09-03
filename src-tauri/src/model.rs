@@ -1564,7 +1564,7 @@ impl TesmioProbeStatus {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BranchMembershipProjection {
     pub branch_id: String,
     pub membership_revision: u32,

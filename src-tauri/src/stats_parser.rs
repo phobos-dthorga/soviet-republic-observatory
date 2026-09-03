@@ -23,6 +23,28 @@ const MAX_MARKET_DICTIONARY: usize = 4_096;
 const MAX_ENVIRONMENT_ROWS: u32 = 1_500_000;
 const MAX_ENVIRONMENT_DICTIONARY: usize = 4_096;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StatsParseScope {
+    Complete,
+    Markets,
+    Broadcast,
+    Environment,
+}
+
+impl StatsParseScope {
+    fn includes_markets(self) -> bool {
+        matches!(self, Self::Complete | Self::Markets)
+    }
+
+    fn includes_broadcast(self) -> bool {
+        matches!(self, Self::Complete | Self::Broadcast)
+    }
+
+    fn includes_environment(self) -> bool {
+        matches!(self, Self::Complete | Self::Environment)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct FieldValue<T> {
     value: T,
@@ -160,8 +182,16 @@ impl RecordDraft {
 }
 
 pub fn parse_stats<R: BufRead>(
+    reader: R,
+    profile: &ResolvedCompatibilityProfile,
+) -> Result<ParsedStats, ObservatoryError> {
+    parse_stats_for_scope(reader, profile, StatsParseScope::Complete)
+}
+
+pub fn parse_stats_for_scope<R: BufRead>(
     mut reader: R,
     profile: &ResolvedCompatibilityProfile,
+    scope: StatsParseScope,
 ) -> Result<ParsedStats, ObservatoryError> {
     let mut hash = Sha256::new();
     let mut bytes_read = 0_u64;
@@ -178,7 +208,10 @@ pub fn parse_stats<R: BufRead>(
     let mut active_market_block: Option<ActiveMarketBlock> = None;
     let mut environment = EnvironmentCollector::default();
     let mut active_environment_block: Option<ActiveEnvironmentBlock> = None;
-    let status_enabled = profile.has_indexed_fields(StatsContext::History);
+    let mut skipping_unselected_block = false;
+    let status_enabled =
+        scope.includes_broadcast() && profile.has_indexed_fields(StatsContext::History);
+    let environment_enabled = scope.includes_environment();
 
     loop {
         line_buffer.clear();
@@ -207,6 +240,17 @@ pub fn parse_stats<R: BufRead>(
 
         let directive = directive_name(line);
         let marker = directive.and_then(|directive| profile.marker_for(directive));
+
+        if skipping_unselected_block {
+            if directive == Some("$end") {
+                skipping_unselected_block = false;
+                continue;
+            }
+            if directive.is_none() {
+                continue;
+            }
+            skipping_unselected_block = false;
+        }
 
         if let Some(block) = active_environment_block.as_mut() {
             if directive == Some("$end") {
@@ -279,6 +323,7 @@ pub fn parse_stats<R: BufRead>(
                 &mut market,
                 &mut environment,
                 status_enabled,
+                environment_enabled,
             )?;
             let record_id: u32 = parse_single_value(line).ok_or(
                 ObservatoryError::MalformedReceiverHistory("invalid record identifier"),
@@ -305,6 +350,7 @@ pub fn parse_stats<R: BufRead>(
                 &mut market,
                 &mut environment,
                 status_enabled,
+                environment_enabled,
             )?;
             finalise_snapshot(
                 profile,
@@ -323,6 +369,7 @@ pub fn parse_stats<R: BufRead>(
                 &mut market,
                 &mut environment,
                 status_enabled,
+                environment_enabled,
             )?;
             finalise_snapshot(
                 profile,
@@ -356,6 +403,10 @@ pub fn parse_stats<R: BufRead>(
             && let Some(mapping) = profile.field_for(directive, context)
             && mapping.host_slot.starts_with("market.")
         {
+            if !scope.includes_markets() {
+                skipping_unselected_block = market_block_kind(&mapping.host_slot).is_some();
+                continue;
+            }
             let Some(source_field_index) = market.intern_source_field(directive) else {
                 continue;
             };
@@ -383,6 +434,10 @@ pub fn parse_stats<R: BufRead>(
             && let Some(mapping) = profile.field_for(directive, StatsContext::History)
             && let Some(channel) = environment_block_kind(&mapping.host_slot)
         {
+            if !environment_enabled {
+                skipping_unselected_block = true;
+                continue;
+            }
             if let Some(source_field_index) = environment.intern_source_field(directive) {
                 active_environment_block = Some(ActiveEnvironmentBlock {
                     channel,
@@ -419,7 +474,9 @@ pub fn parse_stats<R: BufRead>(
             )?,
             _ => {
                 let Some(directive) = directive else { continue };
-                if profile.has_indexed_field_alias(directive, StatsContext::History) {
+                if status_enabled
+                    && profile.has_indexed_field_alias(directive, StatsContext::History)
+                {
                     record.citizen_status_seen = true;
                     match parse_indexed_value::<u8, f64>(line) {
                         Some((index, value))
@@ -512,6 +569,7 @@ pub fn parse_stats<R: BufRead>(
         &mut market,
         &mut environment,
         status_enabled,
+        environment_enabled,
     )?;
     if active_market_block.is_some() {
         add_warning(&mut market.warnings, "unterminated_market_block");
@@ -1005,12 +1063,15 @@ fn finalise_record(
     market: &mut MarketCollector,
     environment: &mut EnvironmentCollector,
     status_enabled: bool,
+    environment_enabled: bool,
 ) -> Result<(), ObservatoryError> {
-    let Some(draft) = draft else {
+    let Some(mut draft) = draft else {
         return Ok(());
     };
     collector.history_records += 1;
-    environment.history_records = environment.history_records.saturating_add(1);
+    if environment_enabled {
+        environment.history_records = environment.history_records.saturating_add(1);
+    }
 
     if status_enabled {
         collector.citizen_status_history_records += 1;
@@ -1032,7 +1093,7 @@ fn finalise_record(
             year: year.value,
             day: day.value,
             game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
-            rows: draft.market.clone(),
+            rows: std::mem::take(&mut draft.market),
         });
     }
 
@@ -1044,7 +1105,7 @@ fn finalise_record(
             year: year.value,
             day: day.value,
             game_day: i64::from(year.value) * DAYS_PER_GAME_YEAR + i64::from(day.value),
-            rows: draft.environment.clone(),
+            rows: std::mem::take(&mut draft.environment),
         });
     }
 
@@ -1218,7 +1279,7 @@ fn add_warning(warnings: &mut BTreeMap<String, u32>, code: &str) {
 mod tests {
     use std::io::Cursor;
 
-    use super::parse_stats;
+    use super::{StatsParseScope, parse_stats, parse_stats_for_scope};
     use crate::compatibility_profile::ResolvedCompatibilityProfile;
     use crate::error::ObservatoryError;
     use crate::model::{CoverageStatus, SnapshotScopeKind};
@@ -1417,6 +1478,33 @@ waste_mixed -1 -102.5\n$end\n$STAT_CURRENT\n";
         assert_eq!(rows[1].resource_index, rows[2].resource_index);
         assert_eq!(rows[1].row_ordinal, 0);
         assert_eq!(rows[2].row_ordinal, 1);
+    }
+
+    #[test]
+    fn focused_environment_parsing_does_not_materialise_other_large_domains() {
+        let profile = ResolvedCompatibilityProfile::reviewed_builtin().expect("profile");
+        let source = "$STATS_FORMAT 1\n$STAT_RECORD 1\n$DATE_YEAR 1980\n$DATE_DAY 77\n\
+$Citizens_EletronicNone 25\n$Citizens_EletrinicRadio 25\n\
+$Citizens_EletronicTV 25\n$Citizens_EletronicComputer 25\n\
+$Citizens_Status 0 0.8\n$Citizens_Status 1 0.8\n$Citizens_Status 2 0.8\n\
+$Citizens_Status 3 0.8\n$Citizens_Status 4 0.1\n$Citizens_Status 5 0.8\n\
+$Citizens_Status 6 0.8\n$Citizens_Status 7 0.8\n$Citizens_Status 8 0.8\n\
+$Economy_PurchaseCostRUB\noil 12.5 1\n$end\n\
+$Resources_Produced\nsteel 12.5 1\n$end\n$STAT_CURRENT\n";
+        let parsed = parse_stats_for_scope(
+            Cursor::new(source.as_bytes()),
+            &profile,
+            StatsParseScope::Environment,
+        )
+        .expect("focused environment evidence");
+
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.environment.records.len(), 1);
+        assert_eq!(parsed.environment.row_count, 1);
+        assert!(parsed.market.records.is_empty());
+        assert_eq!(parsed.market.row_count, 0);
+        assert!(parsed.citizen_status.records.is_empty());
+        assert_eq!(parsed.citizen_status.history_records, 0);
     }
 
     #[test]

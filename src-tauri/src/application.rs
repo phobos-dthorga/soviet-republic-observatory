@@ -45,8 +45,11 @@ use crate::model::{
     SetupState, WarehouseSnapshot,
 };
 use crate::planning_overlay::PlanningOverlayDocument;
-use crate::save_archive::{hash_save_stats_payload, inspect_save_archive};
-use crate::storage::{ObservatoryStorage, now_ms};
+use crate::save_archive::{
+    hash_save_stats_payload, inspect_save_archive, inspect_save_archive_for_scope,
+};
+use crate::stats_parser::StatsParseScope;
+use crate::storage::{IndexedEvidenceDomain, ObservatoryStorage, now_ms};
 use crate::tesmio_probe;
 use crate::theme::{ThemeInspection, ThemeStatus, inspect_theme_document};
 use crate::warehouse::AnalyticalWarehouse;
@@ -1338,7 +1341,12 @@ impl ObservatoryApplication {
                 progress.phase = MarketIndexingPhase::ParsingRecords;
                 progress.updated_at_ms = Some(now_ms());
                 self.report_save_indexing_progress(kind, &progress, notify);
-                match inspect_save_archive(&path, &profile) {
+                let parse_scope = match kind {
+                    SaveIndexingKind::Markets => StatsParseScope::Markets,
+                    SaveIndexingKind::Broadcast => StatsParseScope::Broadcast,
+                    SaveIndexingKind::Environment => StatsParseScope::Environment,
+                };
+                match inspect_save_archive_for_scope(&path, &profile, parse_scope) {
                     Ok(inspection) if inspection.payload_hash == candidate.raw_payload_hash => {
                         let (records_processed, rows_processed) = match kind {
                             SaveIndexingKind::Markets => (
@@ -1371,9 +1379,14 @@ impl ObservatoryApplication {
                                     .storage
                                     .environment_coverage_exists(&inspection.interpretation_id),
                             })?;
+                        let domain = match kind {
+                            SaveIndexingKind::Markets => IndexedEvidenceDomain::Markets,
+                            SaveIndexingKind::Broadcast => IndexedEvidenceDomain::Broadcast,
+                            SaveIndexingKind::Environment => IndexedEvidenceDomain::Environment,
+                        };
                         let (_, cache) = self.run_background_storage_step(&mut progress, || {
                             self.storage
-                                .save_reinterpretation_with_market_stats(&inspection)
+                                .save_indexed_reinterpretation(&inspection, domain)
                         })?;
                         if kind == SaveIndexingKind::Markets {
                             progress.cache_records_reused = progress
@@ -2523,8 +2536,10 @@ impl ObservatoryApplication {
                 }),
             "branch_membership" => self
                 .run_coordinated_background_storage(|| {
+                    let revision =
+                        branch_membership_revision(&job.projection_id, &job.source_identity)?;
                     self.storage
-                        .branch_membership_projection(&job.source_identity)
+                        .branch_membership_projection_at(&job.source_identity, revision)
                 })
                 .and_then(|(revision, memberships)| {
                     self.warehouse.project_branch_memberships(
@@ -2683,6 +2698,18 @@ impl ObservatoryApplication {
             .map(|observer| observer.status())
             .map_err(|_| ObservatoryError::StorageUnavailable)
     }
+}
+
+fn branch_membership_revision(
+    projection_id: &str,
+    branch_id: &str,
+) -> Result<u32, ObservatoryError> {
+    let expected_prefix = format!("branch_membership:{branch_id}:");
+    projection_id
+        .strip_prefix(&expected_prefix)
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|revision| *revision > 0)
+        .ok_or(ObservatoryError::StorageContractViolation)
 }
 
 fn count_save_candidates(directory: &Path) -> Result<u32, ObservatoryError> {
