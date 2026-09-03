@@ -10,7 +10,12 @@
   } = $props();
 </script>
 
-<div class="workspace-toolbar" role="toolbar" aria-label={label}>
+<div
+  class="workspace-toolbar"
+  role="toolbar"
+  aria-label={label}
+  data-workspace-toolbar
+>
   {@render children()}
 </div>
 

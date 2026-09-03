@@ -36,6 +36,7 @@
     removeAnalysisPack,
     rollbackAnalysisPack,
   } from "../observations/desktopClient";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   let {
     desktopAvailable = false,
@@ -374,23 +375,24 @@
         )}</span
       >
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("extensions-heading-eyebrow")}</span
-        >
-        <h2>{$translation("extensions-heading-title")}</h2>
-        <p>{$translation("security-extension-host-boundary")}</p>
-      </div>
-      <div class="date-stamp">
-        <span
-          >{$translation("extensions-installed-count", {
-            count: packs.length,
-          })}</span
-        >
-        <strong>{packs.filter((pack) => pack.enabled).length}</strong>
-        <small>{$translation("extensions-enabled-count")}</small>
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("extensions-heading-eyebrow")}
+      title={$translation("extensions-heading-title")}
+      description={$translation("security-extension-host-boundary")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span
+            >{$translation("extensions-installed-count", {
+              count: packs.length,
+            })}</span
+          >
+          <strong>{packs.filter((pack) => pack.enabled).length}</strong>
+          <small>{$translation("extensions-enabled-count")}</small>
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     <section class="extension-hero" id="pack-inspection">
       <div class="extension-title">

@@ -56,6 +56,7 @@
     publishedMetricContext,
   } from "../presentation/metricContext";
   import { briefMetricLabel } from "../presentation/republicBrief";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   const sections: Array<{
     label: TranslationKey;
@@ -282,18 +283,20 @@
       <span>{$translation("monitor-near-live-detail")}</span>
     </GuidanceSurface>
 
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("monitor-heading-eyebrow")}</span>
-        <h2>{$translation("monitor-heading-title")}</h2>
-        <p>{$translation("monitor-heading-description")}</p>
-      </div>
-      <div class="date-stamp">
-        <span>{$translation("monitor-last-scan")}</span>
-        <strong>{health?.last_scan_ms ? "✓" : "—"}</strong>
-        <small>{timestamp(health?.last_scan_ms)}</small>
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("monitor-heading-eyebrow")}
+      title={$translation("monitor-heading-title")}
+      description={$translation("monitor-heading-description")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span>{$translation("monitor-last-scan")}</span>
+          <strong>{health?.last_scan_ms ? "✓" : "—"}</strong>
+          <small>{timestamp(health?.last_scan_ms)}</small>
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if !desktopAvailable}
       <section class="archive-empty-state">

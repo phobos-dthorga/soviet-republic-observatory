@@ -30,6 +30,7 @@
     populationFact,
     populationFactLabel,
   } from "../presentation/population";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   let {
     dataset = null,
@@ -318,19 +319,20 @@
       <span>{$translation("population-evidence-banner-detail")}</span>
     </GuidanceSurface>
 
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("population-heading-eyebrow")}</span
-        >
-        <h2>{$translation("population-heading-title")}</h2>
-        <p>{$translation("population-heading-description")}</p>
-      </div>
-      <div class="date-stamp">
-        <span>{$translation("population-selected-head")}</span>
-        <strong>{latest ? "✓" : "—"}</strong>
-        <small>{gameDate()}</small>
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("population-heading-eyebrow")}
+      title={$translation("population-heading-title")}
+      description={$translation("population-heading-description")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span>{$translation("population-selected-head")}</span>
+          <strong>{latest ? "✓" : "—"}</strong>
+          <small>{gameDate()}</small>
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if !desktopAvailable}
       <section class="archive-empty-state">

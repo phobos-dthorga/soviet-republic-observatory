@@ -35,6 +35,10 @@
   } from "../presentation/metricContext";
   import { createObservedReceiverChart } from "../presentation/receiverObservation";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import ScopedFilterBar from "./ScopedFilterBar.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   let {
     workspace = null,
@@ -47,6 +51,9 @@
     onrelatednavigate,
     onoutcomerequest,
     onindexrequest,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   }: {
     workspace?: BroadcastWorkspaceModel | null;
     outcome?: BroadcastOutcomeModel | null;
@@ -63,6 +70,9 @@
       request: BroadcastOutcomeRequest,
     ) => Promise<BroadcastOutcomeModel | null>;
     onindexrequest?: (resume: boolean) => Promise<void>;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
+    onclosetask: () => void;
   } = $props();
 
   const sections: Array<{
@@ -330,25 +340,27 @@
       <strong>{$translation("broadcast-evidence-desk")}</strong>
       <span>{$translation("broadcast-evidence-desk-detail")}</span>
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("broadcast-heading-eyebrow")}</span>
-        <h2>{$translation("broadcast-heading-title")}</h2>
-        <p>{$translation("broadcast-heading-description")}</p>
-      </div>
-      <div class="date-stamp">
-        <span>{$translation("briefing-exact-head")}</span>
-        <strong
-          >{latestReceiverPoint?.year ?? "—"} · {latestReceiverPoint
-            ? String(latestReceiverPoint.day).padStart(3, "0")
-            : "—"}</strong
-        >
-        <small
-          >{receiverDataset?.source_file_name ??
-            $translation("chart-unavailable")}</small
-        >
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("broadcast-heading-eyebrow")}
+      title={$translation("broadcast-heading-title")}
+      description={$translation("broadcast-heading-description")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span>{$translation("briefing-exact-head")}</span>
+          <strong
+            >{latestReceiverPoint?.year ?? "—"} · {latestReceiverPoint
+              ? String(latestReceiverPoint.day).padStart(3, "0")
+              : "—"}</strong
+          >
+          <small
+            >{receiverDataset?.source_file_name ??
+              $translation("chart-unavailable")}</small
+          >
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if workspace && !workspace.warehouse_projection_available}
       <GuidanceSurface kind="help" layout="compact">
@@ -556,54 +568,21 @@
     </section>
 
     <section id="outcomes" class="broadcast-panel outcome-panel">
-      <span class="eyebrow">{$translation("broadcast-section-outcomes")}</span>
-      <h2>{$translation("broadcast-outcome-title")}</h2>
-      <p>{$translation("broadcast-outcome-detail")}</p>
-      <div class="outcome-controls">
-        <label>
-          <span>{$translation("broadcast-outcome-receiver-label")}</span>
-          <select bind:value={selectedReceiverMetric}>
-            {#each receiverMetricIds as metricId}
-              <option value={metricId}
-                >{broadcastMetricLabel(metricId, $translation)}</option
-              >
-            {/each}
-          </select>
-        </label>
-        <label>
-          <span>{$translation("broadcast-outcome-status-label")}</span>
-          <select bind:value={selectedStatusMetric}>
-            {#each workspace?.status_metrics ?? [] as metric}
-              <option value={metric.metric_id}
-                >{broadcastMetricLabel(metric.metric_id, $translation)}</option
-              >
-            {/each}
-          </select>
-        </label>
-        <label>
-          <span>{$translation("broadcast-outcome-lag-label")}</span>
-          <select bind:value={selectedLag}>
-            {#each lags as lag}
-              <option value={lag}
-                >{lag === 0
-                  ? $translation("broadcast-outcome-lag-zero")
-                  : $translation("broadcast-outcome-lag-count", {
-                      count: lag,
-                    })}</option
-              >
-            {/each}
-          </select>
-        </label>
-        <button
-          type="button"
-          class="primary-action"
-          disabled={!workspace?.receiver || outcomeBusy || !onoutcomerequest}
-          onclick={() => void runOutcome()}
-          >{outcomeBusy
-            ? $translation("broadcast-outcome-running")
-            : $translation("broadcast-outcome-run")}</button
-        >
-      </div>
+      <WorkspaceSectionHeader
+        eyebrow={$translation("broadcast-section-outcomes")}
+        title={$translation("broadcast-outcome-title")}
+        description={$translation("broadcast-outcome-detail")}
+      >
+        {#snippet actions()}
+          <button
+            type="button"
+            class="primary-action"
+            onclick={(event) =>
+              onopentask("broadcast-outcome-laboratory", event.currentTarget)}
+            >{$translation("broadcast-outcome-run")}</button
+          >
+        {/snippet}
+      </WorkspaceSectionHeader>
 
       {#if localOutcome}
         <GuidanceSurface
@@ -737,6 +716,68 @@
       </div>
     </section>
   </section>
+
+  <WorkspaceTaskDrawer
+    open={activeTask === "broadcast-outcome-laboratory"}
+    route="broadcast-outcome-laboratory"
+    eyebrow={$translation("broadcast-section-outcomes")}
+    title={$translation("broadcast-outcome-title")}
+    description={$translation("broadcast-outcome-detail")}
+    closeLabel={$translation("action-close")}
+    onclose={onclosetask}
+  >
+    <ScopedFilterBar label={$translation("broadcast-outcome-title")}>
+      <label>
+        <span>{$translation("broadcast-outcome-receiver-label")}</span>
+        <select bind:value={selectedReceiverMetric}>
+          {#each receiverMetricIds as metricId}
+            <option value={metricId}
+              >{broadcastMetricLabel(metricId, $translation)}</option
+            >
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span>{$translation("broadcast-outcome-status-label")}</span>
+        <select bind:value={selectedStatusMetric}>
+          {#each workspace?.status_metrics ?? [] as metric}
+            <option value={metric.metric_id}
+              >{broadcastMetricLabel(metric.metric_id, $translation)}</option
+            >
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span>{$translation("broadcast-outcome-lag-label")}</span>
+        <select bind:value={selectedLag}>
+          {#each lags as lag}
+            <option value={lag}
+              >{lag === 0
+                ? $translation("broadcast-outcome-lag-zero")
+                : $translation("broadcast-outcome-lag-count", {
+                    count: lag,
+                  })}</option
+            >
+          {/each}
+        </select>
+      </label>
+    </ScopedFilterBar>
+    <div class="task-actions">
+      <button
+        type="button"
+        class="primary-action"
+        disabled={!workspace?.receiver || outcomeBusy || !onoutcomerequest}
+        onclick={() => void runOutcome()}
+        >{outcomeBusy
+          ? $translation("broadcast-outcome-running")
+          : $translation("broadcast-outcome-run")}</button
+      >
+    </div>
+    <GuidanceSurface kind="boundary" layout="block">
+      <strong>{$translation("broadcast-outcome-boundary-title")}</strong>
+      <span>{$translation("broadcast-outcome-boundary-detail")}</span>
+    </GuidanceSurface>
+  </WorkspaceTaskDrawer>
 
   <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard-focusable scroll region) -->
   <aside
@@ -926,25 +967,14 @@
     color: var(--colour-text);
   }
 
-  .outcome-controls {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
-    align-items: end;
-    gap: 8px;
-    margin-bottom: 10px;
-  }
-
-  .outcome-controls label {
-    display: grid;
-    gap: 5px;
-  }
-
-  .outcome-controls select {
-    width: 100%;
-  }
-
   .outcome-summary {
     margin: 10px 0;
+  }
+
+  .task-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
   }
 
   :global(.related-economy) {
@@ -977,8 +1007,7 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .index-panel,
-    :global(.related-economy),
-    .outcome-controls {
+    :global(.related-economy) {
       grid-template-columns: 1fr 1fr;
     }
   }
@@ -989,8 +1018,7 @@
     .station-requirements,
     .boundary-grid,
     .index-panel,
-    :global(.related-economy),
-    .outcome-controls {
+    :global(.related-economy) {
       grid-template-columns: 1fr;
     }
 

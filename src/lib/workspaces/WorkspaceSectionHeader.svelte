@@ -16,14 +16,16 @@
   } = $props();
 </script>
 
-<header class="workspace-section-header">
-  <div class="workspace-section-copy">
+<header class="workspace-section-header" data-workspace-section-header>
+  <div class="workspace-section-copy" data-workspace-section-copy>
     <span class="eyebrow">{eyebrow}</span>
     {#if level === "page"}<h2>{title}</h2>{:else}<h3>{title}</h3>{/if}
     {#if description}<p>{description}</p>{/if}
   </div>
   {#if actions}
-    <div class="workspace-section-actions">{@render actions()}</div>
+    <div class="workspace-section-actions" data-workspace-section-actions>
+      {@render actions()}
+    </div>
   {/if}
 </header>
 

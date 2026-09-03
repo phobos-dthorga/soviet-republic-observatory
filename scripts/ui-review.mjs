@@ -19,6 +19,7 @@ const scenarios = [
   "workspace-briefing",
   "workspace-monitor",
   "workspace-broadcast",
+  "broadcast-outcome-task",
   "broadcast-indexing",
   "broadcast-current",
   "broadcast-paused",
@@ -28,10 +29,12 @@ const scenarios = [
   "broadcast-failed",
   "workspace-extensions",
   "workspace-plan",
+  "plan-editor-task",
   "workspace-materials",
   "materials-resource-catalogue",
   "materials-warehouse-attention",
   "production-pathway",
+  "materials-overlay-task",
   "workspace-population",
   "workspace-environment",
   "environment-indexing",
@@ -39,6 +42,8 @@ const scenarios = [
   "environment-carbon-task",
   "environment-recording-management",
   "workspace-markets",
+  "markets-basket-task",
+  "markets-scenario-task",
   "markets-indexing",
   "markets-paused",
   "markets-partial",
@@ -47,6 +52,7 @@ const scenarios = [
   "markets-failed",
   "population-probe-missing",
   "archive-latest",
+  "archive-comparison-task",
   "archive-historical",
   "critical-task-loading",
   "critical-task-failed",
@@ -75,11 +81,15 @@ if (command !== "run" && command !== "live") usage();
 
 let suite = command === "live" ? "smoke" : "smoke";
 let liveAcknowledged = false;
+let selectedLayout = null;
 for (let index = 0; index < arguments_.length; index += 1) {
   const argument = arguments_[index];
   if (argument === "--suite" && command === "run") {
     suite = arguments_[++index];
     if (!suite) fail("--suite requires 'smoke' or 'full'.");
+  } else if (argument === "--layout" && command === "run") {
+    selectedLayout = arguments_[++index];
+    if (!selectedLayout) fail("--layout requires a native review layout name.");
   } else if (argument === "--acknowledge-live-data" && command === "live") {
     liveAcknowledged = true;
   } else {
@@ -140,6 +150,7 @@ const edgeDirectory = tooling.edge_driver_path
 const environment = {
   ...process.env,
   UI_REVIEW_SUITE: suite,
+  UI_REVIEW_LAYOUT: selectedLayout ?? "",
   UI_REVIEW_STATE: command === "live" ? "live" : "fixture",
   UI_REVIEW_RUN_ID: runId,
   UI_REVIEW_ROOT: reviewRoot,
@@ -464,7 +475,7 @@ function setupMessage() {
 
 function usage() {
   fail(
-    "Use 'npm run ui:review -- list', 'run --suite smoke|full', or 'live --acknowledge-live-data'.",
+    "Use 'npm run ui:review -- list', 'run --suite smoke|full [--layout name]', or 'live --acknowledge-live-data'.",
   );
 }
 

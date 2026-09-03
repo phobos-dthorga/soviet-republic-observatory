@@ -42,6 +42,9 @@
   } from "../presentation/republicPlan";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import MetricContextHelp from "../ui/MetricContextHelp.svelte";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   let {
     workspace = null,
@@ -50,6 +53,9 @@
     onupdate,
     onlocationchange,
     onrelatednavigate,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   }: {
     workspace?: RepublicPlanWorkspace | null;
     desktopAvailable: boolean;
@@ -60,6 +66,9 @@
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
     ) => void;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
+    onclosetask: () => void;
   } = $props();
 
   type EditableTarget = PlanTargetDraft & { guardrail_percent: number };
@@ -495,24 +504,26 @@
       <strong>{$translation("plan-evidence-banner")}</strong>
       <span>{$translation("plan-evidence-banner-detail")}</span>
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("plan-heading-eyebrow")}</span>
-        <h2>{$translation("plan-heading-title")}</h2>
-        <p>{$translation("plan-heading-description")}</p>
-      </div>
-      <div class="date-stamp">
-        <span>{$translation("plan-active-plan")}</span>
-        <strong>{activePlan?.revision.name ?? "—"}</strong>
-        <small
-          >{activePlan
-            ? stateLabel(activePlan.state)
-            : $translation("plan-none-active")}</small
-        >
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("plan-heading-eyebrow")}
+      title={$translation("plan-heading-title")}
+      description={$translation("plan-heading-description")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span>{$translation("plan-active-plan")}</span>
+          <strong>{activePlan?.revision.name ?? "—"}</strong>
+          <small
+            >{activePlan
+              ? stateLabel(activePlan.state)
+              : $translation("plan-none-active")}</small
+          >
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
-    {#if !desktopAvailable}
+    {#if !desktopAvailable && activeTask !== "plan-editor"}
       <section class="archive-empty-state">
         <span class="eyebrow">{$translation("archive-desktop-required")}</span>
         <h3>{$translation("plan-desktop-required")}</h3>
@@ -640,27 +651,51 @@
       {/if}
 
       <section id="plan-editor" class="plan-editor-panel">
-        <header class="panel-heading">
-          <div>
-            <span class="eyebrow">{$translation("plan-player-intent")}</span>
-            <h2>
-              {editingPlanId
-                ? $translation("plan-revise-title")
-                : $translation("plan-create-title")}
-            </h2>
-            <p>{$translation("plan-editor-description")}</p>
-          </div>
-          {#if activePlan}
-            <div class="panel-actions">
-              <button type="button" onclick={editActivePlan} disabled={busy}
-                >{$translation("plan-revise")}</button
+        <WorkspaceSectionHeader
+          eyebrow={$translation("plan-player-intent")}
+          title={editingPlanId
+            ? $translation("plan-revise-title")
+            : $translation("plan-create-title")}
+          description={$translation("plan-editor-description")}
+        >
+          {#snippet actions()}
+            {#if activePlan}
+              <button
+                type="button"
+                onclick={(event) => {
+                  editActivePlan();
+                  onopentask("plan-editor", event.currentTarget);
+                }}
+                disabled={busy}>{$translation("plan-revise")}</button
               >
-              <button type="button" onclick={resetDraft} disabled={busy}
-                >{$translation("plan-new")}</button
-              >
-            </div>
-          {/if}
-        </header>
+            {/if}
+            <button
+              type="button"
+              class="primary"
+              onclick={(event) => {
+                resetDraft();
+                onopentask("plan-editor", event.currentTarget);
+              }}
+              disabled={busy}>{$translation("plan-new")}</button
+            >
+          {/snippet}
+        </WorkspaceSectionHeader>
+        <GuidanceSurface kind="help" layout="compact">
+          <strong>{$translation("plan-editor-description")}</strong>
+        </GuidanceSurface>
+      </section>
+
+      <WorkspaceTaskDrawer
+        open={activeTask === "plan-editor"}
+        route="plan-editor"
+        eyebrow={$translation("plan-player-intent")}
+        title={editingPlanId
+          ? $translation("plan-revise-title")
+          : $translation("plan-create-title")}
+        description={$translation("plan-editor-description")}
+        closeLabel={$translation("action-close")}
+        onclose={onclosetask}
+      >
         <form
           onsubmit={submitPlan}
           oninput={() => (draftDirty = true)}
@@ -822,7 +857,7 @@
             >
           </div>
         </form>
-      </section>
+      </WorkspaceTaskDrawer>
 
       <section id="plan-revisions" class="plan-revision-panel">
         <header class="panel-heading">

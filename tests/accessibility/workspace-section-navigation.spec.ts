@@ -64,3 +64,51 @@ for (const workspace of workspacesWithSectionNavigation) {
     }
   });
 }
+
+test("the selected section remains stable while a final section smooth-scrolls", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/?ui-review=fixture");
+  await page.waitForFunction(() =>
+    Boolean(
+      (
+        window as typeof window & {
+          __REPUBLIC_OBSERVATORY_UI_REVIEW__?: unknown;
+        }
+      ).__REPUBLIC_OBSERVATORY_UI_REVIEW__,
+    ),
+  );
+  await page.evaluate(async () => {
+    await (
+      window as typeof window & {
+        __REPUBLIC_OBSERVATORY_UI_REVIEW__?: {
+          selectScenario(value: string): Promise<void>;
+        };
+      }
+    ).__REPUBLIC_OBSERVATORY_UI_REVIEW__?.selectScenario(
+      "materials-resource-catalogue",
+    );
+  });
+
+  const link = page.locator(
+    '.workspace .section-list a[href="#overlay-laboratory"]',
+  );
+  await expect(link).toBeVisible();
+  await link.click();
+  await expect(link).toHaveAttribute("aria-current", "location");
+  await page.waitForTimeout(1_300);
+  await expect(link).toHaveAttribute("aria-current", "location");
+
+  const geometry = await page.evaluate(() => ({
+    rootScroll: document.documentElement.scrollTop,
+    bodyScroll: document.body.scrollTop,
+    commandTop: document
+      .querySelector<HTMLElement>(".command-bar")
+      ?.getBoundingClientRect().top,
+  }));
+  expect(geometry.rootScroll).toBe(0);
+  expect(geometry.bodyScroll).toBe(0);
+  expect(geometry.commandTop).toBe(0);
+});

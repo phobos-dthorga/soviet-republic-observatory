@@ -46,6 +46,10 @@
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
   import ContextHelp from "../ui/ContextHelp.svelte";
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
+  import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
   let {
     workspace = null,
@@ -56,6 +60,9 @@
     onprogress,
     onlocationchange,
     onrelatednavigate,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   }: {
     workspace?: MarketWorkspace | null;
     indexingProgress?: MarketIndexingProgress | null;
@@ -68,6 +75,9 @@
       destinations: RelatedDataDestination[],
       origin: HTMLElement | null,
     ) => void;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
+    onclosetask: () => void;
   } = $props();
 
   let busy = $state(false);
@@ -900,20 +910,24 @@
       <strong>{$translation("markets-evidence-banner")}</strong>
       <span>{$translation("markets-evidence-banner-detail")}</span>
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("markets-heading-eyebrow")}</span>
-        <h2>{$translation("markets-heading-title")}</h2>
-        <p>{$translation("markets-heading-description")}</p>
-      </div>
-      <button
-        type="button"
-        disabled={!desktopAvailable || busy}
-        onclick={() => runIndexing()}
-      >
-        {$translation(indexActionKey)}
-      </button>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("markets-heading-eyebrow")}
+      title={$translation("markets-heading-title")}
+      description={$translation("markets-heading-description")}
+    >
+      {#snippet actions()}
+        <WorkspaceToolbar label={$translation("markets-heading-title")}>
+          <button
+            type="button"
+            disabled={!desktopAvailable || busy}
+            onclick={() => runIndexing()}
+          >
+            {$translation(indexActionKey)}
+          </button>
+        </WorkspaceToolbar>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if indexView && indexingProgress?.phase !== "idle"}
       <TaskProgressPanel view={indexView} headingId="markets-index-progress" />
@@ -1447,21 +1461,27 @@
 
       <section id="markets-labs" class="market-labs">
         <article class="market-lab">
-          <header>
-            <div>
-              <span class="eyebrow"
-                >{$translation("markets-baskets-eyebrow")}</span
+          <WorkspaceSectionHeader
+            eyebrow={$translation("markets-baskets-eyebrow")}
+            title={$translation("markets-baskets-title")}
+            description={$translation("markets-baskets-detail")}
+          >
+            {#snippet actions()}
+              <button
+                type="button"
+                disabled={busy}
+                onclick={() => lifecycle("clear", "basket")}
+                >{$translation("markets-clear-selection")}</button
               >
-              <h2>{$translation("markets-baskets-title")}</h2>
-              <p>{$translation("markets-baskets-detail")}</p>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onclick={() => lifecycle("clear", "basket")}
-              >{$translation("markets-clear-selection")}</button
-            >
-          </header>
+              <button
+                type="button"
+                class="primary"
+                onclick={(event) =>
+                  onopentask("markets-basket-laboratory", event.currentTarget)}
+                >{$translation("markets-basket-draft-title")}</button
+              >
+            {/snippet}
+          </WorkspaceSectionHeader>
           <div class="definition-list">
             {#each workspace.baskets as basket}<article
                 class:active={basket.selected}
@@ -1521,111 +1541,130 @@
                   </div>{/if}
               </article>{/each}
           </div>
-          <form
-            oninput={() => (basketDirty = true)}
-            onchange={() => (basketDirty = true)}
-            onsubmit={(event) => {
-              event.preventDefault();
-              void saveBasket();
-            }}
+          <WorkspaceTaskDrawer
+            open={activeTask === "markets-basket-laboratory"}
+            route="markets-basket-laboratory"
+            eyebrow={$translation("markets-baskets-eyebrow")}
+            title={$translation("markets-basket-draft-title")}
+            description={$translation("markets-baskets-detail")}
+            closeLabel={$translation("action-close")}
+            onclose={onclosetask}
           >
-            <h3>{$translation("markets-basket-draft-title")}</h3>
-            <div class="form-grid">
-              <label
-                ><span>{$translation("markets-definition-id")}</span><input
-                  required
-                  bind:value={basketId}
-                /></label
-              ><label
-                ><span>{$translation("markets-name")}</span><input
-                  required
-                  bind:value={basketName}
-                /></label
-              ><label
-                ><span>{$translation("markets-price-side")}</span><select
-                  bind:value={basketSide}
-                  ><option value="purchase"
-                    >{$translation("markets-purchase-price")}</option
-                  ><option value="sell"
-                    >{$translation("markets-sell-price")}</option
-                  ></select
-                ></label
-              ><label
-                ><span>{$translation("markets-base-record")}</span><select
-                  required
-                  bind:value={basketBase}
-                  >{#each baseRecords as record}<option value={record.hash}
-                      >{$translation("observation-game-date-compact", {
-                        year: record.year,
-                        day: String(record.day).padStart(3, "0"),
-                      })} · {record.hash.slice(0, 8)}</option
-                    >{/each}</select
-                ></label
-              >
-            </div>
-            <label
-              ><span>{$translation("markets-reason")}</span><input
-                required
-                bind:value={basketReason}
-              /></label
+            <form
+              oninput={() => (basketDirty = true)}
+              onchange={() => (basketDirty = true)}
+              onsubmit={(event) => {
+                event.preventDefault();
+                void saveBasket();
+              }}
             >
-            <div class="weight-editor">
+              <h3>{$translation("markets-basket-draft-title")}</h3>
+              <div class="form-grid">
+                <label
+                  ><span>{$translation("markets-definition-id")}</span><input
+                    required
+                    bind:value={basketId}
+                  /></label
+                ><label
+                  ><span>{$translation("markets-name")}</span><input
+                    required
+                    bind:value={basketName}
+                  /></label
+                ><label
+                  ><span>{$translation("markets-price-side")}</span><select
+                    bind:value={basketSide}
+                    ><option value="purchase"
+                      >{$translation("markets-purchase-price")}</option
+                    ><option value="sell"
+                      >{$translation("markets-sell-price")}</option
+                    ></select
+                  ></label
+                ><label
+                  ><span>{$translation("markets-base-record")}</span><select
+                    required
+                    bind:value={basketBase}
+                    >{#each baseRecords as record}<option value={record.hash}
+                        >{$translation("observation-game-date-compact", {
+                          year: record.year,
+                          day: String(record.day).padStart(3, "0"),
+                        })} · {record.hash.slice(0, 8)}</option
+                      >{/each}</select
+                  ></label
+                >
+              </div>
               <label
-                ><span>{$translation("markets-resource-token")}</span><select
-                  bind:value={weightResource}
-                  >{#each availableWeightResources as resource}<option
-                      value={resource}>{resourceLabel(resource)}</option
-                    >{/each}</select
-                ></label
-              ><label
-                ><span>{$translation("markets-weight")}</span><input
-                  type="number"
-                  min="0.000001"
-                  step="any"
-                  bind:value={weightValue}
+                ><span>{$translation("markets-reason")}</span><input
+                  required
+                  bind:value={basketReason}
                 /></label
-              ><button type="button" onclick={addWeight}
-                >{$translation("markets-add-weight")}</button
               >
-            </div>
-            <div class="weight-list">
-              {#each basketWeights as weight}<button
-                  type="button"
-                  onclick={() => {
-                    basketWeights = basketWeights.filter(
-                      (entry) => entry.resource_token !== weight.resource_token,
-                    );
-                    basketDirty = true;
-                  }}
-                  >{resourceLabel(weight.resource_token)} · {weight.weight} ×</button
-                >{/each}
-            </div>
-            <div class="form-actions">
-              <button
-                type="submit"
-                disabled={busy || basketWeights.length === 0}
-                >{$translation("markets-save-basket")}</button
-              >
-            </div>
-          </form>
+              <div class="weight-editor">
+                <label
+                  ><span>{$translation("markets-resource-token")}</span><select
+                    bind:value={weightResource}
+                    >{#each availableWeightResources as resource}<option
+                        value={resource}>{resourceLabel(resource)}</option
+                      >{/each}</select
+                  ></label
+                ><label
+                  ><span>{$translation("markets-weight")}</span><input
+                    type="number"
+                    min="0.000001"
+                    step="any"
+                    bind:value={weightValue}
+                  /></label
+                ><button type="button" onclick={addWeight}
+                  >{$translation("markets-add-weight")}</button
+                >
+              </div>
+              <div class="weight-list">
+                {#each basketWeights as weight}<button
+                    type="button"
+                    onclick={() => {
+                      basketWeights = basketWeights.filter(
+                        (entry) =>
+                          entry.resource_token !== weight.resource_token,
+                      );
+                      basketDirty = true;
+                    }}
+                    >{resourceLabel(weight.resource_token)} · {weight.weight} ×</button
+                  >{/each}
+              </div>
+              <div class="form-actions">
+                <button
+                  type="submit"
+                  disabled={busy || basketWeights.length === 0}
+                  >{$translation("markets-save-basket")}</button
+                >
+              </div>
+            </form>
+          </WorkspaceTaskDrawer>
         </article>
 
         <article class="market-lab">
-          <header>
-            <div>
-              <span class="eyebrow"
-                >{$translation("markets-scenarios-eyebrow")}</span
+          <WorkspaceSectionHeader
+            eyebrow={$translation("markets-scenarios-eyebrow")}
+            title={$translation("markets-scenarios-title")}
+            description={$translation("markets-scenarios-detail")}
+          >
+            {#snippet actions()}
+              <button
+                type="button"
+                disabled={busy}
+                onclick={() => lifecycle("clear", "scenario")}
+                >{$translation("markets-clear-selection")}</button
               >
-              <h2>{$translation("markets-scenarios-title")}</h2>
-              <p>{$translation("markets-scenarios-detail")}</p>
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onclick={() => lifecycle("clear", "scenario")}
-              >{$translation("markets-clear-selection")}</button
-            >
-          </header>
+              <button
+                type="button"
+                class="primary"
+                onclick={(event) =>
+                  onopentask(
+                    "markets-scenario-laboratory",
+                    event.currentTarget,
+                  )}>{$translation("markets-scenario-draft-title")}</button
+              >
+            {/snippet}
+          </WorkspaceSectionHeader>
           <div class="definition-list">
             {#each workspace.scenarios as scenario}<article
                 class:active={scenario.selected}
@@ -1677,146 +1716,159 @@
                 </div>
               </article>{/each}
           </div>
-          <form
-            oninput={() => (scenarioDirty = true)}
-            onchange={() => (scenarioDirty = true)}
-            onsubmit={(event) => {
-              event.preventDefault();
-              void saveScenario();
-            }}
+          <WorkspaceTaskDrawer
+            open={activeTask === "markets-scenario-laboratory"}
+            route="markets-scenario-laboratory"
+            eyebrow={$translation("markets-scenarios-eyebrow")}
+            title={$translation("markets-scenario-draft-title")}
+            description={$translation("markets-scenarios-detail")}
+            closeLabel={$translation("action-close")}
+            onclose={onclosetask}
           >
-            <h3>{$translation("markets-scenario-draft-title")}</h3>
-            <div class="form-grid">
-              <label
-                ><span>{$translation("markets-definition-id")}</span><input
-                  required
-                  bind:value={scenarioId}
-                /></label
-              ><label
-                ><span>{$translation("markets-name")}</span><input
-                  required
-                  bind:value={scenarioName}
-                /></label
-              ><label
-                ><span>{$translation("markets-scenario-kind")}</span><select
-                  bind:value={scenarioKind}
-                  ><option value="break_even"
-                    >{$translation("markets-break-even")}</option
-                  ><option value="debt_stress"
-                    >{$translation("markets-debt-stress")}</option
-                  ></select
-                ></label
-              ><label
-                ><span>{$translation("markets-currency")}</span><select
-                  bind:value={scenarioCurrency}
-                  ><option value="rub">RUB</option><option value="usd"
-                    >USD</option
-                  ></select
-                ></label
-              >
-            </div>
-            <label
-              ><span>{$translation("markets-reason")}</span><input
-                required
-                bind:value={scenarioReason}
-              /></label
+            <form
+              oninput={() => (scenarioDirty = true)}
+              onchange={() => (scenarioDirty = true)}
+              onsubmit={(event) => {
+                event.preventDefault();
+                void saveScenario();
+              }}
             >
-            {#if scenarioKind === "break_even"}<div class="form-grid">
+              <h3>{$translation("markets-scenario-draft-title")}</h3>
+              <div class="form-grid">
                 <label
-                  ><span>{$translation("markets-domestic-unit-cost")}</span
-                  ><input
-                    type="number"
-                    min="0"
-                    step="any"
-                    bind:value={domesticCost}
+                  ><span>{$translation("markets-definition-id")}</span><input
+                    required
+                    bind:value={scenarioId}
                   /></label
                 ><label
-                  ><span>{$translation("markets-delivery-cost")}</span><input
-                    type="number"
-                    min="0"
-                    step="any"
-                    bind:value={deliveryCost}
+                  ><span>{$translation("markets-name")}</span><input
+                    required
+                    bind:value={scenarioName}
                   /></label
                 ><label
-                  ><span>{$translation("markets-efficiency")}</span><input
-                    type="number"
-                    min="0.0001"
-                    step="any"
-                    bind:value={efficiency}
-                  /></label
+                  ><span>{$translation("markets-scenario-kind")}</span><select
+                    bind:value={scenarioKind}
+                    ><option value="break_even"
+                      >{$translation("markets-break-even")}</option
+                    ><option value="debt_stress"
+                      >{$translation("markets-debt-stress")}</option
+                    ></select
+                  ></label
                 ><label
-                  ><span>{$translation("markets-exchange-rate-optional")}</span
-                  ><input
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    bind:value={exchangeRate}
-                  /></label
-                >
-              </div>{:else}<div class="form-grid">
-                <label
-                  ><span>{$translation("markets-debt-service")}</span><input
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    bind:value={debtService}
-                  /></label
-                ><label
-                  ><span>{$translation("markets-export-stress")}</span><input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="any"
-                    bind:value={exportStress}
-                  /></label
-                ><label
-                  ><span>{$translation("markets-tourism-stress")}</span><input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="any"
-                    bind:value={tourismStress}
-                  /></label
-                ><label
-                  ><span>{$translation("markets-exchange-rate-optional")}</span
-                  ><input
-                    type="number"
-                    min="0.000001"
-                    step="any"
-                    bind:value={exchangeRate}
-                  /></label
+                  ><span>{$translation("markets-currency")}</span><select
+                    bind:value={scenarioCurrency}
+                    ><option value="rub">RUB</option><option value="usd"
+                      >USD</option
+                    ></select
+                  ></label
                 >
               </div>
-              <fieldset>
-                <legend>{$translation("markets-income-components")}</legend
-                ><label
-                  ><input
-                    type="checkbox"
-                    bind:checked={includeStandardExports}
-                  />
-                  {$translation("markets-standard-exports")}</label
-                ><label
-                  ><input
-                    type="checkbox"
-                    bind:checked={includeInternationalExports}
-                  />
-                  {$translation("markets-international-exports")}</label
-                ><label
-                  ><input type="checkbox" bind:checked={includeTourism} />
-                  {$translation("markets-tourism-spend")}</label
-                >
-              </fieldset>{/if}
-            <GuidanceSurface kind="boundary" layout="compact"
-              ><strong>{$translation("markets-scenario-boundary-title")}</strong
-              ><span>{$translation("markets-scenario-boundary-detail")}</span
-              ></GuidanceSurface
-            >
-            <div class="form-actions">
-              <button type="submit" disabled={busy}
-                >{$translation("markets-save-scenario")}</button
+              <label
+                ><span>{$translation("markets-reason")}</span><input
+                  required
+                  bind:value={scenarioReason}
+                /></label
               >
-            </div>
-          </form>
+              {#if scenarioKind === "break_even"}<div class="form-grid">
+                  <label
+                    ><span>{$translation("markets-domestic-unit-cost")}</span
+                    ><input
+                      type="number"
+                      min="0"
+                      step="any"
+                      bind:value={domesticCost}
+                    /></label
+                  ><label
+                    ><span>{$translation("markets-delivery-cost")}</span><input
+                      type="number"
+                      min="0"
+                      step="any"
+                      bind:value={deliveryCost}
+                    /></label
+                  ><label
+                    ><span>{$translation("markets-efficiency")}</span><input
+                      type="number"
+                      min="0.0001"
+                      step="any"
+                      bind:value={efficiency}
+                    /></label
+                  ><label
+                    ><span
+                      >{$translation("markets-exchange-rate-optional")}</span
+                    ><input
+                      type="number"
+                      min="0.000001"
+                      step="any"
+                      bind:value={exchangeRate}
+                    /></label
+                  >
+                </div>{:else}<div class="form-grid">
+                  <label
+                    ><span>{$translation("markets-debt-service")}</span><input
+                      type="number"
+                      min="0.000001"
+                      step="any"
+                      bind:value={debtService}
+                    /></label
+                  ><label
+                    ><span>{$translation("markets-export-stress")}</span><input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      bind:value={exportStress}
+                    /></label
+                  ><label
+                    ><span>{$translation("markets-tourism-stress")}</span><input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="any"
+                      bind:value={tourismStress}
+                    /></label
+                  ><label
+                    ><span
+                      >{$translation("markets-exchange-rate-optional")}</span
+                    ><input
+                      type="number"
+                      min="0.000001"
+                      step="any"
+                      bind:value={exchangeRate}
+                    /></label
+                  >
+                </div>
+                <fieldset>
+                  <legend>{$translation("markets-income-components")}</legend
+                  ><label
+                    ><input
+                      type="checkbox"
+                      bind:checked={includeStandardExports}
+                    />
+                    {$translation("markets-standard-exports")}</label
+                  ><label
+                    ><input
+                      type="checkbox"
+                      bind:checked={includeInternationalExports}
+                    />
+                    {$translation("markets-international-exports")}</label
+                  ><label
+                    ><input type="checkbox" bind:checked={includeTourism} />
+                    {$translation("markets-tourism-spend")}</label
+                  >
+                </fieldset>{/if}
+              <GuidanceSurface kind="boundary" layout="compact"
+                ><strong
+                  >{$translation("markets-scenario-boundary-title")}</strong
+                ><span>{$translation("markets-scenario-boundary-detail")}</span
+                ></GuidanceSurface
+              >
+              <div class="form-actions">
+                <button type="submit" disabled={busy}
+                  >{$translation("markets-save-scenario")}</button
+                >
+              </div>
+            </form>
+          </WorkspaceTaskDrawer>
         </article>
       </section>
 
@@ -1833,7 +1885,6 @@
 </section>
 
 <style>
-  .page-heading > button,
   .market-lab button,
   .archive-empty-state button {
     min-height: 38px;
@@ -1983,12 +2034,6 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
-  }
-  .market-lab > header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: start;
   }
   .definition-list {
     display: grid;

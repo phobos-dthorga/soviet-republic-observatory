@@ -248,6 +248,96 @@ export function auditInterfaceDom(): InterfaceAuditFailure[] {
     }
   }
 
+  for (const workspace of document.querySelectorAll(".workspace")) {
+    if (!visible(workspace)) continue;
+    const pageHeader = workspace.querySelector(
+      ":scope > .canvas > [data-workspace-section-header]",
+    );
+    if (!pageHeader || !visible(pageHeader)) {
+      result.push({
+        kind: "workspace-page-heading",
+        selector: identity(workspace),
+        detail: "the workspace has no visible shared page heading",
+      });
+    }
+    const sectionLinks = [
+      ...workspace.querySelectorAll(".navigator .section-list a[href^='#']"),
+    ].filter(visible);
+    if (sectionLinks.length === 0) {
+      result.push({
+        kind: "workspace-section-navigation",
+        selector: identity(workspace),
+        detail: "the workspace has no visible contained section links",
+      });
+    } else if (
+      !sectionLinks.some(
+        (link) => link.getAttribute("aria-current") === "location",
+      )
+    ) {
+      result.push({
+        kind: "workspace-current-section",
+        selector: identity(workspace),
+        detail: "the section navigation does not identify the current section",
+      });
+    }
+  }
+
+  for (const layer of document.querySelectorAll("[data-workspace-task]")) {
+    if (!visible(layer)) continue;
+    const route = (layer as HTMLElement).dataset.workspaceTask ?? "missing";
+    const dialog = layer.querySelector(":scope > [role='dialog']");
+    const body = dialog?.querySelector(":scope > .task-drawer-body");
+    if (!dialog || dialog.getAttribute("aria-modal") !== "true") {
+      result.push({
+        kind: "workspace-task-dialog",
+        selector: identity(layer),
+        detail: `${route} is not exposed as a modal task dialog`,
+      });
+    }
+    if (!body || getComputedStyle(body).overflowY !== "auto") {
+      result.push({
+        kind: "workspace-task-scroll",
+        selector: identity(layer),
+        detail: `${route} has no contained scrolling body`,
+      });
+    }
+    const danger = layer.querySelector(".danger-zone");
+    if (danger && route !== "environment-recording-management") {
+      result.push({
+        kind: "destructive-action-placement",
+        selector: identity(layer),
+        detail: `destructive controls appear in ordinary task ${route}`,
+      });
+    }
+  }
+
+  for (const filterBar of document.querySelectorAll(
+    "[data-scoped-filter-bar]",
+  )) {
+    if (!visible(filterBar)) continue;
+    if (!filterBar.closest("section, article, [data-workspace-task]")) {
+      result.push({
+        kind: "unscoped-filter-placement",
+        selector: identity(filterBar),
+        detail: "the filter bar is not attached to a result or task",
+      });
+    }
+  }
+
+  for (const copy of document.querySelectorAll(
+    "[data-workspace-section-copy]",
+  )) {
+    if (!visible(copy)) continue;
+    const style = getComputedStyle(copy);
+    if (style.maxWidth === "none") {
+      result.push({
+        kind: "unbounded-workspace-prose",
+        selector: identity(copy),
+        detail: "heading prose has no readable line-length limit",
+      });
+    }
+  }
+
   const guidanceLayouts = new Set(["block", "compact", "inline"]);
   for (const surface of document.querySelectorAll("[data-guidance-surface]")) {
     if (!visible(surface)) continue;

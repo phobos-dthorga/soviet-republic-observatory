@@ -200,6 +200,7 @@
   let dialogStack = $state<DialogRoute[]>([]);
   const activeDialog = $derived(topDialogRoute(dialogStack));
   let workspaceTaskTrail = $state<WorkspaceTaskRoute[]>([]);
+  const workspaceTaskReturnFocus = new Map<WorkspaceTaskRoute, HTMLElement>();
   const activeWorkspaceTask = $derived(
     topWorkspaceTaskRoute(workspaceTaskTrail),
   );
@@ -245,14 +246,32 @@
     dialogStack = pushDialogRoute(dialogStack, route);
   }
 
-  function openWorkspaceTask(route: WorkspaceTaskRoute): void {
+  function openWorkspaceTask(
+    route: WorkspaceTaskRoute,
+    origin?: HTMLElement,
+  ): void {
     if (!taskBelongsToWorkspace(route, activeWorkspace)) return;
+    if (activeWorkspaceTask !== route) {
+      const returnFocus =
+        origin ??
+        (document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null);
+      if (returnFocus) workspaceTaskReturnFocus.set(route, returnFocus);
+    }
     workspaceTaskTrail = pushWorkspaceTaskRoute(workspaceTaskTrail, route);
   }
 
   function closeWorkspaceTask(): void {
     if (!activeWorkspaceTask || !canLeaveCurrentWorkspace()) return;
+    const closedRoute = activeWorkspaceTask;
+    const returnFocus = workspaceTaskReturnFocus.get(closedRoute);
+    workspaceTaskReturnFocus.delete(closedRoute);
+    returnFocus?.focus({ preventScroll: true });
     workspaceTaskTrail = popWorkspaceTaskRoute(workspaceTaskTrail);
+    if (returnFocus && document.activeElement !== returnFocus) {
+      void tick().then(() => requestAnimationFrame(() => returnFocus.focus()));
+    }
   }
 
   function currentAnalysisContext(): AnalysisContextReference | null {
@@ -274,7 +293,10 @@
 
   function openWorkspace(workspace: WorkspaceName): void {
     if (workspace !== activeWorkspace && !canLeaveCurrentWorkspace()) return;
-    if (workspace !== activeWorkspace) workspaceTaskTrail = [];
+    if (workspace !== activeWorkspace) {
+      workspaceTaskTrail = [];
+      workspaceTaskReturnFocus.clear();
+    }
     navigationTrail = [];
     relatedChoices = [];
     activeLocation = defaultWorkspaceLocation(workspace);
@@ -373,6 +395,7 @@
       }
       activeLocation = cloneLocation(destination.location);
       workspaceTaskTrail = [];
+      workspaceTaskReturnFocus.clear();
       navigationTrail = pushNavigationTrail(navigationTrail, previous);
       relatedChoices = [];
       relatedChoiceOrigin = null;
@@ -410,6 +433,7 @@
       await restoreAnalysisContext(target.context);
       activeLocation = cloneLocation(target.location);
       workspaceTaskTrail = [];
+      workspaceTaskReturnFocus.clear();
       navigationTrail = navigationTrail.slice(0, targetIndex);
       await focusRelatedLocation(activeLocation);
     } catch {
@@ -774,6 +798,7 @@
     clearNotifications();
     dialogStack = [];
     workspaceTaskTrail = [];
+    workspaceTaskReturnFocus.clear();
     catalogueProgress = null;
     warehouseStatus = null;
     reinterpretationProgress = null;
@@ -807,6 +832,13 @@
         broadcastOutcome = reviewBroadcastOutcome();
         marketWorkspace = reviewMarketWorkspace("ready");
         receiverDataset = broadcastWorkspace.receiver;
+        break;
+      case "broadcast-outcome-task":
+        openWorkspace("broadcast");
+        broadcastWorkspace = reviewBroadcastWorkspace("ready");
+        broadcastOutcome = reviewBroadcastOutcome();
+        receiverDataset = broadcastWorkspace.receiver;
+        workspaceTaskTrail = ["broadcast-outcome-laboratory"];
         break;
       case "broadcast-indexing":
         openWorkspace("broadcast");
@@ -856,6 +888,11 @@
         openWorkspace("plan");
         republicPlan = reviewRepublicPlanWorkspace();
         break;
+      case "plan-editor-task":
+        openWorkspace("plan");
+        republicPlan = reviewRepublicPlanWorkspace();
+        workspaceTaskTrail = ["plan-editor"];
+        break;
       case "workspace-materials":
         openWorkspace("materials");
         break;
@@ -873,6 +910,11 @@
         openWorkspace("materials");
         reviewRouteFixture = reviewProductionRoute();
         reviewPathwayFixture = reviewProductionPathway();
+        workspaceTaskTrail = ["materials-pathway-study"];
+        break;
+      case "materials-overlay-task":
+        openWorkspace("materials");
+        workspaceTaskTrail = ["materials-overlay-editor"];
         break;
       case "workspace-population":
       case "population-probe-missing":
@@ -880,9 +922,13 @@
         populationDataset = reviewPopulationDataset();
         break;
       case "workspace-environment":
+        openWorkspace("environment");
+        environmentWorkspace = reviewEnvironmentWorkspace();
+        break;
       case "environment-details":
         openWorkspace("environment");
         environmentWorkspace = reviewEnvironmentWorkspace();
+        workspaceTaskTrail = ["environment-carbon-study"];
         break;
       case "environment-carbon-task":
         openWorkspace("environment");
@@ -903,6 +949,16 @@
       case "workspace-markets":
         openWorkspace("markets");
         marketWorkspace = reviewMarketWorkspace("ready");
+        break;
+      case "markets-basket-task":
+        openWorkspace("markets");
+        marketWorkspace = reviewMarketWorkspace("ready");
+        workspaceTaskTrail = ["markets-basket-laboratory"];
+        break;
+      case "markets-scenario-task":
+        openWorkspace("markets");
+        marketWorkspace = reviewMarketWorkspace("ready");
+        workspaceTaskTrail = ["markets-scenario-laboratory"];
         break;
       case "markets-indexing":
         openWorkspace("markets");
@@ -938,6 +994,11 @@
       case "archive-latest":
         openWorkspace("archive");
         archiveOverview = reviewArchiveOverview(false);
+        break;
+      case "archive-comparison-task":
+        openWorkspace("archive");
+        archiveOverview = reviewArchiveOverview(false);
+        workspaceTaskTrail = ["archive-comparison"];
         break;
       case "archive-historical":
         openWorkspace("archive");
@@ -1533,6 +1594,9 @@
       onrelatednavigate={requestRelatedNavigation}
       onoutcomerequest={requestBroadcastOutcome}
       onindexrequest={runBroadcastIndexing}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {:else if activeWorkspace === "extensions"}
     <ExtensionsWorkspace
@@ -1553,6 +1617,9 @@
         void refreshRepublicBrief();
       }}
       onrelatednavigate={requestRelatedNavigation}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {:else if activeWorkspace === "materials"}
     <MaterialsWorkspace
@@ -1567,6 +1634,9 @@
       reviewResourceCatalogue={reviewResourceCatalogueFixture}
       reviewResourceDetails={reviewResourceDetailsFixture}
       reviewResourceRegistry={reviewResourceRegistryFixture}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {:else if activeWorkspace === "population"}
     <PopulationWorkspace
@@ -1609,6 +1679,9 @@
         if (progress.phase === "complete") void refreshMarketWorkspace();
       }}
       onrelatednavigate={requestRelatedNavigation}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {:else}
     <ArchiveWorkspace
@@ -1622,6 +1695,9 @@
       onrename={renameBranch}
       onreturn={returnLatest}
       oncompare={compareArchiveObservations}
+      activeTask={activeWorkspaceTask}
+      onopentask={openWorkspaceTask}
+      onclosetask={closeWorkspaceTask}
     />
   {/if}
 

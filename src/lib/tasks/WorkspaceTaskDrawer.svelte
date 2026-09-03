@@ -34,12 +34,21 @@
       onclose();
     }
   }
+
+  function portal(node: HTMLElement): { destroy(): void } {
+    document.body.appendChild(node);
+    return {
+      destroy() {
+        node.remove();
+      },
+    };
+  }
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 {#if open}
-  <div class="task-drawer-layer" data-workspace-task={route}>
+  <div class="task-drawer-layer" data-workspace-task={route} use:portal>
     <button
       class="task-drawer-scrim"
       type="button"
@@ -77,6 +86,8 @@
     position: fixed;
     z-index: 190;
     inset: 0;
+    min-height: 0;
+    overflow: hidden;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(34rem, min(52rem, 68vw));
   }
@@ -89,7 +100,10 @@
   }
   .task-drawer {
     min-width: 0;
-    height: 100%;
+    min-height: 0;
+    height: 100vh;
+    max-height: 100%;
+    overflow: hidden;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
     border-inline-start: 1px solid var(--colour-line);
@@ -121,6 +135,7 @@
   }
   .task-drawer-body {
     min-width: 0;
+    min-height: 0;
     overflow-y: auto;
     padding: 1.25rem 1.35rem 2rem;
   }

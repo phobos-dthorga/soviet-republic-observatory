@@ -14,8 +14,9 @@ npm run verify:fast
 
 Use this throughout implementation. It checks formatting, the enforced build
 workflow, localisation, architecture boundaries, the Tesmio boundary, Svelte
-types, frontend unit tests, Rust formatting, and a Rust compile check. It does
-not create a release binary or open native review.
+types, the shared workspace-placement contract, frontend unit tests, Rust
+formatting, and a Rust compile check. It does not create a release binary or
+open native review.
 
 ### Browser interface
 
@@ -27,6 +28,11 @@ Run this once the feature's states and layout have settled. It creates the
 production web artifact and runs the Playwright geometry, contrast, Axe, state,
 theme, viewport, and text-scale matrix. Fix all reported states together before
 rerunning it.
+
+Every multi-step workspace task needs a deterministic drawer scenario. The DOM
+review checks that the page heading and current section remain visible, the task
+scrolls inside its own surface, filters stay with their result, and destructive
+work remains separate from ordinary actions.
 
 ### Final desktop gate
 
@@ -75,6 +81,9 @@ The exhaustive native matrix remains a special laboratory tool:
 ```powershell
 npm run ui:review -- run --suite full
 ```
+
+Long review sessions can be split safely with `--layout <name>`. Each bounded
+run still covers every scenario, theme, and wording mode for that layout.
 
 Use it for major theme, accessibility, responsive-layout, native-control,
 native-shell, review-infrastructure, or release-candidate work. Ordinary feature

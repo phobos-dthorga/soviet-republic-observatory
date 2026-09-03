@@ -33,6 +33,7 @@
   import GuidanceSurface from "../ui/GuidanceSurface.svelte";
   import MetricContextHelp from "../ui/MetricContextHelp.svelte";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   type LinkedWorkspace =
     "monitor" | "materials" | "population" | "archive" | "plan";
@@ -360,25 +361,27 @@
       >
     </GuidanceSurface>
 
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("briefing-heading-eyebrow")}</span>
-        <h2>{$translation("briefing-heading-title")}</h2>
-        <p>{$translation("briefing-heading-description")}</p>
-      </div>
-      <div class="date-stamp">
-        <span>{$translation("briefing-exact-head")}</span>
-        <strong
-          >{brief?.observation?.year ?? "—"} · {brief?.observation
-            ? String(brief.observation.day).padStart(3, "0")
-            : "—"}</strong
-        >
-        <small
-          >{brief?.observation?.source_file_name ??
-            $translation("chart-unavailable")}</small
-        >
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("briefing-heading-eyebrow")}
+      title={$translation("briefing-heading-title")}
+      description={$translation("briefing-heading-description")}
+    >
+      {#snippet actions()}
+        <div class="date-stamp">
+          <span>{$translation("briefing-exact-head")}</span>
+          <strong
+            >{brief?.observation?.year ?? "—"} · {brief?.observation
+              ? String(brief.observation.day).padStart(3, "0")
+              : "—"}</strong
+          >
+          <small
+            >{brief?.observation?.source_file_name ??
+              $translation("chart-unavailable")}</small
+          >
+        </div>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if headlineMetrics.length}
       <section

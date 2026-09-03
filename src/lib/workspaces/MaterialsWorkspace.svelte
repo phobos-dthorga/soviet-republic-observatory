@@ -60,6 +60,10 @@
     observeLatestTaskProgress,
     selectLatestTaskProgress,
   } from "../tasks/progress";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
+  import WorkspaceToolbar from "./WorkspaceToolbar.svelte";
 
   let {
     desktopAvailable,
@@ -73,6 +77,9 @@
     reviewResourceCatalogue = null,
     reviewResourceDetails = null,
     reviewResourceRegistry = null,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   } = $props<{
     desktopAvailable: boolean;
     gameConfigured: boolean;
@@ -88,6 +95,9 @@
     reviewResourceCatalogue?: ResourceCatalogueView | null;
     reviewResourceDetails?: ResourceDetails | null;
     reviewResourceRegistry?: ResourceRegistryStatus | null;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
+    onclosetask: () => void;
   }>();
   let status = $state<CatalogueStatus | null>(null);
   let refreshProgress = $state<CatalogueRefreshProgress | null>(null);
@@ -677,28 +687,30 @@
         {$translation("catalogue-pending-jobs")}</span
       >
     </GuidanceSurface>
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("catalogue-heading-eyebrow")}</span>
-        <h2>{$translation("catalogue-heading-title")}</h2>
-        <p>{$translation("catalogue-heading-description")}</p>
-      </div>
-      <div class="catalogue-actions">
-        <button
-          disabled={busy ||
-            refreshActive ||
-            !desktopAvailable ||
-            !gameConfigured}
-          onclick={() => runAction(refreshDefinitions)}
-          >{$translation("catalogue-refresh")}</button
-        >
-        <button
-          disabled={busy || !desktopAvailable}
-          onclick={() => runAction(rebuildWarehouse)}
-          >{$translation("catalogue-rebuild")}</button
-        >
-      </div>
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("catalogue-heading-eyebrow")}
+      title={$translation("catalogue-heading-title")}
+      description={$translation("catalogue-heading-description")}
+    >
+      {#snippet actions()}
+        <WorkspaceToolbar label={$translation("catalogue-heading-title")}>
+          <button
+            disabled={busy ||
+              refreshActive ||
+              !desktopAvailable ||
+              !gameConfigured}
+            onclick={() => runAction(refreshDefinitions)}
+            >{$translation("catalogue-refresh")}</button
+          >
+          <button
+            disabled={busy || !desktopAvailable}
+            onclick={() => runAction(rebuildWarehouse)}
+            >{$translation("catalogue-rebuild")}</button
+          >
+        </WorkspaceToolbar>
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if progressView && refreshProgress?.phase !== "idle"}
       <TaskProgressPanel
@@ -707,7 +719,33 @@
       />
     {/if}
 
-    <div id="material-flow-laboratory" class="flow-laboratory">
+    <section id="material-flow-laboratory" class="flow-laboratory">
+      <WorkspaceSectionHeader
+        eyebrow={$translation("catalogue-flow-laboratory")}
+        title={$translation("production-route-title")}
+        description={$translation("production-route-description")}
+      >
+        {#snippet actions()}
+          <button
+            type="button"
+            class="primary"
+            onclick={(event) =>
+              onopentask("materials-pathway-study", event.currentTarget)}
+            >{$translation("production-route-search-action")}</button
+          >
+        {/snippet}
+      </WorkspaceSectionHeader>
+    </section>
+
+    <WorkspaceTaskDrawer
+      open={activeTask === "materials-pathway-study"}
+      route="materials-pathway-study"
+      eyebrow={$translation("catalogue-flow-laboratory")}
+      title={$translation("production-route-title")}
+      description={$translation("production-route-description")}
+      closeLabel={$translation("action-close")}
+      onclose={onclosetask}
+    >
       <ProductionRouteLaboratory
         {desktopAvailable}
         {gameConfigured}
@@ -722,9 +760,9 @@
         {reviewRoute}
         {reviewPathway}
       />
-    </div>
+    </WorkspaceTaskDrawer>
 
-    {#if !desktopAvailable && !reviewResourceCatalogue}
+    {#if !desktopAvailable && !reviewResourceCatalogue && activeTask !== "materials-overlay-editor"}
       <section class="empty-catalogue">
         <h2>{$translation("catalogue-setup-title")}</h2>
         <p>{$translation("catalogue-setup-description")}</p>
@@ -1180,15 +1218,21 @@
       </section>
 
       <section class="overlay-laboratory" id="overlay-laboratory">
-        <header class="panel-heading">
-          <div>
-            <span class="eyebrow"
-              >{$translation("catalogue-player-definitions")}</span
+        <WorkspaceSectionHeader
+          eyebrow={$translation("catalogue-player-definitions")}
+          title={$translation("catalogue-overlays")}
+          description={$translation("catalogue-overlay-description")}
+        >
+          {#snippet actions()}
+            <button
+              type="button"
+              class="primary"
+              onclick={(event) =>
+                onopentask("materials-overlay-editor", event.currentTarget)}
+              >{$translation("catalogue-create-draft")}</button
             >
-            <h2>{$translation("catalogue-overlays")}</h2>
-            <p>{$translation("catalogue-overlay-description")}</p>
-          </div>
-        </header>
+          {/snippet}
+        </WorkspaceSectionHeader>
         <div class="overlay-profiles">
           {#each profiles as profile}<article class:active={profile.active}>
               <div>
@@ -1234,84 +1278,95 @@
               >{$translation("catalogue-deactivate")}</button
             >{/if}
         </div>
-        <div class="overlay-editor">
-          <section id="overlay-workbench">
-            <h3>{$translation("catalogue-guided-supplement")}</h3>
-            <div class="overlay-fields">
-              <label
-                >{$translation("catalogue-profile-id")}<input
-                  bind:value={profileId}
-                /></label
-              ><label
-                >{$translation("catalogue-profile-name")}<input
-                  bind:value={profileName}
-                /></label
-              ><label
-                >{$translation("catalogue-author")}<input
-                  bind:value={author}
-                /></label
-              ><label
-                >{$translation("catalogue-description")}<input
-                  bind:value={description}
-                /></label
-              ><label
-                >{$translation("catalogue-entity-kind")}<select
-                  bind:value={supplementKind}
-                  ><option value="resource"
-                    >{$translation("catalogue-resources")}</option
-                  ><option value="building"
-                    >{$translation("catalogue-buildings")}</option
-                  ><option value="vehicle"
-                    >{$translation("catalogue-vehicles")}</option
-                  ><option value="recipe"
-                    >{$translation("catalogue-recipes")}</option
-                  ></select
-                ></label
-              ><label
-                >{$translation("catalogue-local-id")}<input
-                  bind:value={supplementId}
-                /></label
-              ><label
-                >{$translation("catalogue-display-name")}<input
-                  bind:value={supplementName}
-                /></label
+        <WorkspaceTaskDrawer
+          open={activeTask === "materials-overlay-editor"}
+          route="materials-overlay-editor"
+          eyebrow={$translation("catalogue-player-definitions")}
+          title={$translation("catalogue-overlays")}
+          description={$translation("catalogue-overlay-description")}
+          closeLabel={$translation("action-close")}
+          onclose={onclosetask}
+        >
+          <div class="overlay-editor">
+            <section id="overlay-workbench">
+              <h3>{$translation("catalogue-guided-supplement")}</h3>
+              <div class="overlay-fields">
+                <label
+                  >{$translation("catalogue-profile-id")}<input
+                    bind:value={profileId}
+                  /></label
+                ><label
+                  >{$translation("catalogue-profile-name")}<input
+                    bind:value={profileName}
+                  /></label
+                ><label
+                  >{$translation("catalogue-author")}<input
+                    bind:value={author}
+                  /></label
+                ><label
+                  >{$translation("catalogue-description")}<input
+                    bind:value={description}
+                  /></label
+                ><label
+                  >{$translation("catalogue-entity-kind")}<select
+                    bind:value={supplementKind}
+                    ><option value="resource"
+                      >{$translation("catalogue-resources")}</option
+                    ><option value="building"
+                      >{$translation("catalogue-buildings")}</option
+                    ><option value="vehicle"
+                      >{$translation("catalogue-vehicles")}</option
+                    ><option value="recipe"
+                      >{$translation("catalogue-recipes")}</option
+                    ></select
+                  ></label
+                ><label
+                  >{$translation("catalogue-local-id")}<input
+                    bind:value={supplementId}
+                  /></label
+                ><label
+                  >{$translation("catalogue-display-name")}<input
+                    bind:value={supplementName}
+                  /></label
+                >
+              </div>
+              <button onclick={createSupplementDocument}
+                >{$translation("catalogue-create-draft")}</button
               >
-            </div>
-            <button onclick={createSupplementDocument}
-              >{$translation("catalogue-create-draft")}</button
-            >
-          </section>
-          <section>
-            <h3>{$translation("catalogue-json-workbench")}</h3>
-            <div class="file-picker-row">
-              <FilePicker
-                id="overlay-file-input"
-                accept=".json,.rooverlay.json,application/json"
-                label={$translation("catalogue-choose-overlay-file")}
-                emptyLabel={$translation("catalogue-no-file-selected")}
-                onselect={loadOverlayFile}
-              />
-            </div>
-            <textarea
-              bind:value={overlayText}
-              spellcheck="false"
-              aria-label={$translation("catalogue-json-workbench")}></textarea>
-            <div class="workbench-actions">
-              <button disabled={!overlayText} onclick={inspectOverlay}
-                >{$translation("catalogue-inspect")}</button
-              ><button
-                disabled={!inspection?.valid || busy}
-                onclick={importOverlay}
-                >{$translation("catalogue-import")}</button
-              >
-            </div>
-            {#if inspection}<p class:valid={inspection.valid}>
-                {inspection.valid
-                  ? $translation("catalogue-valid-overlay")
-                  : `${$translation("catalogue-invalid-overlay")}: ${inspection.code}`}
-              </p>{/if}
-          </section>
-        </div>
+            </section>
+            <section>
+              <h3>{$translation("catalogue-json-workbench")}</h3>
+              <div class="file-picker-row">
+                <FilePicker
+                  id="overlay-file-input"
+                  accept=".json,.rooverlay.json,application/json"
+                  label={$translation("catalogue-choose-overlay-file")}
+                  emptyLabel={$translation("catalogue-no-file-selected")}
+                  onselect={loadOverlayFile}
+                />
+              </div>
+              <textarea
+                bind:value={overlayText}
+                spellcheck="false"
+                aria-label={$translation("catalogue-json-workbench")}
+              ></textarea>
+              <div class="workbench-actions">
+                <button disabled={!overlayText} onclick={inspectOverlay}
+                  >{$translation("catalogue-inspect")}</button
+                ><button
+                  disabled={!inspection?.valid || busy}
+                  onclick={importOverlay}
+                  >{$translation("catalogue-import")}</button
+                >
+              </div>
+              {#if inspection}<p class:valid={inspection.valid}>
+                  {inspection.valid
+                    ? $translation("catalogue-valid-overlay")
+                    : `${$translation("catalogue-invalid-overlay")}: ${inspection.code}`}
+                </p>{/if}
+            </section>
+          </div>
+        </WorkspaceTaskDrawer>
       </section>
     {/if}
     {#if message}<p class="catalogue-message" role="alert">{message}</p>{/if}
@@ -1406,7 +1461,6 @@
 </section>
 
 <style>
-  .catalogue-actions,
   .profile-actions,
   .workbench-actions {
     display: flex;

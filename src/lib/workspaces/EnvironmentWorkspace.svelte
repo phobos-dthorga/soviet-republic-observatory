@@ -78,7 +78,7 @@
     ) => void;
     onopenresearch: () => void;
     activeTask?: WorkspaceTaskRoute | null;
-    onopentask: (route: WorkspaceTaskRoute) => void;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
     onclosetask: () => void;
   } = $props();
 
@@ -760,7 +760,8 @@
           <button
             type="button"
             class="primary"
-            onclick={() => onopentask("environment-carbon-study")}
+            onclick={(event) =>
+              onopentask("environment-carbon-study", event.currentTarget)}
           >
             {$translation("environment-carbon-open-task")}
           </button>
@@ -854,7 +855,11 @@
         {#snippet actions()}
           <button
             type="button"
-            onclick={() => onopentask("environment-recording-management")}
+            onclick={(event) =>
+              onopentask(
+                "environment-recording-management",
+                event.currentTarget,
+              )}
           >
             {$translation("environment-recording-manage")}
           </button>
@@ -1238,7 +1243,8 @@
     text-align: left;
   }
   .data-link {
-    padding: 0;
+    min-height: 24px;
+    padding: 2px 0;
     border: 0;
     color: var(--colour-observed);
     background: transparent;

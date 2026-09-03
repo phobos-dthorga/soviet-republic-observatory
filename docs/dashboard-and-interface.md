@@ -30,6 +30,25 @@ The desktop foundation uses five persistent bands:
 On narrow displays the navigator, canvas, and inspector use their own contained
 scrolling regions. The application header never becomes part of page scrolling.
 
+### Workspace placement rule
+
+Every workspace starts with its title and any whole-workspace maintenance action.
+The left rail links to the long page's sections and marks the current section.
+Within a section, the answer or status comes first. Filters sit immediately above
+the chart or table they change, and source details follow the result.
+
+Multi-step work opens in a shared side task drawer. This includes Plan editing,
+Broadcast outcome comparisons, Materials pathways and planning notes, Markets
+baskets and scenarios, Environment carbon studies, and Archive comparisons. The
+underlying section and draft stay in place. Escape and `Alt+Left` return one task
+layer at a time, subject to the existing unsaved-work warning. On narrow displays
+the drawer becomes the contained full work surface.
+
+Destructive work has a separate management task. It never shares an action row
+with ordinary viewing, filtering, calculation, or maintenance controls. These
+rules are enforced by the workspace layout audit and the browser/native DOM
+review; see ADR 0031.
+
 ## Primary workspaces
 
 - **Briefing** — three headline outcomes, guardrails, change summary, and

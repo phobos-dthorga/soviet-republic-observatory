@@ -2,6 +2,7 @@
   import type { TranslationKey } from "../i18n/catalog";
   import { formatDate, formatNumber, formatSignedNumber } from "../i18n/format";
   import { activeLocale, translation } from "../i18n/runtime";
+  import { containedSectionNavigation } from "../navigation/containedSectionNavigation";
   import {
     destinationsForSubject,
     type RelatedDataDestination,
@@ -14,6 +15,10 @@
     ArchiveOverview,
     TimelineBranch,
   } from "../observations/types";
+  import type { WorkspaceTaskRoute } from "../tasks/workspaceTaskRoutes";
+  import WorkspaceTaskDrawer from "../tasks/WorkspaceTaskDrawer.svelte";
+  import ScopedFilterBar from "./ScopedFilterBar.svelte";
+  import WorkspaceSectionHeader from "./WorkspaceSectionHeader.svelte";
 
   let {
     archive,
@@ -26,6 +31,9 @@
     onrename,
     onreturn,
     oncompare,
+    activeTask = null,
+    onopentask,
+    onclosetask,
   }: {
     archive: ArchiveOverview | null;
     desktopAvailable: boolean;
@@ -43,6 +51,9 @@
       fromPayloadHash: string,
       toPayloadHash: string,
     ) => Promise<ArchiveComparison>;
+    activeTask?: WorkspaceTaskRoute | null;
+    onopentask: (route: WorkspaceTaskRoute, origin?: HTMLElement) => void;
+    onclosetask: () => void;
   } = $props();
 
   let selecting = $state(false);
@@ -323,6 +334,18 @@
       {/each}
     </div>
 
+    <div class="section-list">
+      <a href="#archive-overview" use:containedSectionNavigation
+        ><span>01</span>{$translation("archive-heading-title")}</a
+      >
+      <a href="#archive-comparison" use:containedSectionNavigation
+        ><span>02</span>{$translation("archive-comparison-title")}</a
+      >
+      <a href="#archive-history" use:containedSectionNavigation
+        ><span>03</span>{$translation("archive-ledger-label")}</a
+      >
+    </div>
+
     <GuidanceSurface kind="boundary" layout="compact" class="sidebar-note">
       <span aria-hidden="true">◇</span>
       <p>{$translation("archive-branch-safety-note")}</p>
@@ -356,25 +379,25 @@
       </div>
     {/if}
 
-    <header class="page-heading">
-      <div>
-        <span class="eyebrow">{$translation("archive-heading-eyebrow")}</span>
-        <h2>{$translation("archive-heading-title")}</h2>
-        <p>{$translation("archive-heading-description")}</p>
-      </div>
-      {#if selectedBranch}
-        <div class="date-stamp">
-          <span>{$translation("archive-selected-branch")}</span>
-          <strong>{branchLabel(selectedBranch)}</strong>
-          <small
-            >{gameDate(
-              selectedBranch.latest_year,
-              selectedBranch.latest_day,
-            )}</small
-          >
-        </div>
-      {/if}
-    </header>
+    <WorkspaceSectionHeader
+      level="page"
+      eyebrow={$translation("archive-heading-eyebrow")}
+      title={$translation("archive-heading-title")}
+      description={$translation("archive-heading-description")}
+    >
+      {#snippet actions()}
+        {#if selectedBranch}<div class="date-stamp">
+            <span>{$translation("archive-selected-branch")}</span>
+            <strong>{branchLabel(selectedBranch)}</strong>
+            <small
+              >{gameDate(
+                selectedBranch.latest_year,
+                selectedBranch.latest_day,
+              )}</small
+            >
+          </div>{/if}
+      {/snippet}
+    </WorkspaceSectionHeader>
 
     {#if selectionError}
       <p class="language-error" role="alert">
@@ -387,7 +410,7 @@
       </p>
     {/if}
 
-    {#if !desktopAvailable}
+    {#if !desktopAvailable && activeTask !== "archive-comparison"}
       <section class="archive-empty-state">
         <strong>{$translation("archive-desktop-required")}</strong>
         <p>{$translation("archive-desktop-required-detail")}</p>
@@ -433,62 +456,31 @@
         </article>
       </section>
 
-      <section
-        id="archive-comparison"
-        class="archive-comparison"
-        aria-labelledby="archive-comparison-title"
-      >
-        <header>
-          <div>
-            <span class="eyebrow"
-              >{$translation("archive-comparison-eyebrow")}</span
+      <section id="archive-comparison" class="archive-comparison">
+        <WorkspaceSectionHeader
+          eyebrow={$translation("archive-comparison-eyebrow")}
+          title={$translation("archive-comparison-title")}
+        >
+          {#snippet actions()}
+            <span class="status-chip" data-status="stable">
+              {$translation("evidence-calculation")}
+            </span>
+            <button
+              type="button"
+              disabled={archive.selected_branch_id === "unassigned" ||
+                branchObservations.length < 2}
+              onclick={(event) =>
+                onopentask("archive-comparison", event.currentTarget)}
+              >{$translation("archive-comparison-action")}</button
             >
-            <h3 id="archive-comparison-title">
-              {$translation("archive-comparison-title")}
-            </h3>
-          </div>
-          <span class="status-chip" data-status="stable">
-            {$translation("evidence-calculation")}
-          </span>
-        </header>
+          {/snippet}
+        </WorkspaceSectionHeader>
 
         {#if archive.selected_branch_id === "unassigned"}
           <p>{$translation("archive-comparison-unassigned")}</p>
         {:else if branchObservations.length < 2}
           <p>{$translation("archive-comparison-needs-two")}</p>
         {:else}
-          <div class="archive-comparison-controls">
-            <label>
-              <span>{$translation("archive-comparison-baseline")}</span>
-              <select bind:value={comparisonFrom} disabled={comparisonBusy}>
-                {#each branchObservations as observation}
-                  <option value={observation.interpretation_id}>
-                    {observationOption(observation)}
-                  </option>
-                {/each}
-              </select>
-            </label>
-            <span aria-hidden="true">→</span>
-            <label>
-              <span>{$translation("archive-comparison-target")}</span>
-              <select bind:value={comparisonTo} disabled={comparisonBusy}>
-                {#each branchObservations as observation}
-                  <option value={observation.interpretation_id}>
-                    {observationOption(observation)}
-                  </option>
-                {/each}
-              </select>
-            </label>
-            <button
-              type="button"
-              disabled={comparisonBusy || comparisonFrom === comparisonTo}
-              onclick={() => void compareObservations()}
-            >
-              {comparisonBusy
-                ? $translation("archive-comparison-working")
-                : $translation("archive-comparison-action")}
-            </button>
-          </div>
           {#if comparisonError}
             <p class="language-error" role="alert">
               {$translation("error-observer-incompatible-comparison")}
@@ -591,7 +583,58 @@
         {/if}
       </section>
 
+      <WorkspaceTaskDrawer
+        open={activeTask === "archive-comparison"}
+        route="archive-comparison"
+        eyebrow={$translation("archive-comparison-eyebrow")}
+        title={$translation("archive-comparison-title")}
+        description={$translation("archive-heading-description")}
+        closeLabel={$translation("action-close")}
+        onclose={onclosetask}
+      >
+        <ScopedFilterBar label={$translation("archive-comparison-title")}>
+          <label>
+            <span>{$translation("archive-comparison-baseline")}</span>
+            <select bind:value={comparisonFrom} disabled={comparisonBusy}>
+              {#each branchObservations as observation}
+                <option value={observation.interpretation_id}>
+                  {observationOption(observation)}
+                </option>
+              {/each}
+            </select>
+          </label>
+          <label>
+            <span>{$translation("archive-comparison-target")}</span>
+            <select bind:value={comparisonTo} disabled={comparisonBusy}>
+              {#each branchObservations as observation}
+                <option value={observation.interpretation_id}>
+                  {observationOption(observation)}
+                </option>
+              {/each}
+            </select>
+          </label>
+        </ScopedFilterBar>
+        <div class="form-actions">
+          <button
+            type="button"
+            class="primary"
+            disabled={comparisonBusy || comparisonFrom === comparisonTo}
+            onclick={() => void compareObservations()}
+          >
+            {comparisonBusy
+              ? $translation("archive-comparison-working")
+              : $translation("archive-comparison-action")}
+          </button>
+        </div>
+        {#if comparisonError}
+          <p class="language-error" role="alert">
+            {$translation("error-observer-incompatible-comparison")}
+          </p>
+        {/if}
+      </WorkspaceTaskDrawer>
+
       <section
+        id="archive-history"
         class="archive-ledger"
         aria-label={$translation("archive-ledger-label")}
       >

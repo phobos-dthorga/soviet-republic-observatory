@@ -10,7 +10,12 @@
   } = $props();
 </script>
 
-<div class="scoped-filter-bar" role="group" aria-label={label}>
+<div
+  class="scoped-filter-bar"
+  role="group"
+  aria-label={label}
+  data-scoped-filter-bar
+>
   {@render children()}
 </div>
 

@@ -19,6 +19,7 @@ type ReviewFinding = {
 type ReviewResult = {
   scenario: UiReviewScenarioId;
   theme: UiReviewThemeId;
+  wording: "player_friendly" | "technical";
   layout: string;
   viewport: { width: number; height: number; text_scale: number };
   findings: ReviewFinding[];
@@ -36,11 +37,14 @@ const layouts = [
 const smokeScenarios: UiReviewScenarioId[] = [
   "workspace-briefing",
   "workspace-plan",
+  "plan-editor-task",
   "materials-warehouse-attention",
   "production-pathway",
   "population-probe-missing",
   "workspace-environment",
+  "environment-carbon-task",
   "workspace-markets",
+  "markets-basket-task",
   "critical-task-failed",
   "dialog-theme",
   "dialog-settings",
@@ -75,32 +79,51 @@ export async function runNativeReview(
     suite === "full" ? UI_REVIEW_SCENARIOS : smokeScenarios;
   const selectedThemes: UiReviewThemeId[] =
     suite === "full" ? ["classic", "high-contrast", "boundary"] : ["classic"];
-  const selectedLayouts = suite === "full" ? layouts : [layouts[1]];
+  const requestedLayout = process.env.UI_REVIEW_LAYOUT || null;
+  const selectedLayouts =
+    suite === "full"
+      ? requestedLayout
+        ? layouts.filter((layout) => layout.label === requestedLayout)
+        : layouts
+      : [layouts[1]];
+  if (requestedLayout && selectedLayouts.length === 0) {
+    throw new Error(`Unknown native UI review layout '${requestedLayout}'.`);
+  }
+  const selectedWordings =
+    suite === "full"
+      ? (["player_friendly", "technical"] as const)
+      : (["player_friendly"] as const);
 
   for (const layout of selectedLayouts) {
     await client.setWindowSize(layout.width, layout.height);
     await runController(client, "setTextScale", layout.textScale);
-    for (const theme of selectedThemes) {
-      await runController(client, "selectTheme", theme);
-      for (const scenario of selectedScenarios) {
-        await runController(client, "selectScenario", scenario);
-        await prepareInteractiveScenario(client, scenario);
-        const findings = await inspectState(client);
-        const result: ReviewResult = {
-          scenario,
-          theme,
-          layout: layout.label,
-          viewport: {
-            width: layout.width,
-            height: layout.height,
-            text_scale: layout.textScale,
-          },
-          findings,
-        };
-        results.push(result);
-        const name = safeName(`${layout.label}-${theme}-${scenario}`);
-        await client.saveScreenshot(join(artifactRoot, `${name}.png`));
-        await persistResults(artifactRoot, suite, results);
+    for (const wording of selectedWordings) {
+      await runController(client, "setWordingMode", wording);
+      for (const theme of selectedThemes) {
+        await runController(client, "selectTheme", theme);
+        for (const scenario of selectedScenarios) {
+          await runController(client, "selectScenario", scenario);
+          await prepareInteractiveScenario(client, scenario);
+          const findings = await inspectState(client);
+          const result: ReviewResult = {
+            scenario,
+            theme,
+            wording,
+            layout: layout.label,
+            viewport: {
+              width: layout.width,
+              height: layout.height,
+              text_scale: layout.textScale,
+            },
+            findings,
+          };
+          results.push(result);
+          const name = safeName(
+            `${layout.label}-${wording}-${theme}-${scenario}`,
+          );
+          await client.saveScreenshot(join(artifactRoot, `${name}.png`));
+          await persistResults(artifactRoot, suite, results);
+        }
       }
     }
   }
@@ -133,6 +156,23 @@ async function prepareInteractiveScenario(
   client: WebdriverIO.Browser,
   scenario: UiReviewScenarioId,
 ): Promise<void> {
+  const taskScenarios = new Set<UiReviewScenarioId>([
+    "broadcast-outcome-task",
+    "plan-editor-task",
+    "production-pathway",
+    "materials-overlay-task",
+    "environment-details",
+    "environment-carbon-task",
+    "environment-recording-management",
+    "markets-basket-task",
+    "markets-scenario-task",
+    "archive-comparison-task",
+  ]);
+  if (taskScenarios.has(scenario)) {
+    await (
+      await client.$("[data-workspace-task] [role='dialog']")
+    ).waitForDisplayed();
+  }
   if (scenario === "workspace-briefing") {
     const sectionLink = await client.$(".workspace .section-list a:last-child");
     await sectionLink.waitForDisplayed();
@@ -202,10 +242,64 @@ async function prepareInteractiveScenario(
     const pathway = await client.$(".pathway-laboratory");
     await pathway.waitForDisplayed();
     await scrollWithinInterface(client, ".pathway-laboratory");
-  } else if (scenario === "environment-details") {
-    const factors = await client.$(".factor-workbench");
-    await factors.waitForDisplayed();
-    await scrollWithinInterface(client, ".factor-workbench");
+  }
+
+  if (scenario.startsWith("workspace-") || scenario === "archive-latest") {
+    await inspectEveryWorkspaceSection(client);
+  }
+}
+
+async function inspectEveryWorkspaceSection(
+  client: WebdriverIO.Browser,
+): Promise<void> {
+  const hrefs = await client.execute(() =>
+    [
+      ...document.querySelectorAll<HTMLAnchorElement>(
+        ".workspace .section-list a",
+      ),
+    ]
+      .map((link) => link.getAttribute("href"))
+      .filter((href): href is string => Boolean(href?.startsWith("#"))),
+  );
+  for (const href of hrefs) {
+    await client.execute((requestedHref) => {
+      document
+        .querySelector<HTMLAnchorElement>(
+          `.workspace .section-list a[href="${requestedHref}"]`,
+        )
+        ?.click();
+    }, href);
+    await client.waitUntil(
+      async () => {
+        const state = await client.execute(() => {
+          const current = document.querySelector<HTMLAnchorElement>(
+            ".workspace .section-list a[aria-current='location']",
+          );
+          return {
+            current: current?.getAttribute("href") ?? null,
+            rootScroll: Math.max(
+              window.scrollY,
+              document.documentElement.scrollTop,
+              document.body.scrollTop,
+            ),
+            commandTop:
+              document
+                .querySelector<HTMLElement>(".command-bar")
+                ?.getBoundingClientRect().top ?? -1,
+          };
+        });
+        return (
+          state.current === href &&
+          Number(state.rootScroll) === 0 &&
+          Math.abs(Number(state.commandTop)) <= 1.5
+        );
+      },
+      {
+        timeout: 3_000,
+        interval: 50,
+        timeoutMsg: `Workspace section ${href} did not preserve the fixed application shell after scrolling settled.`,
+      },
+    );
   }
 }
 
@@ -301,13 +395,25 @@ async function inspectState(
 
 async function runController(
   client: WebdriverIO.Browser,
-  operation: "selectScenario" | "selectTheme" | "setTextScale",
-  value: UiReviewScenarioId | UiReviewThemeId | number,
+  operation:
+    "selectScenario" | "selectTheme" | "setTextScale" | "setWordingMode",
+  value:
+    | UiReviewScenarioId
+    | UiReviewThemeId
+    | number
+    | "player_friendly"
+    | "technical",
 ): Promise<void> {
   const result = await client.executeAsync(
     (
-      requestedOperation: "selectScenario" | "selectTheme" | "setTextScale",
-      requestedValue: UiReviewScenarioId | UiReviewThemeId | number,
+      requestedOperation:
+        "selectScenario" | "selectTheme" | "setTextScale" | "setWordingMode",
+      requestedValue:
+        | UiReviewScenarioId
+        | UiReviewThemeId
+        | number
+        | "player_friendly"
+        | "technical",
       done: (result: { ok: boolean; error?: string }) => void,
     ) => {
       const controller = window.__REPUBLIC_OBSERVATORY_UI_REVIEW__;
@@ -320,7 +426,11 @@ async function runController(
           ? controller.selectScenario(requestedValue as UiReviewScenarioId)
           : requestedOperation === "selectTheme"
             ? controller.selectTheme(requestedValue as UiReviewThemeId)
-            : controller.setTextScale(requestedValue as number);
+            : requestedOperation === "setTextScale"
+              ? controller.setTextScale(requestedValue as number)
+              : controller.setWordingMode(
+                  requestedValue as "player_friendly" | "technical",
+                );
       promise
         .then(() => done({ ok: true }))
         .catch((error) => done({ ok: false, error: String(error) }));
