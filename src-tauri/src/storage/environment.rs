@@ -15,7 +15,10 @@ use crate::model::{
     EnvironmentActivityChannel, EnvironmentActivityPoint, EnvironmentActivitySummary,
     EnvironmentDefinitionContext, EnvironmentFacilityReading, EnvironmentHistoryModel,
     EnvironmentLiveState, EnvironmentRecordingStatus, EnvironmentSnapshot,
-    EnvironmentSourceAvailability, EnvironmentWarehouseFact, EnvironmentWarehouseProjection,
+    EnvironmentSourceAvailability, EnvironmentValidationComparison,
+    EnvironmentValidationComparisonDraft, EnvironmentValidationControl,
+    EnvironmentValidationFacility, EnvironmentValidationField, EnvironmentValidationResult,
+    EnvironmentValidationSnapshot, EnvironmentWarehouseFact, EnvironmentWarehouseProjection,
     EnvironmentWarehouseRecord, EnvironmentWorkspaceModel, ExactObservationReference,
     SaveInspection,
 };
@@ -573,8 +576,7 @@ impl ObservatoryStorage {
         load_recording_status(&connection)
     }
 
-    #[cfg(test)]
-    pub fn environment_recording_status(
+    pub(crate) fn environment_recording_status(
         &self,
     ) -> Result<EnvironmentRecordingStatus, ObservatoryError> {
         load_recording_status(&self.connect()?)
@@ -594,6 +596,307 @@ impl ObservatoryStorage {
         transaction.commit()?;
         Ok(count)
     }
+
+    pub(crate) fn persist_environment_validation_snapshot(
+        &self,
+        snapshot: &EnvironmentValidationSnapshot,
+    ) -> Result<bool, ObservatoryError> {
+        if snapshot.facilities.is_empty()
+            || snapshot.facilities.len() > 25_000
+            || snapshot.facilities.len()
+                != snapshot
+                    .facilities
+                    .iter()
+                    .map(|row| row.facility_index)
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+        {
+            return Err(ObservatoryError::InvalidEnvironmentValidation(
+                "invalid_snapshot",
+            ));
+        }
+        let mut connection = self.connect()?;
+        let transaction = connection.transaction()?;
+        let inserted = transaction.execute(
+            "INSERT OR IGNORE INTO environment_validation_snapshots( \
+                 snapshot_id, checked_session_id, candidate_contract_version, probe_version, \
+                 game_build_id, year, day, game_day, captured_at_ms, collection_fingerprint, \
+                 facility_count, inserted_at_ms \
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                snapshot.snapshot_id,
+                snapshot.checked_session_id,
+                snapshot.candidate_contract_version,
+                snapshot.probe_version,
+                snapshot.game_build_id,
+                snapshot.year,
+                snapshot.day,
+                snapshot.game_day,
+                snapshot.captured_at_ms,
+                snapshot.collection_fingerprint,
+                snapshot.facilities.len() as u32,
+                now_ms(),
+            ],
+        )?;
+        if inserted > 0 {
+            for facility in &snapshot.facilities {
+                transaction.execute(
+                    "INSERT INTO environment_validation_facilities( \
+                         snapshot_id, facility_index, building_type, building_subtype, finished, \
+                         going_away, position_x, position_z, production, pollution, radiation, \
+                         water_amount, water_capacity, water_quality, sewage_amount, \
+                         sewage_capacity, sewage_quality \
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                    params![
+                        snapshot.snapshot_id,
+                        facility.facility_index,
+                        facility.building_type,
+                        facility.building_subtype,
+                        i64::from(facility.finished),
+                        i64::from(facility.going_away),
+                        facility.position_x,
+                        facility.position_z,
+                        facility.production,
+                        facility.pollution,
+                        facility.radiation,
+                        facility.water_amount,
+                        facility.water_capacity,
+                        facility.water_quality,
+                        facility.sewage_amount,
+                        facility.sewage_capacity,
+                        facility.sewage_quality,
+                    ],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(inserted > 0)
+    }
+
+    pub(crate) fn latest_environment_validation_snapshot(
+        &self,
+    ) -> Result<Option<EnvironmentValidationSnapshot>, ObservatoryError> {
+        load_environment_validation_snapshot(&self.connect()?, None)
+    }
+
+    pub fn record_environment_validation_comparison(
+        &self,
+        draft: &EnvironmentValidationComparisonDraft,
+    ) -> Result<EnvironmentValidationComparison, ObservatoryError> {
+        if !draft.wr_value.is_finite() || !(0.0..=1.0e12).contains(&draft.wr_value) {
+            return Err(ObservatoryError::InvalidEnvironmentValidation(
+                "invalid_wr_value",
+            ));
+        }
+        let note = draft
+            .note
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        if note.as_ref().is_some_and(|value| value.len() > 500) {
+            return Err(ObservatoryError::InvalidEnvironmentValidation(
+                "invalid_note",
+            ));
+        }
+        let connection = self.connect()?;
+        let (facility, game_build_id, probe_version) =
+            load_validation_facility(&connection, &draft.snapshot_id, draft.facility_index)?
+                .ok_or(ObservatoryError::InvalidEnvironmentValidation(
+                    "unknown_facility",
+                ))?;
+        let research_value = facility.value_for(draft.field).ok_or(
+            ObservatoryError::InvalidEnvironmentValidation("field_unavailable"),
+        )?;
+        let created_at_ms = now_ms();
+        let mut hasher = Sha256::new();
+        hasher.update(b"republic-observatory-environment-comparison.v1\0");
+        hasher.update(draft.snapshot_id.as_bytes());
+        hasher.update(draft.facility_index.to_le_bytes());
+        hasher.update(draft.field.as_str().as_bytes());
+        hasher.update(research_value.to_bits().to_le_bytes());
+        hasher.update(draft.wr_value.to_bits().to_le_bytes());
+        hasher.update(draft.control.as_str().as_bytes());
+        hasher.update(draft.result.as_str().as_bytes());
+        hasher.update(created_at_ms.to_le_bytes());
+        let comparison_id = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        connection.execute(
+            "INSERT INTO environment_validation_comparisons( \
+                 comparison_id, snapshot_id, facility_index, field, research_value, wr_value, \
+                 control_kind, result, note, game_build_id, probe_version, created_at_ms \
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                comparison_id,
+                draft.snapshot_id,
+                draft.facility_index,
+                draft.field.as_str(),
+                research_value,
+                draft.wr_value,
+                draft.control.as_str(),
+                draft.result.as_str(),
+                note,
+                game_build_id,
+                probe_version,
+                created_at_ms,
+            ],
+        )?;
+        Ok(EnvironmentValidationComparison {
+            comparison_id,
+            snapshot_id: draft.snapshot_id.clone(),
+            facility_index: draft.facility_index,
+            field: draft.field,
+            research_value,
+            wr_value: draft.wr_value,
+            control: draft.control,
+            result: draft.result,
+            note,
+            game_build_id,
+            probe_version,
+            created_at_ms,
+        })
+    }
+
+    pub fn environment_validation_comparisons(
+        &self,
+    ) -> Result<Vec<EnvironmentValidationComparison>, ObservatoryError> {
+        let connection = self.connect()?;
+        let mut statement = connection.prepare(
+            "SELECT comparison_id, snapshot_id, facility_index, field, research_value, wr_value, \
+                    control_kind, result, note, game_build_id, probe_version, created_at_ms \
+             FROM environment_validation_comparisons \
+             ORDER BY created_at_ms DESC, comparison_id DESC LIMIT 100",
+        )?;
+        statement
+            .query_map([], |row| {
+                let field = EnvironmentValidationField::parse(&row.get::<_, String>(3)?)
+                    .ok_or(rusqlite::Error::InvalidQuery)?;
+                let control = EnvironmentValidationControl::parse(&row.get::<_, String>(6)?)
+                    .ok_or(rusqlite::Error::InvalidQuery)?;
+                let result = EnvironmentValidationResult::parse(&row.get::<_, String>(7)?)
+                    .ok_or(rusqlite::Error::InvalidQuery)?;
+                Ok(EnvironmentValidationComparison {
+                    comparison_id: row.get(0)?,
+                    snapshot_id: row.get(1)?,
+                    facility_index: row.get(2)?,
+                    field,
+                    research_value: row.get(4)?,
+                    wr_value: row.get(5)?,
+                    control,
+                    result,
+                    note: row.get(8)?,
+                    game_build_id: row.get(9)?,
+                    probe_version: row.get(10)?,
+                    created_at_ms: row.get(11)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+}
+
+fn load_environment_validation_snapshot(
+    connection: &Connection,
+    snapshot_id: Option<&str>,
+) -> Result<Option<EnvironmentValidationSnapshot>, ObservatoryError> {
+    let query = if snapshot_id.is_some() {
+        "SELECT snapshot_id, checked_session_id, candidate_contract_version, probe_version, \
+                game_build_id, year, day, game_day, captured_at_ms, collection_fingerprint \
+         FROM environment_validation_snapshots WHERE snapshot_id = ?1"
+    } else {
+        "SELECT snapshot_id, checked_session_id, candidate_contract_version, probe_version, \
+                game_build_id, year, day, game_day, captured_at_ms, collection_fingerprint \
+         FROM environment_validation_snapshots ORDER BY captured_at_ms DESC, inserted_at_ms DESC LIMIT 1"
+    };
+    let header = if let Some(snapshot_id) = snapshot_id {
+        connection
+            .query_row(query, [snapshot_id], read_validation_snapshot_header)
+            .optional()?
+    } else {
+        connection
+            .query_row(query, [], read_validation_snapshot_header)
+            .optional()?
+    };
+    let Some(mut snapshot) = header else {
+        return Ok(None);
+    };
+    let mut statement = connection.prepare(
+        "SELECT facility_index, building_type, building_subtype, finished, going_away, position_x, \
+                position_z, production, pollution, radiation, water_amount, water_capacity, \
+                water_quality, sewage_amount, sewage_capacity, sewage_quality \
+         FROM environment_validation_facilities WHERE snapshot_id = ?1 ORDER BY facility_index",
+    )?;
+    snapshot.facilities = statement
+        .query_map([&snapshot.snapshot_id], read_validation_facility)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(snapshot))
+}
+
+fn read_validation_snapshot_header(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<EnvironmentValidationSnapshot> {
+    Ok(EnvironmentValidationSnapshot {
+        snapshot_id: row.get(0)?,
+        checked_session_id: row.get(1)?,
+        candidate_contract_version: row.get(2)?,
+        probe_version: row.get(3)?,
+        game_build_id: row.get(4)?,
+        year: row.get(5)?,
+        day: row.get(6)?,
+        game_day: row.get(7)?,
+        captured_at_ms: row.get(8)?,
+        collection_fingerprint: row.get(9)?,
+        facilities: Vec::new(),
+    })
+}
+
+fn read_validation_facility(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<EnvironmentValidationFacility> {
+    Ok(EnvironmentValidationFacility {
+        facility_index: row.get(0)?,
+        building_type: row.get(1)?,
+        building_subtype: row.get(2)?,
+        finished: row.get(3)?,
+        going_away: row.get(4)?,
+        position_x: row.get(5)?,
+        position_z: row.get(6)?,
+        production: row.get(7)?,
+        pollution: row.get(8)?,
+        radiation: row.get(9)?,
+        water_amount: row.get(10)?,
+        water_capacity: row.get(11)?,
+        water_quality: row.get(12)?,
+        sewage_amount: row.get(13)?,
+        sewage_capacity: row.get(14)?,
+        sewage_quality: row.get(15)?,
+    })
+}
+
+fn load_validation_facility(
+    connection: &Connection,
+    snapshot_id: &str,
+    facility_index: u32,
+) -> Result<Option<(EnvironmentValidationFacility, String, String)>, ObservatoryError> {
+    connection
+        .query_row(
+            "SELECT facility.facility_index, facility.building_type, facility.building_subtype, \
+                    facility.finished, facility.going_away, facility.position_x, facility.position_z, \
+                    facility.production, facility.pollution, facility.radiation, facility.water_amount, \
+                    facility.water_capacity, facility.water_quality, facility.sewage_amount, \
+                    facility.sewage_capacity, facility.sewage_quality, snapshot.game_build_id, \
+                    snapshot.probe_version \
+             FROM environment_validation_facilities facility \
+             JOIN environment_validation_snapshots snapshot USING(snapshot_id) \
+             WHERE facility.snapshot_id = ?1 AND facility.facility_index = ?2",
+            params![snapshot_id, facility_index],
+            |row| Ok((read_validation_facility(row)?, row.get(16)?, row.get(17)?)),
+        )
+        .optional()
+        .map_err(Into::into)
 }
 
 fn select_factor(

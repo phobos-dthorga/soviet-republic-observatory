@@ -18,6 +18,7 @@
 #define PERSON_CLASS 0x71C
 #define PERSON_MONEY_SPENT 0x734
 #define RVA_RESOURCE_VECTOR 0x9E11C0
+#define RVA_BUILDING_VECTOR 0x9E6A18
 #define RESOURCE_STRIDE 0x340
 #define RESOURCE_MAX_RECORDS 512
 #define RESOURCE_TOKEN_BYTES 32
@@ -43,6 +44,27 @@
 #define MAX_SAMPLES 32
 #define MAX_STATUS_VALUE 1.5f
 #define MAX_MONEY_SPENT 1.0e12f
+#define FACILITY_CANDIDATE_CONTRACT 1
+#define FACILITY_MAX_RECORDS 25000
+#define FACILITY_PER_FRAME 128
+#define BUILDING_TYPE_DESCRIPTOR 0x318
+#define BUILDING_COMPLETION 0x604
+#define BUILDING_STORAGES 0x970
+#define BUILDING_GOING_AWAY 0xEA8
+#define BUILDING_PRODUCTION 0xDDC
+#define BUILDING_RESIDENTIAL_POLLUTION 0x11B0
+#define BUILDING_TYPE 0x360
+#define BUILDING_SUBTYPE 0x364
+#define STORAGE_STRIDE 0xE0
+#define STORAGE_CAPACITY 0x8C
+#define STORAGE_SLOT_STRIDE 0x10
+#define STORAGE_SLOT_RESOURCE 0x00
+#define STORAGE_SLOT_CONTENT 0x08
+#define STORAGE_SLOT_QUALITY 0x0C
+#define CANDIDATE_FIELD_PRODUCTION 0x01u
+#define CANDIDATE_FIELD_POLLUTION 0x02u
+#define CANDIDATE_FIELD_WATER 0x04u
+#define CANDIDATE_FIELD_SEWAGE 0x08u
 
 typedef void (*t_TerrainRender)(void*, bool, void*, void*, int, int);
 static t_TerrainRender o_TerrainRender;
@@ -50,7 +72,7 @@ static HANDLE g_output = INVALID_HANDLE_VALUE;
 static int g_enabled = 1;
 static int g_samples = 16;
 static int g_everyDays = 7;
-static int g_maxRecords = 4096;
+static int g_maxRecords = 32768;
 static int g_records;
 static int g_sequence;
 static int g_lastDay = -1;
@@ -65,15 +87,54 @@ static BYTE** g_lastCapturedPeopleBegin;
 static int g_lastCapturedPeopleCount;
 static unsigned long long g_lastCapturedResourceFingerprint;
 static int g_lastProbeStage = -1;
+static char g_sessionId[33];
+
+typedef struct FacilityCandidate {
+    uintptr_t identity;
+    int buildingType;
+    int buildingSubtype;
+    bool finished;
+    bool goingAway;
+    unsigned fieldMask;
+    float production;
+    float pollution;
+    float waterAmount;
+    float waterCapacity;
+    float waterQuality;
+    float sewageAmount;
+    float sewageCapacity;
+    float sewageQuality;
+} FacilityCandidate;
+
+static FacilityCandidate* g_facilities;
+static BYTE** g_facilityBegin;
+static int g_facilityCount;
+static int g_facilityCaptureIndex;
+static int g_facilityWriteIndex;
+static int g_facilitySequence;
+static int g_facilityYear;
+static int g_facilityDay;
+static int g_lastFacilityYear = -1;
+static int g_lastFacilityDay = -1;
+static BYTE** g_lastFacilityBegin;
+static int g_lastFacilityCount;
+static bool g_lastFacilityRejected;
+static uintptr_t* g_seenFacilities;
+static size_t g_seenFacilityCapacity;
+static bool g_facilityWriting;
 
 static bool WriteLine(const char* line)
 {
     if (g_output == INVALID_HANDLE_VALUE || g_records >= g_maxRecords) return false;
     TsmWrite(g_output, line, (int)strlen(line));
     TsmWrite(g_output, "\r\n", 2);
-    FlushFileBuffers(g_output);
     g_records++;
     return true;
+}
+
+static void FlushReport(void)
+{
+    if (g_output != INVALID_HANDLE_VALUE) FlushFileBuffers(g_output);
 }
 
 static unsigned ExeTimestamp(void)
@@ -99,9 +160,12 @@ static void SetProbeStage(int stage, const char* name)
     if (stage == g_lastProbeStage) return;
     char line[256];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"probe_status\",\"stage\":\"%s\"}",
+        "{\"schema_version\":4,\"record_type\":\"probe_status\",\"stage\":\"%s\"}",
         name);
-    if (WriteLine(line)) g_lastProbeStage = stage;
+    if (WriteLine(line)) {
+        g_lastProbeStage = stage;
+        FlushReport();
+    }
 }
 
 static int People(BYTE*** outBegin)
@@ -144,6 +208,332 @@ static bool ResourceVector(BYTE** outBegin, int* outCount)
     *outBegin = begin;
     *outCount = (int)count;
     return true;
+}
+
+static bool ResourceToken(const BYTE* record, char* token, size_t tokenSize);
+static bool RollReportForward(void);
+
+static bool BuildingVector(BYTE*** outBegin, int* outCount)
+{
+    BYTE*** vector = (BYTE***)(g_exeBase + RVA_BUILDING_VECTOR);
+    if (!ReadablePtr(vector, 16)) return false;
+    BYTE** begin = vector[0];
+    BYTE** end = vector[1];
+    if (!begin || !end || end < begin) return false;
+    size_t bytes = (size_t)((BYTE*)end - (BYTE*)begin);
+    if (bytes % sizeof(void*)) return false;
+    size_t count = bytes / sizeof(void*);
+    if (count < 1 || count > FACILITY_MAX_RECORDS || !ReadablePtr(begin, bytes)) return false;
+    *outBegin = begin;
+    *outCount = (int)count;
+    return true;
+}
+
+static void ResetFacilityCapture(void)
+{
+    if (g_facilities) HeapFree(GetProcessHeap(), 0, g_facilities);
+    if (g_seenFacilities) HeapFree(GetProcessHeap(), 0, g_seenFacilities);
+    g_facilities = NULL;
+    g_seenFacilities = NULL;
+    g_seenFacilityCapacity = 0;
+    g_facilityBegin = NULL;
+    g_facilityCount = 0;
+    g_facilityCaptureIndex = 0;
+    g_facilityWriteIndex = 0;
+    g_facilitySequence = 0;
+    g_facilityWriting = false;
+}
+
+static bool RememberFacility(BYTE* building)
+{
+    if (!building || !g_seenFacilities || !g_seenFacilityCapacity) return false;
+    uintptr_t identity = (uintptr_t)building;
+    size_t index = (size_t)((identity >> 4) ^ (identity >> 21)) & (g_seenFacilityCapacity - 1);
+    for (size_t probe = 0; probe < g_seenFacilityCapacity; probe++) {
+        uintptr_t* slot = &g_seenFacilities[(index + probe) & (g_seenFacilityCapacity - 1)];
+        if (*slot == identity) return false;
+        if (*slot == 0) {
+            *slot = identity;
+            return true;
+        }
+    }
+    return false;
+}
+
+static int ResourceRecordIndex(const BYTE* resource, BYTE* begin, int count)
+{
+    if (!resource || resource < begin) return -1;
+    size_t distance = (size_t)(resource - begin);
+    if (distance % RESOURCE_STRIDE) return -1;
+    size_t index = distance / RESOURCE_STRIDE;
+    return index < (size_t)count ? (int)index : -1;
+}
+
+static bool CaptureFacility(BYTE* building, BYTE* resourceBegin, int resourceCount,
+                            FacilityCandidate* candidate)
+{
+    if (!RememberFacility(building) || !ReadablePtr(building + BUILDING_TYPE_DESCRIPTOR, 8) ||
+        !ReadablePtr(building + BUILDING_COMPLETION, 4) ||
+        !ReadablePtr(building + BUILDING_GOING_AWAY, 8)) return false;
+    BYTE* descriptor = *(BYTE**)(building + BUILDING_TYPE_DESCRIPTOR);
+    if (!descriptor || !ReadablePtr(descriptor + BUILDING_TYPE, 8)) return false;
+    int buildingType = *(int*)(descriptor + BUILDING_TYPE);
+    int buildingSubtype = *(int*)(descriptor + BUILDING_SUBTYPE);
+    float completion = *(float*)(building + BUILDING_COMPLETION);
+    if (buildingType < 0 || buildingType > 255 || buildingSubtype < -1 ||
+        buildingSubtype > 4096 || !Finite(completion) || completion < 0.0f ||
+        completion > 2.0f) return false;
+
+    ZeroMemory(candidate, sizeof(*candidate));
+    candidate->identity = (uintptr_t)building;
+    candidate->buildingType = buildingType;
+    candidate->buildingSubtype = buildingSubtype;
+    candidate->finished = completion >= 1.0f;
+    candidate->goingAway = *(uintptr_t*)(building + BUILDING_GOING_AWAY) != 0;
+
+    if ((buildingType == 7 || buildingType == 92) &&
+        ReadablePtr(building + BUILDING_PRODUCTION, 4)) {
+        float value = *(float*)(building + BUILDING_PRODUCTION);
+        if (!Finite(value) || value < 0.0f || value > 1.0e12f) return false;
+        candidate->production = value;
+        candidate->fieldMask |= CANDIDATE_FIELD_PRODUCTION;
+    }
+    if (buildingType == 2 && ReadablePtr(building + BUILDING_RESIDENTIAL_POLLUTION, 4)) {
+        float value = *(float*)(building + BUILDING_RESIDENTIAL_POLLUTION);
+        if (!Finite(value) || value < 0.0f || value > 3.0f) return false;
+        candidate->pollution = value;
+        candidate->fieldMask |= CANDIDATE_FIELD_POLLUTION;
+    }
+
+    if (!ReadablePtr(building + BUILDING_STORAGES, 16)) return false;
+    BYTE* storageBegin = *(BYTE**)(building + BUILDING_STORAGES);
+    BYTE* storageEnd = *(BYTE**)(building + BUILDING_STORAGES + 8);
+    if (!storageBegin && !storageEnd) return true;
+    if (!storageBegin || !storageEnd || storageEnd < storageBegin) return false;
+    size_t storageBytes = (size_t)(storageEnd - storageBegin);
+    if (storageBytes % STORAGE_STRIDE || storageBytes / STORAGE_STRIDE > 256 ||
+        !ReadablePtr(storageBegin, storageBytes)) return false;
+
+    int waterQualityCount = 0;
+    int sewageQualityCount = 0;
+    for (size_t storageOffset = 0; storageOffset < storageBytes; storageOffset += STORAGE_STRIDE) {
+        BYTE* storage = storageBegin + storageOffset;
+        BYTE* slotBegin = *(BYTE**)storage;
+        BYTE* slotEnd = *(BYTE**)(storage + 8);
+        float capacity = *(float*)(storage + STORAGE_CAPACITY);
+        if (!Finite(capacity) || capacity < 0.0f || capacity > 1.0e12f) return false;
+        if (!slotBegin && !slotEnd) continue;
+        if (!slotBegin || !slotEnd || slotEnd < slotBegin) return false;
+        size_t slotBytes = (size_t)(slotEnd - slotBegin);
+        if (slotBytes % STORAGE_SLOT_STRIDE || slotBytes / STORAGE_SLOT_STRIDE > 512 ||
+            !ReadablePtr(slotBegin, slotBytes)) return false;
+        for (size_t slotOffset = 0; slotOffset < slotBytes; slotOffset += STORAGE_SLOT_STRIDE) {
+            BYTE* slot = slotBegin + slotOffset;
+            BYTE* resource = *(BYTE**)(slot + STORAGE_SLOT_RESOURCE);
+            int resourceIndex = ResourceRecordIndex(resource, resourceBegin, resourceCount);
+            if (resourceIndex < 0) continue;
+            char token[RESOURCE_TOKEN_BYTES + 1];
+            if (!ResourceToken(resource, token, sizeof(token))) return false;
+            bool water = strcmp(token, "water") == 0;
+            bool sewage = strcmp(token, "usagewater") == 0;
+            if (!water && !sewage) continue;
+            float amount = *(float*)(slot + STORAGE_SLOT_CONTENT);
+            float quality = *(float*)(slot + STORAGE_SLOT_QUALITY);
+            if (!Finite(amount) || !Finite(quality) || amount < 0.0f ||
+                amount > 1.0e12f || quality < 0.0f || quality > 1.5f) return false;
+            if (water) {
+                candidate->waterAmount += amount;
+                candidate->waterCapacity += capacity;
+                candidate->waterQuality += quality;
+                waterQualityCount++;
+                candidate->fieldMask |= CANDIDATE_FIELD_WATER;
+            } else {
+                candidate->sewageAmount += amount;
+                candidate->sewageCapacity += capacity;
+                candidate->sewageQuality += quality;
+                sewageQualityCount++;
+                candidate->fieldMask |= CANDIDATE_FIELD_SEWAGE;
+            }
+        }
+    }
+    if (waterQualityCount) candidate->waterQuality /= (float)waterQualityCount;
+    if (sewageQualityCount) candidate->sewageQuality /= (float)sewageQualityCount;
+    return true;
+}
+
+static unsigned long long FacilityFingerprint(const FacilityCandidate* rows, int count)
+{
+    unsigned long long hash = 1469598103934665603ull;
+    for (int i = 0; i < count; i++) {
+        const FacilityCandidate* row = &rows[i];
+        const BYTE* bytes = (const BYTE*)&row->buildingType;
+        for (size_t b = 0; b < sizeof(*row) - sizeof(row->identity); b++)
+            hash = HashByte(hash, bytes[b]);
+    }
+    return hash ^ (unsigned long long)count;
+}
+
+static void JsonNumberOrNull(char* output, size_t size, bool present, float value)
+{
+    if (present) _snprintf_s(output, size, _TRUNCATE, "%.9g", value);
+    else strcpy_s(output, size, "null");
+}
+
+static void WriteFacilityCandidate(const FacilityCandidate* row, int index)
+{
+    char production[32], pollution[32], waterAmount[32], waterCapacity[32], waterQuality[32];
+    char sewageAmount[32], sewageCapacity[32], sewageQuality[32];
+    JsonNumberOrNull(production, sizeof(production),
+                     (row->fieldMask & CANDIDATE_FIELD_PRODUCTION) != 0, row->production);
+    JsonNumberOrNull(pollution, sizeof(pollution),
+                     (row->fieldMask & CANDIDATE_FIELD_POLLUTION) != 0, row->pollution);
+    JsonNumberOrNull(waterAmount, sizeof(waterAmount),
+                     (row->fieldMask & CANDIDATE_FIELD_WATER) != 0, row->waterAmount);
+    JsonNumberOrNull(waterCapacity, sizeof(waterCapacity),
+                     (row->fieldMask & CANDIDATE_FIELD_WATER) != 0, row->waterCapacity);
+    JsonNumberOrNull(waterQuality, sizeof(waterQuality),
+                     (row->fieldMask & CANDIDATE_FIELD_WATER) != 0, row->waterQuality);
+    JsonNumberOrNull(sewageAmount, sizeof(sewageAmount),
+                     (row->fieldMask & CANDIDATE_FIELD_SEWAGE) != 0, row->sewageAmount);
+    JsonNumberOrNull(sewageCapacity, sizeof(sewageCapacity),
+                     (row->fieldMask & CANDIDATE_FIELD_SEWAGE) != 0, row->sewageCapacity);
+    JsonNumberOrNull(sewageQuality, sizeof(sewageQuality),
+                     (row->fieldMask & CANDIDATE_FIELD_SEWAGE) != 0, row->sewageQuality);
+    char line[2048];
+    _snprintf_s(line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":4,\"record_type\":\"facility_candidate\",\"sequence\":%d,\"facility_index\":%d,\"building_type\":%d,\"building_subtype\":%d,\"finished\":%s,\"going_away\":%s,\"position_x\":null,\"position_z\":null,\"production\":%s,\"pollution\":%s,\"radiation\":null,\"water_amount\":%s,\"water_capacity\":%s,\"water_quality\":%s,\"sewage_amount\":%s,\"sewage_capacity\":%s,\"sewage_quality\":%s,\"field_mask\":%u}",
+        g_facilitySequence, index, row->buildingType, row->buildingSubtype,
+        row->finished ? "true" : "false", row->goingAway ? "true" : "false",
+        production, pollution, waterAmount, waterCapacity, waterQuality,
+        sewageAmount, sewageCapacity, sewageQuality, row->fieldMask);
+    WriteLine(line);
+}
+
+static bool StartFacilityCapture(BYTE** begin, int count, int year, int day)
+{
+    if (g_records + count + 3 > g_maxRecords && !RollReportForward()) return false;
+    ResetFacilityCapture();
+    size_t bytes = sizeof(FacilityCandidate) * (size_t)count;
+    g_facilities = (FacilityCandidate*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes);
+    size_t seenCapacity = 1;
+    while (seenCapacity < (size_t)count * 2) seenCapacity <<= 1;
+    g_seenFacilities = (uintptr_t*)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, seenCapacity * sizeof(uintptr_t));
+    if (!g_facilities || !g_seenFacilities) {
+        ResetFacilityCapture();
+        return false;
+    }
+    g_seenFacilityCapacity = seenCapacity;
+    g_facilityBegin = begin;
+    g_facilityCount = count;
+    g_facilityYear = year;
+    g_facilityDay = day;
+    g_facilitySequence = ++g_sequence;
+    return true;
+}
+
+static bool FacilityVectorUnchanged(void)
+{
+    BYTE** begin = NULL;
+    int count = 0;
+    return BuildingVector(&begin, &count) && begin == g_facilityBegin && count == g_facilityCount;
+}
+
+static bool CaptureFacilityBatch(BYTE* resourceBegin, int resourceCount)
+{
+    if (!FacilityVectorUnchanged()) return false;
+    ULONGLONG started = GetTickCount64();
+    int handled = 0;
+    while (g_facilityCaptureIndex < g_facilityCount && handled < FACILITY_PER_FRAME) {
+        BYTE* building = g_facilityBegin[g_facilityCaptureIndex];
+        if (!CaptureFacility(building, resourceBegin, resourceCount,
+                             &g_facilities[g_facilityCaptureIndex])) return false;
+        g_facilityCaptureIndex++;
+        handled++;
+        if (handled > 0 && GetTickCount64() - started >= 1) break;
+    }
+    if (g_facilityCaptureIndex < g_facilityCount) return true;
+    if (!FacilityVectorUnchanged()) return false;
+    unsigned long long fingerprint = FacilityFingerprint(g_facilities, g_facilityCount);
+    char line[768];
+    _snprintf_s(line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":4,\"record_type\":\"facility_candidate_snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"facility_count\":%d,\"candidate_contract_version\":1,\"collection_fingerprint\":\"%016llx\"}",
+        g_facilitySequence, g_facilityYear, g_facilityDay, g_facilityCount, fingerprint);
+    if (!WriteLine(line)) return false;
+    g_facilityWriting = true;
+    FlushReport();
+    return true;
+}
+
+static bool WriteFacilityBatch(void)
+{
+    ULONGLONG started = GetTickCount64();
+    int handled = 0;
+    while (g_facilityWriteIndex < g_facilityCount && handled < FACILITY_PER_FRAME) {
+        WriteFacilityCandidate(&g_facilities[g_facilityWriteIndex], g_facilityWriteIndex);
+        g_facilityWriteIndex++;
+        handled++;
+        if (handled > 0 && GetTickCount64() - started >= 1) break;
+    }
+    FlushReport();
+    if (g_facilityWriteIndex < g_facilityCount) return true;
+    char line[384];
+    _snprintf_s(line, sizeof(line), _TRUNCATE,
+        "{\"schema_version\":4,\"record_type\":\"facility_candidate_complete\",\"sequence\":%d,\"facility_count\":%d}",
+        g_facilitySequence, g_facilityCount);
+    if (!WriteLine(line)) return false;
+    FlushReport();
+    g_lastFacilityYear = g_facilityYear;
+    g_lastFacilityDay = g_facilityDay;
+    g_lastFacilityBegin = g_facilityBegin;
+    g_lastFacilityCount = g_facilityCount;
+    g_lastFacilityRejected = false;
+    ResetFacilityCapture();
+    return true;
+}
+
+static int RejectFacilityCapture(void)
+{
+    g_lastFacilityYear = g_facilityYear;
+    g_lastFacilityDay = g_facilityDay;
+    g_lastFacilityBegin = g_facilityBegin;
+    g_lastFacilityCount = g_facilityCount;
+    g_lastFacilityRejected = true;
+    ResetFacilityCapture();
+    return 7;
+}
+
+static int ProcessFacilityCandidate(BYTE* resourceBegin, int resourceCount, int year, int day)
+{
+    if (g_facilityWriting) {
+        if (!WriteFacilityBatch()) {
+            return RejectFacilityCapture();
+        }
+        return g_facilityWriting ? 5 : 6;
+    }
+    if (g_facilities) {
+        if (!CaptureFacilityBatch(resourceBegin, resourceCount)) {
+            return RejectFacilityCapture();
+        }
+        return g_facilityWriting ? 5 : 4;
+    }
+    BYTE** begin = NULL;
+    int count = 0;
+    if (!BuildingVector(&begin, &count)) return 3;
+    int absoluteDay = year * 365 + day;
+    int lastAbsoluteDay = g_lastFacilityYear * 365 + g_lastFacilityDay;
+    bool collectionChanged = begin != g_lastFacilityBegin || count != g_lastFacilityCount;
+    bool due = collectionChanged || g_lastFacilityDay < 0 ||
+               abs(absoluteDay - lastAbsoluteDay) >= g_everyDays;
+    if (!due) return g_lastFacilityRejected ? 7 : 6;
+    if (!StartFacilityCapture(begin, count, year, day)) {
+        g_facilityBegin = begin;
+        g_facilityCount = count;
+        g_facilityYear = year;
+        g_facilityDay = day;
+        return RejectFacilityCapture();
+    }
+    return 4;
 }
 
 static bool ResourceToken(const BYTE* record, char* token, size_t tokenSize)
@@ -205,7 +595,7 @@ static void WriteResourceEntry(const BYTE* record, int index, int sequence)
     char line[2048];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"resource_entry\",\"sequence\":%d,\"live_index\":%d,\"source_token\":\"%s\",\"caption_id\":%u,\"resource_kind\":%d,\"transport_class_mask\":%u,\"material_family\":%d,\"finished_price_rub\":%.9g,\"finished_price_usd\":%.9g,\"base_price_rub\":%.9g,\"base_price_usd\":%.9g,\"sell_multiplier_rub\":%.9g,\"buy_multiplier_rub\":%.9g,\"sell_multiplier_usd\":%.9g,\"buy_multiplier_usd\":%.9g}",
+        "{\"schema_version\":4,\"record_type\":\"resource_entry\",\"sequence\":%d,\"live_index\":%d,\"source_token\":\"%s\",\"caption_id\":%u,\"resource_kind\":%d,\"transport_class_mask\":%u,\"material_family\":%d,\"finished_price_rub\":%.9g,\"finished_price_usd\":%.9g,\"base_price_rub\":%.9g,\"base_price_usd\":%.9g,\"sell_multiplier_rub\":%.9g,\"buy_multiplier_rub\":%.9g,\"sell_multiplier_usd\":%.9g,\"buy_multiplier_usd\":%.9g}",
         sequence, index, token, *(const unsigned*)(record + RESOURCE_CAPTION_ID),
         *(const int*)(record + RESOURCE_KIND), classMask,
         *(const int*)(record + RESOURCE_FAMILY),
@@ -227,11 +617,12 @@ static void CaptureResourceRegistry(BYTE* begin, int count, int year, int day,
     int sequence = ++g_sequence;
     char line[512];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"resource_registry\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"resource_count\":%d,\"registry_fingerprint\":\"%016llx\"}",
+        "{\"schema_version\":4,\"record_type\":\"resource_registry\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"resource_count\":%d,\"registry_fingerprint\":\"%016llx\"}",
         sequence, year, day, count, fingerprint);
     if (!WriteLine(line)) return;
     for (int i = 0; i < count; i++)
         WriteResourceEntry(begin + (size_t)i * RESOURCE_STRIDE, i, sequence);
+    FlushReport();
 }
 
 static bool SanePerson(BYTE* person)
@@ -256,8 +647,8 @@ static void WriteSession(void)
     char line[2048];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.2.3\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"game_state_rva\":\"0x9D4F10\",\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"resource_stride\":832,\"resource_vector_rva\":\"0x9E11C0\",\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
-        TSM_API_VERSION, ExeTimestamp(), (unsigned long long)g_exeSize, PERSON_SIZE);
+        "{\"schema_version\":4,\"record_type\":\"session\",\"probe_id\":\"org.republic-observatory.tesmio-readonly\",\"probe_version\":\"0.3.0\",\"mode\":\"read_only\",\"loader_api_version\":%u,\"target_game_version\":\"1.1.1.9\",\"executable_timestamp\":%u,\"executable_size\":%llu,\"checked_session_id\":\"%s\",\"game_state_rva\":\"0x9D4F10\",\"person_size\":%u,\"person_vector_rva\":\"0x9E75B8\",\"resource_stride\":832,\"resource_vector_rva\":\"0x9E11C0\",\"building_vector_rva\":\"0x9E6A18\",\"facility_candidate_contract_version\":1,\"facility_contract_version\":null,\"writes_game_state\":false,\"writes_save_data\":false,\"writes_observatory_databases\":false,\"network_access\":false}",
+        TSM_API_VERSION, ExeTimestamp(), (unsigned long long)g_exeSize, g_sessionId, PERSON_SIZE);
     WriteLine(line);
 }
 
@@ -282,6 +673,7 @@ static bool RollReportForward(void)
     // Person samples are temporary research material. Keep the file bounded by
     // starting a fresh checked report in the same allowlisted file. Force the
     // resource registry to be captured again after its normal stability check.
+    ResetFacilityCapture();
     g_records = 0;
     g_sequence = 0;
     g_lastProbeStage = -1;
@@ -292,7 +684,13 @@ static bool RollReportForward(void)
     g_lastCapturedPeopleBegin = NULL;
     g_lastCapturedPeopleCount = 0;
     g_lastCapturedResourceFingerprint = 0;
+    g_lastFacilityYear = -1;
+    g_lastFacilityDay = -1;
+    g_lastFacilityBegin = NULL;
+    g_lastFacilityCount = 0;
+    g_lastFacilityRejected = false;
     WriteSession();
+    FlushReport();
     if (g_records != 1) return false;
     Logf("observatory_probe rolled its bounded report forward");
     return true;
@@ -304,7 +702,7 @@ static void WriteSample(BYTE* person, int sequence, int sampleIndex, int vectorI
     char line[4096];
     _snprintf_s(
         line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
+        "{\"schema_version\":4,\"record_type\":\"person_sample\",\"sequence\":%d,\"sample_index\":%d,\"vector_index\":%d,\"year\":%d,\"day\":%d,\"current_building_present\":%s,\"age_years\":%.9g,\"education_level\":%.9g,\"status_happiness\":%.9g,\"status_food\":%.9g,\"status_health\":%.9g,\"status_soviet\":%.9g,\"status_alcohol\":%.9g,\"status_culture\":%.9g,\"status_sport\":%.9g,\"status_religion\":%.9g,\"status_clothing\":%.9g,\"status_electronics\":%.9g,\"status_crime\":%.9g,\"citizen_class\":%d,\"money_spent\":%.9g}",
         sequence, sampleIndex, vectorIndex, year, day,
         *(BYTE**)(person + PERSON_CURRENT_BUILDING) ? "true" : "false",
         *(float*)(person + PERSON_AGE), *(float*)(person + PERSON_EDUCATION),
@@ -342,11 +740,12 @@ static void Snapshot(BYTE** begin, int count, int year, int day)
     int sequence = ++g_sequence;
     char line[512];
     _snprintf_s(line, sizeof(line), _TRUNCATE,
-        "{\"schema_version\":3,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
+        "{\"schema_version\":4,\"record_type\":\"snapshot\",\"sequence\":%d,\"year\":%d,\"day\":%d,\"population_count\":%d,\"sample_count\":%d}",
         sequence, year, day, count, valid);
     WriteLine(line);
     for (int i = 0; i < valid; i++)
         WriteSample(people[i], sequence, i, indices[i], year, day);
+    FlushReport();
 }
 
 static void Tick(void)
@@ -396,9 +795,22 @@ static void Tick(void)
             g_lastCapturedResourceFingerprint = fingerprint;
         }
     }
-    SetProbeStage(resourceAvailable ? 3 : 4,
-                  resourceAvailable ? "checked_report_ready" :
-                                      "checked_report_ready_without_resources");
+    int facilityStage = resourceAvailable
+        ? ProcessFacilityCandidate(resourceBegin, resourceCount, year, day)
+        : 3;
+    if (!resourceAvailable) {
+        SetProbeStage(8, "checked_report_ready_without_resources");
+    } else if (facilityStage == 4) {
+        SetProbeStage(4, "facility_candidate_collecting");
+    } else if (facilityStage == 5) {
+        SetProbeStage(5, "facility_candidate_publishing");
+    } else if (facilityStage == 6) {
+        SetProbeStage(6, "facility_candidate_ready");
+    } else if (facilityStage == 7) {
+        SetProbeStage(7, "facility_candidate_rejected");
+    } else {
+        SetProbeStage(3, "checked_report_ready_without_facilities");
+    }
     bool worldChanged = begin != g_lastBegin || count != g_lastCount;
     bool dateChanged = day != g_lastDay || year != g_lastYear;
     int absoluteDay = year * 365 + day;
@@ -434,8 +846,8 @@ static void ReadSettings(void)
     if (g_samples > MAX_SAMPLES) g_samples = MAX_SAMPLES;
     if (g_everyDays < 1) g_everyDays = 1;
     if (g_everyDays > 365) g_everyDays = 365;
-    if (g_maxRecords < 1025) g_maxRecords = 1025;
-    if (g_maxRecords > 8192) g_maxRecords = 8192;
+    if (g_maxRecords < 2048) g_maxRecords = 2048;
+    if (g_maxRecords > 40000) g_maxRecords = 40000;
 }
 
 extern "C" __declspec(dllexport) unsigned TsmPluginApiVersion(void) { return TSM_API_VERSION; }
@@ -444,7 +856,7 @@ extern "C" __declspec(dllexport) int TsmPluginInit(const TsmHost* host, TsmPlugi
 {
     TsmBind(host);
     info->name = "Republic Observatory read-only probe";
-    info->version = "0.2.3";
+    info->version = "0.3.0";
     ReadSettings();
     unsigned timestamp = ExeTimestamp();
     if (!g_enabled) return 1;
@@ -453,12 +865,15 @@ extern "C" __declspec(dllexport) int TsmPluginInit(const TsmHost* host, TsmPlugi
              timestamp, (unsigned long long)g_exeSize);
         return 1;
     }
+    _snprintf_s(g_sessionId, sizeof(g_sessionId), _TRUNCATE, "%08X%016llX",
+                GetCurrentProcessId(), (unsigned long long)GetTickCount64());
     g_output = TsmOpenLog(PROBE_FILE);
     if (g_output == INVALID_HANDLE_VALUE) {
         Logf("observatory_probe could not create its fixed telemetry file");
         return 1;
     }
     WriteSession();
+    FlushReport();
     return 0;
 }
 
@@ -474,4 +889,15 @@ extern "C" __declspec(dllexport) int TsmPluginStart(void)
     return 0;
 }
 
-BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) { return TRUE; }
+BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID)
+{
+    if (reason == DLL_PROCESS_DETACH) {
+        FlushReport();
+        ResetFacilityCapture();
+        if (g_output != INVALID_HANDLE_VALUE) {
+            CloseHandle(g_output);
+            g_output = INVALID_HANDLE_VALUE;
+        }
+    }
+    return TRUE;
+}

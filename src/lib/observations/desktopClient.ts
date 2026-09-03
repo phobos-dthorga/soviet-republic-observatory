@@ -55,6 +55,10 @@ import type {
   CarbonFactorImportPreview,
   CarbonFactorSetDraft,
   EnvironmentCaptureResult,
+  EnvironmentTelemetryCapability,
+  EnvironmentValidationComparison,
+  EnvironmentValidationComparisonDraft,
+  EnvironmentValidationSnapshot,
   EnvironmentIndexingProgress,
   EnvironmentHistoryModel,
   EnvironmentSnapshot,
@@ -294,6 +298,35 @@ export function deleteLiveEnvironmentRecordings(
   return invoke<EnvironmentWorkspaceModel>(
     "delete_live_environmental_recordings",
     { confirmation },
+  );
+}
+
+export function getEnvironmentTelemetryCapability(): Promise<EnvironmentTelemetryCapability> {
+  return invoke<EnvironmentTelemetryCapability>(
+    "get_environment_telemetry_capability",
+  );
+}
+
+export function captureEnvironmentValidationSnapshot(): Promise<EnvironmentValidationSnapshot | null> {
+  return invoke<EnvironmentValidationSnapshot | null>(
+    "capture_environment_validation_snapshot",
+  );
+}
+
+export function recordEnvironmentValidationComparison(
+  draft: EnvironmentValidationComparisonDraft,
+): Promise<EnvironmentValidationComparison> {
+  return invoke<EnvironmentValidationComparison>(
+    "record_environment_validation_comparison",
+    { draft },
+  );
+}
+
+export function listEnvironmentValidationComparisons(): Promise<
+  EnvironmentValidationComparison[]
+> {
+  return invoke<EnvironmentValidationComparison[]>(
+    "list_environment_validation_comparisons",
   );
 }
 

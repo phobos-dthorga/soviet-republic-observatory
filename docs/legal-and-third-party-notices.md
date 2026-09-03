@@ -24,12 +24,15 @@ and labelled as an earlier session after restart. It never replaces save-backed
 Markets history.
 
 Optional live environmental recordings are also app-local. Recording is off by
-default and requires a clear player choice. A future checked report may contain
-snapshot-local facility indices, neutral positions, building type, production,
-pollution, radioactivity, water, and sewage readings. It must not contain raw
-memory, personal identities, or arbitrary paths. A focused deletion action
-removes these recordings without touching saves, installed content, ordinary
-observations, or player carbon-factor revisions.
+default and requires a clear player choice. The current candidate reader may
+retain snapshot-local facility numbers, building type, production, pollution,
+water, and sewage values for an explicitly opened comparison study. Candidate
+values are labelled as untrusted research and never enter Environment results.
+Position, radiation, and other unproven fields remain absent. A future reviewed
+reader may publish only the fields that pass the documented evidence checks. No
+environment report may contain raw memory, personal identities, or arbitrary
+paths. A focused deletion action removes ordinary live recordings without
+touching saves, installed content, recorded saves, or player carbon revisions.
 
 Carbon factors and their references are supplied by the player. Observatory
 does not download or endorse an emissions-factor library. Its estimates are not
@@ -113,6 +116,16 @@ and validated buy and sell multipliers. It emits no raw records, pointers,
 assets, paths, callbacks, or executable configuration. Observatory derives the
 displayed buy and sell quotes and may retain the validated record only after
 the player explicitly enables ingestion.
+
+Probe contract 4 can also prepare a bounded building comparison record for the
+current reviewed W&R build. It checks no more than 128 facilities or one
+millisecond of work per rendered frame. A changing world, invalid collection,
+duplicate facility, incomplete report, or unsafe value rejects the whole
+record. These values are labelled as research and remain separate from normal
+Environment results. Observatory stores a candidate record or a player's
+comparison only after the revised research notice has been accepted. A match
+does not approve a field automatically; publication still requires a reviewed
+mapping change.
 
 The checked report may also contain one of a small set of readiness labels.
 These labels explain whether collection is waiting for W&R, a loaded republic,

@@ -33,10 +33,12 @@ use crate::model::{
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     ConfiguredDirectorySummary, DefinitionDossier, DirectoryKind, EnvironmentCaptureResult,
     EnvironmentHistoryModel, EnvironmentRecordingStatus, EnvironmentSnapshot,
-    EnvironmentWorkspaceModel, ImportOutcome, MaintenanceDiagnostics, MarketBasketDraft,
-    MarketIndexingPhase, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
-    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
-    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    EnvironmentTelemetryCapability, EnvironmentTelemetryState, EnvironmentValidationComparison,
+    EnvironmentValidationComparisonDraft, EnvironmentValidationSnapshot, EnvironmentWorkspaceModel,
+    ImportOutcome, MaintenanceDiagnostics, MarketBasketDraft, MarketIndexingPhase,
+    MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft, MarketWorkspace,
+    ObservationImportResult, OverlayInspection, OverlayProfileSummary, PopulationDataset,
+    ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
     ProductionRouteModel, ProductionRouteRequest, ReceiverDataset, RecorderDiscoverySource,
     RecorderHealth, RecorderUpdate, ReinterpretationPhase, ReinterpretationProgress, RepublicBrief,
     RepublicPlanBrief, RepublicPlanDraft, RepublicPlanWorkspace, ResourceCatalogueRequest,
@@ -579,6 +581,127 @@ impl ObservatoryApplication {
 
     pub fn delete_live_environmental_recordings(&self) -> Result<u32, ObservatoryError> {
         self.storage.delete_live_environmental_recordings()
+    }
+
+    pub fn environment_telemetry_capability(
+        &self,
+    ) -> Result<EnvironmentTelemetryCapability, ObservatoryError> {
+        let research_notice_accepted = self.storage.research_setup()?.accepted_notice_revision
+            == crate::research_setup::RESEARCH_NOTICE_REVISION;
+        let media = self.storage.get_setting(GAME_MEDIA_DIRECTORY_KEY)?;
+        let report = tesmio_probe::inspect_environment_report(media.as_deref());
+        let (probe, candidate, parse_error) = match report {
+            Ok((probe, candidate)) => (probe, candidate, None),
+            Err(code) => (tesmio_probe::inspect(None), None, Some(code.to_owned())),
+        };
+        if research_notice_accepted && let Some(candidate) = candidate.as_ref() {
+            let inserted = self
+                .storage
+                .persist_environment_validation_snapshot(candidate)?;
+            if inserted {
+                diagnostics::record(
+                    "info",
+                    "environment_validation.snapshot_saved",
+                    "environment_validation",
+                    &format!(
+                        "Saved one candidate facility comparison snapshot with {} rows.",
+                        candidate.facilities.len()
+                    ),
+                );
+            }
+        }
+        let latest = if research_notice_accepted {
+            self.storage.latest_environment_validation_snapshot()?
+        } else {
+            None
+        };
+        let recording = self.storage.environment_recording_status()?;
+        let checked_connection = !matches!(
+            probe.state,
+            crate::model::TesmioProbeState::NotConfigured
+                | crate::model::TesmioProbeState::Missing
+                | crate::model::TesmioProbeState::Invalid
+        );
+        let candidate_ready = research_notice_accepted && candidate.is_some();
+        let rejected = parse_error.is_some()
+            || probe.collection_stage.as_deref() == Some("facility_candidate_rejected");
+        let state = if rejected {
+            EnvironmentTelemetryState::SnapshotRejected
+        } else if !checked_connection {
+            EnvironmentTelemetryState::CheckedSessionNotRunning
+        } else if probe.environment_readings_ready && recording.latest_snapshot_id.is_some() {
+            EnvironmentTelemetryState::LatestReadingAvailable
+        } else if probe.environment_readings_ready && recording.enabled {
+            EnvironmentTelemetryState::WaitingForNextCapture
+        } else if probe.environment_readings_ready {
+            EnvironmentTelemetryState::ReviewedReaderReady
+        } else if candidate_ready {
+            EnvironmentTelemetryState::CandidateReaderReady
+        } else {
+            EnvironmentTelemetryState::CheckedConnectionReaderUnavailable
+        };
+        Ok(EnvironmentTelemetryCapability {
+            state,
+            checked_connection,
+            people_readings_ready: probe.people_readings_ready,
+            resource_readings_ready: probe.resource_readings_ready,
+            candidate_contract_version: candidate
+                .as_ref()
+                .map(|snapshot| snapshot.candidate_contract_version),
+            reviewed_contract_version: probe.facility_contract_version,
+            latest_validation_snapshot: latest,
+            detail_code: (!research_notice_accepted)
+                .then(|| "research_notice_required".to_owned())
+                .or(parse_error)
+                .or_else(|| probe.warnings.first().cloned()),
+        })
+    }
+
+    pub(crate) fn sync_environment_validation(&self) -> Result<(), ObservatoryError> {
+        if self.storage.research_setup()?.accepted_notice_revision
+            != crate::research_setup::RESEARCH_NOTICE_REVISION
+        {
+            return Ok(());
+        }
+        self.environment_telemetry_capability().map(|_| ())
+    }
+
+    pub fn capture_environment_validation_snapshot(
+        &self,
+    ) -> Result<Option<EnvironmentValidationSnapshot>, ObservatoryError> {
+        let capability = self.environment_telemetry_capability()?;
+        Ok(matches!(
+            capability.state,
+            EnvironmentTelemetryState::CandidateReaderReady
+                | EnvironmentTelemetryState::ReviewedReaderReady
+                | EnvironmentTelemetryState::WaitingForNextCapture
+                | EnvironmentTelemetryState::LatestReadingAvailable
+        )
+        .then_some(capability.latest_validation_snapshot)
+        .flatten())
+    }
+
+    pub fn record_environment_validation_comparison(
+        &self,
+        draft: &EnvironmentValidationComparisonDraft,
+    ) -> Result<EnvironmentValidationComparison, ObservatoryError> {
+        if self.storage.research_setup()?.accepted_notice_revision
+            != crate::research_setup::RESEARCH_NOTICE_REVISION
+        {
+            return Err(ObservatoryError::InvalidResearchSetup);
+        }
+        self.storage.record_environment_validation_comparison(draft)
+    }
+
+    pub fn environment_validation_comparisons(
+        &self,
+    ) -> Result<Vec<EnvironmentValidationComparison>, ObservatoryError> {
+        if self.storage.research_setup()?.accepted_notice_revision
+            != crate::research_setup::RESEARCH_NOTICE_REVISION
+        {
+            return Ok(Vec::new());
+        }
+        self.storage.environment_validation_comparisons()
     }
 
     pub fn market_workspace(&self) -> Result<MarketWorkspace, ObservatoryError> {

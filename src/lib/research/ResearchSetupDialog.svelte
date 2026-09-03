@@ -7,6 +7,7 @@
   import { notify, openRecoveryProposal } from "../notifications/service";
   import { detailsFromError } from "../notifications/errors";
   import TaskProgressPanel from "../tasks/TaskProgressPanel.svelte";
+  import EnvironmentValidationStudy from "./EnvironmentValidationStudy.svelte";
   import { observeLatestTaskProgress } from "../tasks/progress";
   import ErrorSummary from "../ui/ErrorSummary.svelte";
   import TechnicalDetails from "../ui/TechnicalDetails.svelte";
@@ -891,6 +892,10 @@
             >
           </li>
         </ol>
+
+        <EnvironmentValidationStudy
+          enabled={status?.session.state === "report_available"}
+        />
 
         <div class="research-results" bind:this={researchResults}>
           {#if buildFailure}

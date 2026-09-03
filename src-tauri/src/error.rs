@@ -91,6 +91,8 @@ pub enum ObservatoryError {
     EnvironmentRecordingConsentRequired,
     #[error("Live environmental readings are not supported for this game build yet.")]
     EnvironmentLiveReadingUnavailable,
+    #[error("The live-reading comparison is invalid: {0}")]
+    InvalidEnvironmentValidation(&'static str),
     #[error("The selected market basket or scenario does not exist.")]
     UnknownMarketDefinition,
     #[error("The active market basket or scenario cannot be removed.")]
@@ -240,6 +242,7 @@ impl ObservatoryError {
             Self::UnknownCarbonFactorSet => "unknown_carbon_factor_set",
             Self::EnvironmentRecordingConsentRequired => "environment_recording_consent_required",
             Self::EnvironmentLiveReadingUnavailable => "environment_live_reading_unavailable",
+            Self::InvalidEnvironmentValidation(_) => "invalid_environment_validation",
             Self::UnknownMarketDefinition => "unknown_market_definition",
             Self::ActiveMarketDefinitionRemove => "active_market_definition_remove",
             Self::InvalidAnalysisPack(_) => "invalid_analysis_pack",

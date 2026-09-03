@@ -348,6 +348,212 @@ pub struct EnvironmentRecordingStatus {
     pub detail_code: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentTelemetryState {
+    CheckedSessionNotRunning,
+    CheckedConnectionReaderUnavailable,
+    CandidateReaderReady,
+    ReviewedReaderReady,
+    WaitingForNextCapture,
+    SnapshotRejected,
+    LatestReadingAvailable,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentValidationField {
+    Production,
+    Pollution,
+    WaterAmount,
+    WaterCapacity,
+    WaterQuality,
+    SewageAmount,
+    SewageCapacity,
+    SewageQuality,
+}
+
+impl EnvironmentValidationField {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Production => "production",
+            Self::Pollution => "pollution",
+            Self::WaterAmount => "water_amount",
+            Self::WaterCapacity => "water_capacity",
+            Self::WaterQuality => "water_quality",
+            Self::SewageAmount => "sewage_amount",
+            Self::SewageCapacity => "sewage_capacity",
+            Self::SewageQuality => "sewage_quality",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "production" => Self::Production,
+            "pollution" => Self::Pollution,
+            "water_amount" => Self::WaterAmount,
+            "water_capacity" => Self::WaterCapacity,
+            "water_quality" => Self::WaterQuality,
+            "sewage_amount" => Self::SewageAmount,
+            "sewage_capacity" => Self::SewageCapacity,
+            "sewage_quality" => Self::SewageQuality,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentValidationControl {
+    PositiveValue,
+    ZeroValue,
+    DisconnectedFacility,
+    ConsecutiveFrameStability,
+    SaveReload,
+    ApplicationRestart,
+}
+
+impl EnvironmentValidationControl {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PositiveValue => "positive_value",
+            Self::ZeroValue => "zero_value",
+            Self::DisconnectedFacility => "disconnected_facility",
+            Self::ConsecutiveFrameStability => "consecutive_frame_stability",
+            Self::SaveReload => "save_reload",
+            Self::ApplicationRestart => "application_restart",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "positive_value" => Self::PositiveValue,
+            "zero_value" => Self::ZeroValue,
+            "disconnected_facility" => Self::DisconnectedFacility,
+            "consecutive_frame_stability" => Self::ConsecutiveFrameStability,
+            "save_reload" => Self::SaveReload,
+            "application_restart" => Self::ApplicationRestart,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentValidationResult {
+    Matches,
+    DoesNotMatch,
+    Uncertain,
+}
+
+impl EnvironmentValidationResult {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Matches => "matches",
+            Self::DoesNotMatch => "does_not_match",
+            Self::Uncertain => "uncertain",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value {
+            "matches" => Self::Matches,
+            "does_not_match" => Self::DoesNotMatch,
+            "uncertain" => Self::Uncertain,
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EnvironmentValidationFacility {
+    pub facility_index: u32,
+    pub building_type: i32,
+    pub building_subtype: i32,
+    pub finished: bool,
+    pub going_away: bool,
+    pub position_x: Option<f64>,
+    pub position_z: Option<f64>,
+    pub production: Option<f64>,
+    pub pollution: Option<f64>,
+    pub radiation: Option<f64>,
+    pub water_amount: Option<f64>,
+    pub water_capacity: Option<f64>,
+    pub water_quality: Option<f64>,
+    pub sewage_amount: Option<f64>,
+    pub sewage_capacity: Option<f64>,
+    pub sewage_quality: Option<f64>,
+}
+
+impl EnvironmentValidationFacility {
+    pub fn value_for(&self, field: EnvironmentValidationField) -> Option<f64> {
+        match field {
+            EnvironmentValidationField::Production => self.production,
+            EnvironmentValidationField::Pollution => self.pollution,
+            EnvironmentValidationField::WaterAmount => self.water_amount,
+            EnvironmentValidationField::WaterCapacity => self.water_capacity,
+            EnvironmentValidationField::WaterQuality => self.water_quality,
+            EnvironmentValidationField::SewageAmount => self.sewage_amount,
+            EnvironmentValidationField::SewageCapacity => self.sewage_capacity,
+            EnvironmentValidationField::SewageQuality => self.sewage_quality,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EnvironmentValidationSnapshot {
+    pub snapshot_id: String,
+    pub checked_session_id: String,
+    pub candidate_contract_version: u32,
+    pub probe_version: String,
+    pub game_build_id: String,
+    pub year: i32,
+    pub day: u16,
+    pub game_day: i64,
+    pub captured_at_ms: i64,
+    pub collection_fingerprint: String,
+    pub facilities: Vec<EnvironmentValidationFacility>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct EnvironmentValidationComparisonDraft {
+    pub snapshot_id: String,
+    pub facility_index: u32,
+    pub field: EnvironmentValidationField,
+    pub wr_value: f64,
+    pub control: EnvironmentValidationControl,
+    pub result: EnvironmentValidationResult,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EnvironmentValidationComparison {
+    pub comparison_id: String,
+    pub snapshot_id: String,
+    pub facility_index: u32,
+    pub field: EnvironmentValidationField,
+    pub research_value: f64,
+    pub wr_value: f64,
+    pub control: EnvironmentValidationControl,
+    pub result: EnvironmentValidationResult,
+    pub note: Option<String>,
+    pub game_build_id: String,
+    pub probe_version: String,
+    pub created_at_ms: i64,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+pub struct EnvironmentTelemetryCapability {
+    pub state: EnvironmentTelemetryState,
+    pub checked_connection: bool,
+    pub people_readings_ready: bool,
+    pub resource_readings_ready: bool,
+    pub candidate_contract_version: Option<u32>,
+    pub reviewed_contract_version: Option<u32>,
+    pub latest_validation_snapshot: Option<EnvironmentValidationSnapshot>,
+    pub detail_code: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct EnvironmentSourceAvailability {
     pub save_activity: bool,

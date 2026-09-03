@@ -26,7 +26,7 @@ const browserProgress: ResearchBuildProgress = {
 };
 
 const browserStatus: ResearchSetupStatus = {
-  notice_revision: 4,
+  notice_revision: 5,
   notice_accepted: false,
   source_available: false,
   compiler_available: false,

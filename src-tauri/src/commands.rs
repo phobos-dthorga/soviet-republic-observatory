@@ -16,11 +16,13 @@ use crate::model::{
     CatalogueSearchFilter, CatalogueStatus, CompatibilityStatus, CompatibilityUpdate,
     DefinitionDossier, DiagnosticLogView, DirectoryKind, EnvironmentCaptureResult,
     EnvironmentHistoryModel, EnvironmentIndexingProgress, EnvironmentSnapshot,
-    EnvironmentWorkspaceModel, MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries,
-    MarketScenarioDraft, MarketWorkspace, ObservationImportResult, OverlayInspection,
-    OverlayProfileSummary, PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest,
-    ProductionRouteCoverage, ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext,
-    ReceiverDataset, RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
+    EnvironmentTelemetryCapability, EnvironmentValidationComparison,
+    EnvironmentValidationComparisonDraft, EnvironmentValidationSnapshot, EnvironmentWorkspaceModel,
+    MarketBasketDraft, MarketIndexingProgress, MarketPriceSeries, MarketScenarioDraft,
+    MarketWorkspace, ObservationImportResult, OverlayInspection, OverlayProfileSummary,
+    PopulationDataset, ProductionPathwayModel, ProductionPathwayRequest, ProductionRouteCoverage,
+    ProductionRouteModel, ProductionRouteRequest, PublishedMetricContext, ReceiverDataset,
+    RecorderHealth, ReinterpretationProgress, RepublicBrief, RepublicPlanDraft,
     RepublicPlanWorkspace, ResourceCatalogueRequest, ResourceCatalogueView, ResourceDetails,
     ResourceRegistryAssurance, ResourceRegistrySnapshotSummary, ResourceRegistryStatus, SetupState,
     TesmioProbeStatus, WarehouseSnapshot,
@@ -582,6 +584,57 @@ pub fn delete_live_environmental_recordings(
     state
         .application
         .environment_workspace()
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn get_environment_telemetry_capability(
+    state: State<'_, AppState>,
+) -> Result<EnvironmentTelemetryCapability, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || application.environment_telemetry_capability())
+        .await
+        .map_err(|_| CommandError {
+            code: "environment_telemetry_task_failed".to_owned(),
+            diagnostic: "The live-reading status task stopped unexpectedly.".to_owned(),
+        })?
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn capture_environment_validation_snapshot(
+    state: State<'_, AppState>,
+) -> Result<Option<EnvironmentValidationSnapshot>, CommandError> {
+    let application = Arc::clone(&state.application);
+    tauri::async_runtime::spawn_blocking(move || {
+        application.capture_environment_validation_snapshot()
+    })
+    .await
+    .map_err(|_| CommandError {
+        code: "environment_telemetry_task_failed".to_owned(),
+        diagnostic: "The candidate reading task stopped unexpectedly.".to_owned(),
+    })?
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn record_environment_validation_comparison(
+    draft: EnvironmentValidationComparisonDraft,
+    state: State<'_, AppState>,
+) -> Result<EnvironmentValidationComparison, CommandError> {
+    state
+        .application
+        .record_environment_validation_comparison(&draft)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn list_environment_validation_comparisons(
+    state: State<'_, AppState>,
+) -> Result<Vec<EnvironmentValidationComparison>, CommandError> {
+    state
+        .application
+        .environment_validation_comparisons()
         .map_err(Into::into)
 }
 

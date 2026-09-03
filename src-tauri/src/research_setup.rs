@@ -24,7 +24,7 @@ use crate::research_source_download::{
 };
 use crate::storage::{StoredResearchSetup, now_ms};
 
-pub const RESEARCH_NOTICE_REVISION: u32 = 4;
+pub const RESEARCH_NOTICE_REVISION: u32 = 5;
 pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a";
 pub(crate) const REVIEWED_PLUGIN_HEADER_HASH: &str =
     "d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49";

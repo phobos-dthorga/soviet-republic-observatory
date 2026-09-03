@@ -103,7 +103,7 @@ const completeSessionProgress = {
 };
 
 const readyStatus = {
-  notice_revision: 4,
+  notice_revision: 5,
   notice_accepted: true,
   source_available: true,
   compiler_available: true,

@@ -30,10 +30,11 @@ record. It writes one fixed JSONL file in TesmioLoader's own build directory:
 `republic-observatory-probe.jsonl`.
 
 The records contain a session contract, a bounded collection-stage status,
-date/population snapshots, anonymous samples of candidate person fields, and a
-reviewed resource-registry contract. The stage says whether the probe is waiting
-for W&R, waiting for a loaded republic, ready, or unable to roll its report
-forward.
+date/population snapshots, anonymous samples of candidate person fields, a
+reviewed resource-registry contract, and an explicitly untrusted facility
+comparison record. The stage says whether the probe is waiting for W&R, waiting
+for a loaded republic, collecting or publishing a facility comparison, ready,
+or unable to roll its report forward.
 It never contains an address or a rejected field value. The resource record is
 limited to exact tokens, caption IDs and captions, reviewed kind fields,
 RUB/USD prices, and buy/sell multipliers.
@@ -137,14 +138,19 @@ Any new section, plugin, different executable, or changed safety option still
 requires repair. The prepared folder remains tied to the exact probe identity
 recorded by Observatory, even when the local build files are no longer present.
 
-Probe contract 3 (`observatory_probe` 0.2.3) reads the reviewed calendar from
+Probe contract 4 (`observatory_probe` 0.3.0) reads the reviewed calendar from
 the executable's in-place game-state object. The earlier 0.2.1 build followed
 an unrelated global pointer and could remain at **Waiting for checked report**
 even while a republic was running. The corrected build reports its current
 waiting stage explicitly.
 
 The checked report is scratch telemetry, not saved analytical history. Version
-0.2.3 samples once per seven game days by default. When the configured line
+0.3.0 samples once per seven game days by default. It also checks the reviewed
+building collection across multiple frames. Candidate facility rows are usable
+only when the matching completion record exists. A changing world or invalid
+row rejects the complete candidate set. These rows remain in research storage
+and cannot appear in ordinary Environment results without a later reviewed
+mapping change. When the configured line
 limit is near, it clears only that fixed report, writes a fresh checked session
 header, and resumes. The current resource registry is captured again after the
 usual consecutive-frame check. This keeps long or accelerated play sessions
@@ -165,10 +171,11 @@ historical save facts.
 
 ## Bounds
 
-The source clamps settings to 1–32 people, 1–365 days, 1,025–8,192 total
-records, at most 512 resource entries, and exactly one fixed output file. The
+The source clamps settings to 1–32 people, 1–365 days, 2,048–40,000 total
+records, at most 512 resource entries, 25,000 candidate facilities, 128 facility
+reads or one millisecond per rendered frame, and exactly one fixed output file. The
 fixed report rolls forward in place before it reaches that bound; it never grows
 without limit. A rollover failure stops collection instead of weakening the
-limit. The Rust reader independently caps the file at 4 MiB, 8,192 lines, and
+limit. The Rust reader independently caps the file at 16 MiB, 40,000 lines, and
 16 KiB per line, rejects unknown fields, rejects write/network capability
 claims, and rejects paths that escape the configured game directory.

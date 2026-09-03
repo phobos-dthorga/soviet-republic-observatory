@@ -207,12 +207,14 @@ modification. It:
 - never write to a game object, serializer, or save entry.
 
 Republic Observatory derives one fixed telemetry location from the configured
-game directory and validates the stream through Rust. It caps the file at 4
-MiB, 8,192 lines, and 16 KiB per line; rejects unknown fields, path escapes,
-links, inconsistent samples, and any claimed write/network capability; and
-returns aggregate status only. The records are **not imported into SQLite or
-DuckDB** in this slice. The production save parser remains the authority for
-normal observation.
+game directory and validates the stream in the desktop host. It caps each
+report at 16 MiB, 40,000 lines, and 16 KiB per line. It rejects unknown fields,
+path escapes, links, inconsistent samples, and any claimed write or network
+capability. Ordinary person samples remain temporary. A complete contract-v4
+facility-candidate snapshot may be stored only after the current research
+notice is accepted, and only for the guided comparison study. It is kept in
+separate research tables and cannot enter Environment results. Recorded saves
+remain the authority for normal history.
 
 The GPL companion source and build instructions are in
 [`research/tesmioloader-probe`](../../research/tesmioloader-probe/README.md).

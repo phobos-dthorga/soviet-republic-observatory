@@ -42,6 +42,7 @@ const required = [
   'record_type\\":\\"resource_registry',
   'record_type\\":\\"resource_entry',
   "RVA_RESOURCE_VECTOR 0x9E11C0",
+  "RVA_BUILDING_VECTOR 0x9E6A18",
   "RVA_GAME_STATE 0x9D4F10",
   "RESOURCE_STRIDE 0x340",
   "RESOURCE_MAX_RECORDS 512",
@@ -49,7 +50,11 @@ const required = [
   "ReadablePtr",
   "FaultFilter",
   'record_type\\\":\\\"probe_status',
-  'probe_version\\\":\\\"0.2.3',
+  'probe_version\\\":\\\"0.3.0',
+  'record_type\\\":\\\"facility_candidate_snapshot',
+  'record_type\\\":\\\"facility_candidate_complete',
+  "FACILITY_MAX_RECORDS 25000",
+  "FACILITY_PER_FRAME 128",
   "SetFilePointerEx(g_output, beginning, NULL, FILE_BEGIN)",
   "SetEndOfFile(g_output)",
   "rolled its bounded report forward",
@@ -61,7 +66,7 @@ for (const marker of required) {
 for (const setting of [
   "samples = 16",
   "every_days = 7",
-  "max_records = 4096",
+  "max_records = 32768",
 ]) {
   if (!probeConfiguration.includes(setting)) {
     failures.push(`bounded probe defaults are missing ${setting}`);
@@ -140,7 +145,7 @@ for (const marker of requiredDownloadBoundary) {
 }
 for (const marker of [
   'pub const REVIEWED_TESMIO_REVISION: &str = "3baa141f9f08921aea9c95f0a400289cabd9960a"',
-  "pub const RESEARCH_NOTICE_REVISION: u32 = 4",
+  "pub const RESEARCH_NOTICE_REVISION: u32 = 5",
   '"d886ac6550dd84031ee2ed3afab13a7f75e4ddf920d23183b93395440d3cff49"',
   '"33c9fae4acb1041708c7b1b4675b0eb4740f0af737e7a1968c0acb0c325fff3c"',
   "reviewed_header_hash",

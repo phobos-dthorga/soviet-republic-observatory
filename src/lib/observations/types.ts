@@ -1401,6 +1401,99 @@ export type EnvironmentRecordingStatus = {
   detail_code: string | null;
 };
 
+export type EnvironmentTelemetryState =
+  | "checked_session_not_running"
+  | "checked_connection_reader_unavailable"
+  | "candidate_reader_ready"
+  | "reviewed_reader_ready"
+  | "waiting_for_next_capture"
+  | "snapshot_rejected"
+  | "latest_reading_available";
+
+export type EnvironmentValidationField =
+  | "production"
+  | "pollution"
+  | "water_amount"
+  | "water_capacity"
+  | "water_quality"
+  | "sewage_amount"
+  | "sewage_capacity"
+  | "sewage_quality";
+
+export type EnvironmentValidationControl =
+  | "positive_value"
+  | "zero_value"
+  | "disconnected_facility"
+  | "consecutive_frame_stability"
+  | "save_reload"
+  | "application_restart";
+
+export type EnvironmentValidationResult =
+  "matches" | "does_not_match" | "uncertain";
+
+export type EnvironmentValidationFacility = {
+  facility_index: number;
+  building_type: number;
+  building_subtype: number;
+  finished: boolean;
+  going_away: boolean;
+  position_x: number | null;
+  position_z: number | null;
+  production: number | null;
+  pollution: number | null;
+  radiation: number | null;
+  water_amount: number | null;
+  water_capacity: number | null;
+  water_quality: number | null;
+  sewage_amount: number | null;
+  sewage_capacity: number | null;
+  sewage_quality: number | null;
+};
+
+export type EnvironmentValidationSnapshot = {
+  snapshot_id: string;
+  checked_session_id: string;
+  candidate_contract_version: number;
+  probe_version: string;
+  game_build_id: string;
+  year: number;
+  day: number;
+  game_day: number;
+  captured_at_ms: number;
+  collection_fingerprint: string;
+  facilities: EnvironmentValidationFacility[];
+};
+
+export type EnvironmentValidationComparisonDraft = {
+  snapshot_id: string;
+  facility_index: number;
+  field: EnvironmentValidationField;
+  wr_value: number;
+  control: EnvironmentValidationControl;
+  result: EnvironmentValidationResult;
+  note: string | null;
+};
+
+export type EnvironmentValidationComparison =
+  EnvironmentValidationComparisonDraft & {
+    comparison_id: string;
+    research_value: number;
+    game_build_id: string;
+    probe_version: string;
+    created_at_ms: number;
+  };
+
+export type EnvironmentTelemetryCapability = {
+  state: EnvironmentTelemetryState;
+  checked_connection: boolean;
+  people_readings_ready: boolean;
+  resource_readings_ready: boolean;
+  candidate_contract_version: number | null;
+  reviewed_contract_version: number | null;
+  latest_validation_snapshot: EnvironmentValidationSnapshot | null;
+  detail_code: string | null;
+};
+
 export type EnvironmentSourceAvailability = {
   save_activity: boolean;
   live_pollution: boolean;

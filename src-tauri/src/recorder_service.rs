@@ -52,6 +52,7 @@ fn run(app_handle: AppHandle, application: Arc<ObservatoryApplication>) {
         let now = now_ms();
         if now - last_resource_registry_sync_ms >= RECONCILIATION_INTERVAL_MS {
             let _ = application.sync_resource_registry();
+            let _ = application.sync_environment_validation();
             last_resource_registry_sync_ms = now;
         }
         if filesystem_event {

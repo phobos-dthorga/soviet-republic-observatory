@@ -9,13 +9,86 @@ use crate::model::{
     AnalysisContextMode, AnalysisContextOrigin, ApplicationPreferencesDraft,
     BackgroundWorkPriority, CitizenStatusRecord, CoverageReport, CoverageStatus,
     EnvironmentActivityChannel, EnvironmentActivityRow, EnvironmentHistoryRecord,
-    GameVocabularySource, MarketCurrency, MarketFactRows, MarketHistoryRecord, MarketPriceRow,
-    MarketPriceSide, MotionPreference, ParsedCitizenStatusData, ParsedEnvironmentData,
-    ParsedMarketData, ReceiverRecord, RecorderCandidateStatus, RecorderDiscoverySource,
-    ResourceRegistryAssurance, SNAPSHOT_FACTS, SaveInspection, SaveSnapshot, SnapshotFact,
-    SnapshotScopeKind, SourceFieldSet, SourceLineSet, StoragePatiencePreset, WordingMode,
+    EnvironmentValidationComparisonDraft, EnvironmentValidationControl,
+    EnvironmentValidationFacility, EnvironmentValidationField, EnvironmentValidationResult,
+    EnvironmentValidationSnapshot, GameVocabularySource, MarketCurrency, MarketFactRows,
+    MarketHistoryRecord, MarketPriceRow, MarketPriceSide, MotionPreference,
+    ParsedCitizenStatusData, ParsedEnvironmentData, ParsedMarketData, ReceiverRecord,
+    RecorderCandidateStatus, RecorderDiscoverySource, ResourceRegistryAssurance, SNAPSHOT_FACTS,
+    SaveInspection, SaveSnapshot, SnapshotFact, SnapshotScopeKind, SourceFieldSet, SourceLineSet,
+    StoragePatiencePreset, WordingMode,
 };
 use crate::tesmio_probe::{ValidatedResourceEntry, ValidatedResourceRegistry};
+
+#[test]
+fn candidate_environment_snapshots_are_deduplicated_and_never_become_live_evidence() {
+    let directory = tempdir().expect("temporary directory");
+    let storage = ObservatoryStorage::initialise(directory.path().join("environment.sqlite3"))
+        .expect("storage");
+    let snapshot = EnvironmentValidationSnapshot {
+        snapshot_id: "e".repeat(64),
+        checked_session_id: "000012340000000000ABCDEF".to_owned(),
+        candidate_contract_version: 1,
+        probe_version: "0.3.0".to_owned(),
+        game_build_id: "1.1.1.9:6A3EB6AD:11128832".to_owned(),
+        year: 2022,
+        day: 42,
+        game_day: 2022 * 365 + 42,
+        captured_at_ms: 1_000,
+        collection_fingerprint: "0123456789abcdef".to_owned(),
+        facilities: vec![EnvironmentValidationFacility {
+            facility_index: 0,
+            building_type: 2,
+            building_subtype: 1,
+            finished: true,
+            going_away: false,
+            position_x: None,
+            position_z: None,
+            production: None,
+            pollution: Some(0.25),
+            radiation: None,
+            water_amount: None,
+            water_capacity: None,
+            water_quality: None,
+            sewage_amount: None,
+            sewage_capacity: None,
+            sewage_quality: None,
+        }],
+    };
+    assert!(
+        storage
+            .persist_environment_validation_snapshot(&snapshot)
+            .unwrap()
+    );
+    assert!(
+        !storage
+            .persist_environment_validation_snapshot(&snapshot)
+            .unwrap()
+    );
+    let latest = storage
+        .latest_environment_validation_snapshot()
+        .unwrap()
+        .expect("candidate snapshot");
+    assert_eq!(latest.facilities, snapshot.facilities);
+    assert!(storage.environment_history().unwrap().snapshots.is_empty());
+
+    let comparison = storage
+        .record_environment_validation_comparison(&EnvironmentValidationComparisonDraft {
+            snapshot_id: snapshot.snapshot_id,
+            facility_index: 0,
+            field: EnvironmentValidationField::Pollution,
+            wr_value: 0.25,
+            control: EnvironmentValidationControl::PositiveValue,
+            result: EnvironmentValidationResult::Matches,
+            note: Some("Compared with the open building window.".to_owned()),
+        })
+        .expect("record comparison");
+    assert_eq!(comparison.research_value, 0.25);
+    assert_eq!(
+        storage.environment_validation_comparisons().unwrap().len(),
+        1
+    );
+}
 
 #[test]
 fn resource_registry_snapshots_are_deduplicated_without_reclassifying_assurance() {
@@ -1476,7 +1549,7 @@ fn version_one_database_is_migrated_and_backfilled_without_reimport() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        25
+        26
     );
     assert_eq!(
         migrated
@@ -1510,7 +1583,10 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
         .expect("remove current migration markers");
     connection
         .execute_batch(
-            "DROP TABLE broadcast_status_interpretation_variants;
+            "DROP TABLE environment_validation_comparisons;
+             DROP TABLE environment_validation_facilities;
+             DROP TABLE environment_validation_snapshots;
+             DROP TABLE broadcast_status_interpretation_variants;
              DROP TABLE broadcast_status_observation_coverage;
              DROP TABLE broadcast_status_observation_records;
              DROP TABLE citizen_status_facts;
@@ -1596,7 +1672,7 @@ fn version_fifteen_projection_queue_accepts_market_jobs_after_upgrade() {
                 row.get::<_, u32>(0)
             })
             .expect("latest migration"),
-        25
+        26
     );
     assert_eq!(
         connection
